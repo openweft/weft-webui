@@ -149,6 +149,14 @@ var registry = []Resource{
 		Columns: cols("name", "Name", "objects", "Objects", "size", "Size", "created", "Created"),
 		Rows:    nil,
 	},
+	{
+		// OCI image registry. Rows come from the images store (see images.go)
+		// so uploads round-trip ; the dashboard renders a custom view.
+		ID: "images", Label: "Images", Section: "Storage",
+		Columns: cols("repository", "Repository", "tag", "Tag", "type", "Type",
+			"arch", "Architectures", "registry", "Registry", "size", "Size", "pushed", "Pushed"),
+		Rows: nil,
+	},
 
 	// ---------- Compute ----------
 	{
@@ -177,16 +185,6 @@ var registry = []Resource{
 			row("name", "large", "vcpu", 8, "ram", "32Gi", "ephemeral_gb", 32),
 			row("name", "xlarge", "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64),
 		},
-	},
-
-	// ---------- Registry ----------
-	{
-		// Rows are served from the images store (see images.go) so uploads
-		// round-trip ; Columns here drive the table + sidebar.
-		ID: "images", Label: "Images", Section: "Registry",
-		Columns: cols("repository", "Repository", "tag", "Tag", "type", "Type",
-			"arch", "Architectures", "registry", "Registry", "size", "Size", "pushed", "Pushed"),
-		Rows: nil,
 	},
 
 	// ---------- Admin ----------
