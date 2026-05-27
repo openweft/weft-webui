@@ -1,0 +1,52 @@
+version: "3"
+
+# weft-webui — Go backend (API + embedded SPA) + SvelteJS/DaisyUI frontend.
+
+vars:
+  BIN: weft-webui
+
+tasks:
+  install:
+    desc: Install frontend dependencies
+    dir: web
+    cmds:
+      - npm install
+
+  build-web:
+    desc: Build the SvelteJS SPA into web/dist (embedded by the Go binary)
+    dir: web
+    cmds:
+      - npm run build
+
+  build:
+    desc: Build the frontend then the self-contained binary
+    deps: [build-web]
+    cmds:
+      - go build -o {{.BIN}} .
+
+  run:
+    desc: Build the frontend and run the server (serves SPA + API on :8080)
+    deps: [build-web]
+    cmds:
+      - go run . {{.CLI_ARGS}}
+
+  dev:api:
+    desc: Run only the Go API (no SPA build) on :8080
+    cmds:
+      - go run . {{.CLI_ARGS}}
+
+  dev:web:
+    desc: Run the Vite dev server on :5173 (proxies /api to :8080)
+    dir: web
+    cmds:
+      - npm run dev
+
+  check:
+    desc: Vet Go + type-check Svelte
+    cmds:
+      - go vet ./...
+      - cd web && npm run check
+
+  clean:
+    cmds:
+      - rm -rf {{.BIN}} web/dist
