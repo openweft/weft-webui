@@ -114,6 +114,19 @@ export interface TopoNode {
 export const getTopology = () =>
   getJSON<{ networks: TopoNetwork[]; nodes: TopoNode[] }>('/network-topology');
 
+// ---- Quotas (overview) ----
+
+export interface Quota {
+  id: string;
+  label: string;
+  icon: string;
+  used: number;
+  limit: number;
+  unit: string;
+}
+
+export const getQuotas = () => getJSON<Quota[]>('/quotas');
+
 async function postForm(path: string, form: FormData): Promise<Row> {
   const res = await fetch(path, { method: 'POST', body: form });
   const body = await res.json().catch(() => ({}));

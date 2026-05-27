@@ -28,6 +28,33 @@
   const isStatus = (key: string) => key === 'status';
   const isBool = (v: unknown) => typeof v === 'boolean';
   const isEmpty = (v: unknown) => v === '' || v === null || v === undefined;
+
+  // ---- click-to-sort ----
+  let sortKey = $state('');
+  let sortDir = $state<'asc' | 'desc'>('asc');
+
+  function toggleSort(key: string) {
+    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else {
+      sortKey = key;
+      sortDir = 'asc';
+    }
+  }
+
+  function cmp(a: unknown, b: unknown): number {
+    const ae = isEmpty(a);
+    const be = isEmpty(b);
+    if (ae || be) return ae === be ? 0 : ae ? 1 : -1; // empties last
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    if (typeof a === 'boolean' && typeof b === 'boolean') return (a ? 1 : 0) - (b ? 1 : 0);
+    return String(a).localeCompare(String(b), undefined, { numeric: true });
+  }
+
+  let sorted = $derived.by(() => {
+    if (!sortKey) return rows;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...rows].sort((x, y) => cmp(x[sortKey], y[sortKey]) * dir);
+  });
 </script>
 
 <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
@@ -35,13 +62,20 @@
     <thead>
       <tr>
         {#each columns as c (c.key)}
-          <th>{c.label}</th>
+          <th class="cursor-pointer select-none hover:text-base-content" onclick={() => toggleSort(c.key)}>
+            <span class="inline-flex items-center gap-1">
+              {c.label}
+              {#if sortKey === c.key}
+                <span class="text-[10px] opacity-70">{sortDir === 'asc' ? '▲' : '▼'}</span>
+              {/if}
+            </span>
+          </th>
         {/each}
         <th class="w-0 text-right">Actions</th>
       </tr>
     </thead>
     <tbody>
-      {#each rows as r, i (i)}
+      {#each sorted as r, i (i)}
         <tr class="hover">
           {#each columns as c (c.key)}
             <td>
