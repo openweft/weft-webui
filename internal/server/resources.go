@@ -134,6 +134,13 @@ var registry = []Resource{
 			row("name", "models", "backend", "cubefs", "size_gb", 4096, "mounts", 3, "status", "active"),
 		},
 	},
+	{
+		// Object storage (CubeFS S3). Rows = bucket summaries (see
+		// objectstorage.go) ; the dashboard renders a custom browser view.
+		ID: "buckets", Label: "Buckets", Section: "Storage",
+		Columns: cols("name", "Name", "objects", "Objects", "size", "Size", "created", "Created"),
+		Rows:    nil,
+	},
 
 	// ---------- Compute ----------
 	{
@@ -162,15 +169,6 @@ var registry = []Resource{
 			row("name", "large", "vcpu", 8, "ram", "32Gi", "ephemeral_gb", 32),
 			row("name", "xlarge", "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64),
 		},
-	},
-
-	// ---------- Object Storage ----------
-	{
-		// Rows = bucket summaries (see objectstorage.go). The dashboard uses
-		// a custom browser view ; this entry drives the sidebar + count.
-		ID: "buckets", Label: "Buckets", Section: "Object Storage",
-		Columns: cols("name", "Name", "objects", "Objects", "size", "Size", "created", "Created"),
-		Rows:    nil,
 	},
 
 	// ---------- Registry ----------
