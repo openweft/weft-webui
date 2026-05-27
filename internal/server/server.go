@@ -34,6 +34,11 @@ func New(logger *slog.Logger, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/buckets/{name}/objects", handleUploadObject)
 	mux.HandleFunc("GET /api/buckets/{name}/object", handleGetObject)
 
+	// --- Shares (CubeFS POSIX filesystems) ---
+	mux.HandleFunc("GET /api/shares/{name}/objects", handleListShareObjects)
+	mux.HandleFunc("POST /api/shares/{name}/objects", handleUploadShareObject)
+	mux.HandleFunc("GET /api/shares/{name}/object", handleGetShareObject)
+
 	// --- Network topology (mesh map) ---
 	mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
 
