@@ -33,10 +33,14 @@ import (
 // here ; downstream packages should treat the zero value as "feature
 // off" (e.g. SSHSocket="" means no SSH transport).
 type Config struct {
-	// HTTP
-	ListenAddr string
-	TLSCert    string
-	TLSKey     string
+	// HTTP — two listeners by design : a public user-UI port and an
+	// admin port that should only be exposed on a trusted interface
+	// (typically a WireGuard endpoint). Set AdminAddr to "" to disable
+	// the admin listener entirely.
+	UserAddr  string
+	AdminAddr string
+	TLSCert   string
+	TLSKey    string
 
 	// Weft daemon (empty = mock mode, only allowed in DevMode)
 	WeftSocket string
@@ -65,7 +69,7 @@ type Config struct {
 }
 
 const (
-	defaultListenAddr   = ":8080"
+	defaultUserAddr     = ":8080"
 	defaultAuthModeProd = "oidc"
 	defaultAuthModeDev  = "none"
 	defaultCookieName   = "weft_webui_session"
@@ -83,9 +87,13 @@ const (
 // flags).
 func Load(flagSet *flag.FlagSet) (*Config, error) {
 	cfg := &Config{
-		ListenAddr:    envOr("WEBUI_LISTEN_ADDR", defaultListenAddr),
-		TLSCert:       os.Getenv("WEBUI_TLS_CERT"),
-		TLSKey:        os.Getenv("WEBUI_TLS_KEY"),
+		// WEBUI_LISTEN_ADDR is the legacy single-listener variable ; it
+		// still works as the user-port default so existing deployments
+		// don't break. New variable is WEBUI_USER_ADDR.
+		UserAddr:  firstNonEmpty(os.Getenv("WEBUI_USER_ADDR"), os.Getenv("WEBUI_LISTEN_ADDR"), defaultUserAddr),
+		AdminAddr: os.Getenv("WEBUI_ADMIN_ADDR"),
+		TLSCert:   os.Getenv("WEBUI_TLS_CERT"),
+		TLSKey:    os.Getenv("WEBUI_TLS_KEY"),
 		WeftSocket:    os.Getenv("WEBUI_WEFT_SOCKET"),
 		OIDCIssuer:    os.Getenv("WEBUI_OIDC_ISSUER"),
 		OIDCClientID:  os.Getenv("WEBUI_OIDC_CLIENT_ID"),
@@ -141,7 +149,8 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 
 	// Flags override env. Defaults track whatever env produced so that
 	// passing --addr alone (without env) still gives the expected value.
-	flagSet.StringVar(&cfg.ListenAddr, "addr", cfg.ListenAddr, "listen address")
+	flagSet.StringVar(&cfg.UserAddr, "addr", cfg.UserAddr, "user-UI listen address (public)")
+	flagSet.StringVar(&cfg.AdminAddr, "admin-addr", cfg.AdminAddr, "admin-UI listen address (bind to a WireGuard interface ; empty disables the admin port)")
 	flagSet.StringVar(&cfg.WeftSocket, "weft-socket", cfg.WeftSocket, "weft daemon socket (unix path or ssh://) ; empty = mock mode (dev only)")
 	flagSet.BoolVar(&cfg.DevMode, "dev", cfg.DevMode, "dev mode : disables auth, allows mock fallback")
 	flagSet.StringVar(&cfg.AuthMode, "auth-mode", cfg.AuthMode, `"oidc" or "none" ("none" is dev-only)`)
@@ -208,7 +217,13 @@ func (c *Config) resolveRedirectURL() string {
 // active.
 func (c *Config) Banner() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "weft-webui mode=%s auth=%s", modeLabel(c.DevMode), c.AuthMode)
+	fmt.Fprintf(&b, "weft-webui mode=%s auth=%s user=%s",
+		modeLabel(c.DevMode), c.AuthMode, c.UserAddr)
+	if c.AdminAddr != "" {
+		fmt.Fprintf(&b, " admin=%s", c.AdminAddr)
+	} else {
+		b.WriteString(" admin=disabled")
+	}
 	if c.WeftSocket == "" {
 		b.WriteString(" weft=mock")
 	} else {
@@ -225,6 +240,17 @@ func modeLabel(dev bool) string {
 		return "dev"
 	}
 	return "prod"
+}
+
+// firstNonEmpty returns the first non-empty string ; useful for layered
+// env defaults (new var → legacy var → static default).
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func envOr(key, dflt string) string {

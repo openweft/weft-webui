@@ -17,16 +17,30 @@ import (
 	"net/http"
 
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/telemetry"
 	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // live is the optional gRPC client to the weft daemon, set by New
 // when the server is launched with a configured socket. Handlers
 // switch on `live != nil` to choose between real and mock data.
+//
+// Both UserHandler and AdminHandler share the same gRPC client — vzd
+// applies its own RBAC based on the forwarded bearer.
 var live *wclient.Client
 
+// activePersona stores the persona served by the current handler so
+// per-request helpers can branch on it without threading a parameter
+// through every signature. Both handlers register themselves before
+// returning. Concurrent reads are fine ; writes only happen during
+// New / NewAdmin which run once at startup.
+var (
+	personaUser  = "user"
+	personaAdmin = "admin"
+)
+
 // Deps carries everything the HTTP layer needs at construction time.
-// Treat it as immutable post-New() ; concurrent reads only.
+// Treat it as immutable post-New / NewAdmin ; concurrent reads only.
 type Deps struct {
 	Logger *slog.Logger
 	Static fs.FS
@@ -39,13 +53,35 @@ type Deps struct {
 	// OIDC is non-nil only when AuthMode=oidc — it owns /api/auth/*.
 	OIDC *auth.OIDC
 
+	// Metrics is optional ; when set, HTTP middleware records request
+	// metrics and the admin handler exposes /metrics. Pass nil to
+	// disable telemetry entirely (the gRPC client also reads this).
+	Metrics *telemetry.Recorder
+
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
 }
 
-// New returns an http.Handler with API + auth + SPA routes mounted
-// and all middleware applied.
+// New returns the user-facing http.Handler — the public listener.
+// Admin-only resources (hosts, users, tenants, groups) and /metrics
+// are hidden ; the SPA is served from the same origin so the dashboard
+// renders normally for a regular user.
 func New(d Deps) http.Handler {
+	return buildHandler(d, ScopeUser, personaUser, false)
+}
+
+// NewAdmin returns the admin-facing handler — must only be bound on a
+// trusted interface (e.g. a WireGuard endpoint). Mounts /metrics and
+// surfaces the cluster-wide resources (Hosts, Users, Tenants, Groups)
+// in addition to everything a user sees.
+func NewAdmin(d Deps) http.Handler {
+	return buildHandler(d, ScopeAdmin, personaAdmin, true)
+}
+
+// buildHandler is the common assembly. persona drives metrics labels
+// and the resource-registry filter ; exposeMetrics decides whether
+// /metrics is mounted on this listener.
+func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.Handler {
 	live = d.Live
 	mux := http.NewServeMux()
 
@@ -69,9 +105,11 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/me", d.Auth.MeHandler)
 	mux.HandleFunc("POST /api/session/project", d.Auth.SetProjectHandler)
 
-	mux.HandleFunc("GET /api/resources", handleResources)         // metadata (sidebar + columns)
-	mux.HandleFunc("GET /api/resources/{id}", handleResourceRows) // rows for one type
-	mux.HandleFunc("GET /api/summary", handleSummary)             // counts for the overview
+	// Resource catalogue + rows : filtered by scope so the user-facing
+	// listener never even acknowledges that hosts/users/tenants exist.
+	mux.HandleFunc("GET /api/resources", scopedResources(scope))
+	mux.HandleFunc("GET /api/resources/{id}", scopedResourceRows(scope))
+	mux.HandleFunc("GET /api/summary", scopedSummary(scope))
 	mux.HandleFunc("POST /api/images/upload", handleImageUpload)
 
 	// Object storage (CubeFS S3)
@@ -90,19 +128,81 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
 	mux.HandleFunc("GET /api/quotas", handleQuotas)
 
+	// /metrics is admin-only — never expose the user's TSDB to the
+	// public listener. The auth middleware (below) still applies, so
+	// an unauthenticated scraper hits 401 even on the admin port. For
+	// Prometheus, configure a static bearer or run the scraper inside
+	// the WireGuard endpoint.
+	if exposeMetrics && d.Metrics != nil {
+		mux.Handle("GET /metrics", d.Metrics.Handler())
+	}
+
 	// SPA (everything else)
 	mux.Handle("/", spaHandler(d.Static))
 
-	// Middleware chain : panic → log → request-id → security-headers →
-	// json-defaults → auth → mux. Outer-most wraps run first.
+	// Middleware chain : panic → log → metrics → request-id →
+	// security-headers → json-defaults → auth → mux. Outer-most wraps
+	// run first. Metrics sits outside auth so 401s are counted too.
 	var h http.Handler = mux
 	h = d.Auth.Wrap(h)
 	h = withJSONDefaults(h)
 	h = withSecurityHeaders(d.DevMode, h)
 	h = withRequestID(h)
+	h = withMetrics(d.Metrics, persona, h)
 	h = withLogging(d.Logger, h)
 	h = withPanicRecovery(d.Logger, h)
 	return h
+}
+
+// scopedResources returns only the registry entries visible to scope.
+func scopedResources(scope Scope) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		out := make([]resourceMeta, 0, len(registry))
+		for i := range registry {
+			res := &registry[i]
+			if !resolveScope(res.Scope).Has(scope) {
+				continue
+			}
+			out = append(out, resourceMeta{
+				ID: res.ID, Label: res.Label, Section: res.Section,
+				Columns: res.Columns, Count: rowCount(res),
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+// scopedResourceRows refuses to serve admin-only resources from the
+// user listener (404, not 403 — don't acknowledge their existence).
+func scopedResourceRows(scope Scope) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		res, ok := resourceByID[id]
+		if !ok || !resolveScope(res.Scope).Has(scope) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown resource"})
+			return
+		}
+		handleResourceRows(w, r)
+	}
+}
+
+func scopedSummary(scope Scope) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		type item struct {
+			ID    string `json:"id"`
+			Label string `json:"label"`
+			Count int    `json:"count"`
+		}
+		out := make([]item, 0, len(registry))
+		for i := range registry {
+			res := &registry[i]
+			if !resolveScope(res.Scope).Has(scope) {
+				continue
+			}
+			out = append(out, item{ID: res.ID, Label: res.Label, Count: rowCount(res)})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -152,18 +252,6 @@ func rowCount(res *Resource) int {
 		return len(resourceByID["networks"].Rows)
 	}
 	return len(res.Rows)
-}
-
-func handleResources(w http.ResponseWriter, _ *http.Request) {
-	out := make([]resourceMeta, 0, len(registry))
-	for i := range registry {
-		res := &registry[i]
-		out = append(out, resourceMeta{
-			ID: res.ID, Label: res.Label, Section: res.Section,
-			Columns: res.Columns, Count: rowCount(res),
-		})
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
 // projectFromRequest reads the session's selected project (set by
@@ -231,21 +319,6 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		rows = []map[string]any{}
 	}
 	writeJSON(w, http.StatusOK, rows)
-}
-
-// handleSummary returns one card per section for the overview dashboard.
-func handleSummary(w http.ResponseWriter, _ *http.Request) {
-	type item struct {
-		ID    string `json:"id"`
-		Label string `json:"label"`
-		Count int    `json:"count"`
-	}
-	out := make([]item, 0, len(registry))
-	for i := range registry {
-		res := &registry[i]
-		out = append(out, item{ID: res.ID, Label: res.Label, Count: rowCount(res)})
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
 // devLogin / devLogout — stubs that make the SPA's auth helpers work
