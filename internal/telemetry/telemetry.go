@@ -259,6 +259,24 @@ func RouteLabel(method, path string) string {
 		return method + " /api/scheduling-rules/:name"
 	case path == "/api/scheduling-rules":
 		return method + " /api/scheduling-rules"
+	case path == "/api/routers":
+		return method + " /api/routers"
+	case prefix(path, "/api/routers/"):
+		return method + " /api/routers/:uuid"
+	case path == "/api/loadbalancers":
+		return method + " /api/loadbalancers"
+	case prefix(path, "/api/loadbalancers/") && suffix(path, "/backends"):
+		return "PUT /api/loadbalancers/:uuid/backends"
+	case prefix(path, "/api/loadbalancers/"):
+		return method + " /api/loadbalancers/:uuid"
+	case path == "/api/dns-zones":
+		return method + " /api/dns-zones"
+	case prefix(path, "/api/dns-zones/"):
+		return method + " /api/dns-zones/:uuid"
+	case path == "/api/dns-records":
+		return method + " /api/dns-records"
+	case prefix(path, "/api/dns-records/"):
+		return method + " /api/dns-records/:uuid"
 	case path == "/api/shares":
 		return method + " /api/shares"
 	case path == "/api/security-groups":

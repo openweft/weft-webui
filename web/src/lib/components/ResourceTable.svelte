@@ -3,6 +3,7 @@
     startVM, stopVM, deleteVM,
     deleteVolume, deleteNetwork, deleteSchedulingRule, deleteSecurityGroup,
     releaseFloatingIP, unmapFloatingIP,
+    deleteRouter, deleteLoadBalancer, deleteDNSZone, deleteDNSRecord,
     type Column, type Row,
   } from '../api';
 
@@ -180,6 +181,30 @@
           }
           break;
         }
+        case 'routers': {
+          if (action !== 'delete') break;
+          if (!confirm(`Delete router ${r.name} ?`)) break;
+          await deleteRouter(r.uuid as string);
+          break;
+        }
+        case 'loadbalancers': {
+          if (action !== 'delete') break;
+          if (!confirm(`Delete load balancer ${r.name} ?`)) break;
+          await deleteLoadBalancer(r.uuid as string);
+          break;
+        }
+        case 'dns-zones': {
+          if (action !== 'delete') break;
+          if (!confirm(`Delete DNS zone ${r.name} ? Removes every record inside it.`)) break;
+          await deleteDNSZone(r.uuid as string);
+          break;
+        }
+        case 'dns-records': {
+          if (action !== 'delete') break;
+          if (!confirm(`Delete record ${r.name}.${r.zone} ?`)) break;
+          await deleteDNSRecord(r.uuid as string);
+          break;
+        }
       }
       onChange?.();
     } catch (e) {
@@ -191,7 +216,10 @@
 
   // Which actions does the row dropdown surface, given the resource ?
   const showStartStop = $derived(resourceId === 'microvms');
-  const showDelete    = $derived(['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups', 'floating-ips'].includes(resourceId));
+  const showDelete    = $derived([
+    'microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups',
+    'floating-ips', 'routers', 'loadbalancers', 'dns-zones', 'dns-records',
+  ].includes(resourceId));
   const showFipMap    = $derived(resourceId === 'floating-ips');
   const liveWired     = $derived(showStartStop || showDelete || showFipMap);
 
