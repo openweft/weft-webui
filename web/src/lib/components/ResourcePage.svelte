@@ -1,6 +1,8 @@
 <script lang="ts">
   import { getRows, type ResourceMeta, type Row } from '../api';
   import ResourceTable from './ResourceTable.svelte';
+  import CreateVMModal from './CreateVMModal.svelte';
+  import CreateVolumeModal from './CreateVolumeModal.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -32,6 +34,16 @@
           Object.values(r).some((v) => String(v).toLowerCase().includes(query.toLowerCase())),
         ),
   );
+
+  // ---- "+ New X" affordance ----
+  //
+  // Only the resources that have a Create endpoint show the button as
+  // active. Everything else keeps it disabled with a hint — clicking
+  // a stub button used to do nothing, now it's at least honest.
+  let createOpen = $state(false);
+  const creatable = ['microvms', 'volumes'];
+  let canCreate = $derived(creatable.includes(meta.id));
+  let createLabel = $derived(meta.label.replace(/s$/, '').replace('microVMs', 'microVM'));
 </script>
 
 <div class="flex items-center gap-3">
@@ -49,8 +61,13 @@
       </svg>
       <input type="search" class="grow" placeholder="Filter…" bind:value={query} />
     </label>
-    <button class="btn btn-sm btn-primary gap-1">
-      <span class="text-base leading-none">+</span> New {meta.label.replace(/s$/, '')}
+    <button
+      class="btn btn-sm btn-primary gap-1"
+      disabled={!canCreate}
+      title={canCreate ? '' : 'Creation flow not wired yet'}
+      onclick={() => (createOpen = true)}
+    >
+      <span class="text-base leading-none">+</span> New {createLabel}
     </button>
   </div>
 </div>
@@ -65,3 +82,12 @@
       resourceId={meta.id} onChange={refresh} />
   {/if}
 </div>
+
+<!-- Create modals : one per resource that has a wired endpoint.
+     They're driven by the same {createOpen} flag and the page only
+     ever mounts the relevant one. -->
+{#if meta.id === 'microvms'}
+  <CreateVMModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'volumes'}
+  <CreateVolumeModal bind:open={createOpen} onCreated={refresh} />
+{/if}
