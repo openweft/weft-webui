@@ -52,6 +52,17 @@
           Overview
         </a>
       </li>
+      <li>
+        <a href="#/activity" class:menu-active={active === 'activity'}>
+          <!-- pulse icon : a tiny ECG / heartbeat motif distinct from
+               the other section icons. -->
+          <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h3l2 -7 4 14 2 -7 3 0" />
+          </svg>
+          Activity
+        </a>
+      </li>
     </ul>
 
     {#each grouped as group (group.section)}
