@@ -44,6 +44,9 @@ import (
 type Quotas struct {
 	VCPU        int `json:"vcpu"`
 	RAMGiB      int `json:"ram_gib"`
+	// GPUs counted in physical cards (e.g. 1×A100-40G consumes 1).
+	// Matches the notation in the Flavors + Hosts tables.
+	GPUs        int `json:"gpus"`
 	Volumes     int `json:"volumes"`
 	VolumesGiB  int `json:"volumes_gib"`
 	Shares      int `json:"shares"`
@@ -61,7 +64,7 @@ type Quotas struct {
 // of a tenant currently consume" before validating a new cap.
 func (q Quotas) add(o Quotas) Quotas {
 	return Quotas{
-		VCPU: q.VCPU + o.VCPU, RAMGiB: q.RAMGiB + o.RAMGiB,
+		VCPU: q.VCPU + o.VCPU, RAMGiB: q.RAMGiB + o.RAMGiB, GPUs: q.GPUs + o.GPUs,
 		Volumes: q.Volumes + o.Volumes, VolumesGiB: q.VolumesGiB + o.VolumesGiB,
 		Shares: q.Shares + o.Shares, SharesGiB: q.SharesGiB + o.SharesGiB,
 		Buckets: q.Buckets + o.Buckets, BucketsGiB: q.BucketsGiB + o.BucketsGiB,
@@ -82,6 +85,7 @@ func (q Quotas) fits(cap Quotas) (string, bool) {
 	}{
 		{"vcpu", q.VCPU, cap.VCPU},
 		{"ram_gib", q.RAMGiB, cap.RAMGiB},
+		{"gpus", q.GPUs, cap.GPUs},
 		{"volumes", q.Volumes, cap.Volumes},
 		{"volumes_gib", q.VolumesGiB, cap.VolumesGiB},
 		{"shares", q.Shares, cap.Shares},
@@ -165,7 +169,7 @@ func newTenantStore() *tenantStore {
 // generous enough to be useful in dev, finite enough to exercise the
 // hard-cap path. Cluster admins reset it via PUT /api/tenants/{n}/quota.
 var defaultTenantQuota = Quotas{
-	VCPU: 128, RAMGiB: 1024,
+	VCPU: 128, RAMGiB: 1024, GPUs: 4,
 	Volumes: 64, VolumesGiB: 4096,
 	Shares: 32, SharesGiB: 8192,
 	Buckets: 32, BucketsGiB: 4096,
@@ -178,11 +182,11 @@ func (s *tenantStore) seed() {
 	// Tenants.
 	for _, t := range []*Tenant{
 		{Name: "acme", Domain: "acme.example", Status: "active",
-			Quotas: Quotas{VCPU: 96, RAMGiB: 512, Volumes: 32, VolumesGiB: 2048,
+			Quotas: Quotas{VCPU: 96, RAMGiB: 512, GPUs: 2, Volumes: 32, VolumesGiB: 2048,
 				Shares: 16, SharesGiB: 4096, Buckets: 24, BucketsGiB: 2048,
 				RegistryGiB: 256, FloatingIPs: 8, Projects: 10}},
 		{Name: "globex", Domain: "globex.example", Status: "active",
-			Quotas: Quotas{VCPU: 32, RAMGiB: 192, Volumes: 12, VolumesGiB: 512,
+			Quotas: Quotas{VCPU: 32, RAMGiB: 192, GPUs: 4, Volumes: 12, VolumesGiB: 512,
 				Shares: 8, SharesGiB: 1024, Buckets: 8, BucketsGiB: 512,
 				RegistryGiB: 64, FloatingIPs: 4, Projects: 5}},
 		{Name: "initech", Domain: "initech.example", Status: "disabled",
@@ -233,7 +237,7 @@ func (s *tenantStore) seed() {
 				Shares: 2, SharesGiB: 512, Buckets: 2, BucketsGiB: 128,
 				RegistryGiB: 32, FloatingIPs: 1}},
 		{Name: "research", UUID: "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", Created: "2026-05-03", Tenant: "globex",
-			Quotas: Quotas{VCPU: 16, RAMGiB: 96, Volumes: 6, VolumesGiB: 256,
+			Quotas: Quotas{VCPU: 16, RAMGiB: 96, GPUs: 4, Volumes: 6, VolumesGiB: 256,
 				Shares: 4, SharesGiB: 512, Buckets: 4, BucketsGiB: 256,
 				RegistryGiB: 32, FloatingIPs: 2}},
 	}
@@ -688,7 +692,7 @@ func (s *tenantStore) setProjectQuota(name string, q Quotas) error {
 // quotasFromMap below.
 func quotasMap(q Quotas) map[string]int {
 	return map[string]int{
-		"vcpu": q.VCPU, "ram_gib": q.RAMGiB,
+		"vcpu": q.VCPU, "ram_gib": q.RAMGiB, "gpus": q.GPUs,
 		"volumes": q.Volumes, "volumes_gib": q.VolumesGiB,
 		"shares": q.Shares, "shares_gib": q.SharesGiB,
 		"buckets": q.Buckets, "buckets_gib": q.BucketsGiB,
@@ -704,7 +708,7 @@ func quotasMap(q Quotas) map[string]int {
 // shape the SPA's QuotaBars expects.
 func remainingMapFromMaps(cap, used map[string]int) map[string]map[string]int {
 	keys := []string{
-		"vcpu", "ram_gib", "volumes", "volumes_gib",
+		"vcpu", "ram_gib", "gpus", "volumes", "volumes_gib",
 		"shares", "shares_gib", "buckets", "buckets_gib",
 		"registry_gib", "floating_ips", "projects",
 	}
@@ -726,6 +730,7 @@ func remainingMap(cap, used Quotas) map[string]map[string]int {
 	}{
 		{"vcpu", used.VCPU, cap.VCPU},
 		{"ram_gib", used.RAMGiB, cap.RAMGiB},
+		{"gpus", used.GPUs, cap.GPUs},
 		{"volumes", used.Volumes, cap.Volumes},
 		{"volumes_gib", used.VolumesGiB, cap.VolumesGiB},
 		{"shares", used.Shares, cap.Shares},

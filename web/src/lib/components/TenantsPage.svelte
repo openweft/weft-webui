@@ -149,7 +149,7 @@
 
   function zeroQuotas(): Quotas {
     return {
-      vcpu: 0, ram_gib: 0, volumes: 0, volumes_gib: 0, shares: 0, shares_gib: 0,
+      vcpu: 0, ram_gib: 0, gpus: 0, volumes: 0, volumes_gib: 0, shares: 0, shares_gib: 0,
       buckets: 0, buckets_gib: 0, registry_gib: 0, floating_ips: 0, projects: 0,
     };
   }

@@ -27,6 +27,8 @@ const QUOTA_ICONS: Record<string, string> = {
   bucket: `<path d="M5 7h14l-1.4 12.2a1 1 0 0 1-1 .8H7.4a1 1 0 0 1-1-.8L5 7z" ${stroke}/><ellipse cx="12" cy="7" rx="7" ry="2.4" ${stroke}/>`,
   ip: `<path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z" ${stroke}/><path d="M9 11.5h2.2a1.6 1.6 0 0 1 0 3.2H9V11.5zm0 0v5" ${stroke}/>`,
   image: `<rect x="3" y="5" width="18" height="14" rx="2" ${stroke}/><circle cx="8.5" cy="10" r="1.5" ${stroke}/><path d="m4 17 5-4 4 3 3-2 4 3" ${stroke}/>`,
+  // GPU : card + fan motif, distinct from cpu (chip lattice).
+  gpu: `<rect x="3" y="7" width="18" height="10" rx="1.5" ${stroke}/><circle cx="8" cy="12" r="2.4" ${stroke}/><path d="M8 9.6v4.8M5.6 12h4.8" ${stroke}/><path d="M14 11h4M14 13h4" ${stroke}/>`,
 };
 
 export function quotaIcon(icon: string): string {
