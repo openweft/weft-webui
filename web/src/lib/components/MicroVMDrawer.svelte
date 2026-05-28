@@ -10,13 +10,14 @@
   // without re-opening the drawer. A "Refresh all" up top hits all
   // of them at once. Mock-mode (no daemon) surfaces the 503 inline
   // instead of leaving the panel empty.
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import {
     getVMStatus, getVMTimings, getVMLogs, getRows,
     startVM, stopVM, deleteVM,
     attachVolume, detachVolume,
     type VMStatus, type VMTimingEvent, type VMLogs, type Row,
   } from '../api';
+  import { openScopedEvents } from '../events';
 
   let {
     row,
@@ -89,6 +90,32 @@
   }
 
   onMount(loadStatus);
+
+  // Per-VM event subscription : the agent's WatchEvents stream is
+  // filtered to the VM's name so every state transition, network up,
+  // exec ready, etc. lands here directly. Each incoming event is
+  // prepended to the timings list so the Timings tab updates live
+  // without the operator having to refresh.
+  let scopedClose: (() => void) | null = null;
+  let liveEvents = $state(0); // ticker shown next to the Timings tab label
+  $effect(() => {
+    if (!name) return;
+    const { source, close } = openScopedEvents({ kindPrefix: 'vm.', subject: name });
+    source.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as { ts: string; kind: string; subject: string; meta?: Record<string, string> };
+        timings = [
+          { name: ev.kind, ts: ev.ts, meta: ev.meta ?? {} },
+          ...(timings ?? []),
+        ];
+        liveEvents++;
+      } catch { /* malformed frame */ }
+    };
+    scopedClose?.();
+    scopedClose = close;
+    return () => close();
+  });
+  onDestroy(() => scopedClose?.());
 
   // Lazy-load timings / logs / volumes the first time their tab is shown.
   $effect(() => {
@@ -233,7 +260,12 @@
       Volumes
       {#if attached.length > 0}<span class="ml-1 badge badge-xs">{attached.length}</span>{/if}
     </button>
-    <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>Timings</button>
+    <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>
+      Timings
+      {#if liveEvents > 0}
+        <span class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-success" title="{liveEvents} live event(s)"></span>
+      {/if}
+    </button>
     <button role="tab" class="tab" class:tab-active={tab === 'logs'}    onclick={() => (tab = 'logs')}>Logs</button>
   </div>
 
