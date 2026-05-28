@@ -112,6 +112,21 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/summary", scopedSummary(scope))
 	mux.HandleFunc("POST /api/registry/upload", handleRegistryUpload)
 
+	// --- Tenant / identity mutations -----------------------------
+	// Cluster-admin only — mounted on the admin listener.
+	if scope == ScopeAdmin {
+		mux.HandleFunc("POST /api/tenants", handleCreateTenant)
+		mux.HandleFunc("POST /api/tenants/{name}/admins", handleAddTenantAdmin)
+	}
+	// Tenant-admin (delegated). Mounted on both listeners : tenant
+	// admins typically work from the user UI ; cluster admins reach
+	// the same handlers through the admin port. The handler enforces
+	// the per-tenant check.
+	mux.HandleFunc("GET /api/tenants/{name}", handleTenantDetail)
+	mux.HandleFunc("POST /api/tenants/{name}/projects", handleAddTenantProject)
+	mux.HandleFunc("POST /api/tenants/{name}/members", handleAddTenantMember)
+	mux.HandleFunc("POST /api/projects/{name}/roles", handleGrantProjectRole)
+
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
 	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
@@ -285,11 +300,31 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	case "buckets":
 		writeJSON(w, http.StatusOK, bucketSummaries())
 		return
+	case "tenants":
+		// Store-only (vzd has no ListTenants yet). User listener filters
+		// to the caller's tenants ; admin sees all.
+		filter := ""
+		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
+			filter = u.Email
+		}
+		writeJSON(w, http.StatusOK, tenantsDB.listTenants(filter))
+		return
+	case "groups":
+		// Store-only (vzd has no ListGroups yet).
+		writeJSON(w, http.StatusOK, tenantsDB.listGroups())
+		return
 	case "projects":
 		if live != nil {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListProjects(r.Context()) })
 			return
 		}
+		// Mock path : carry the tenant column from the store.
+		filter := ""
+		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
+			filter = u.Email
+		}
+		writeJSON(w, http.StatusOK, tenantsDB.listProjects(filter))
+		return
 	case "microvms":
 		if live != nil {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListVMs(r.Context(), projectFromRequest(r)) })
@@ -315,6 +350,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListUsers(r.Context()) })
 			return
 		}
+		// Mock path : memberships column comes from the store.
+		writeJSON(w, http.StatusOK, tenantsDB.listUsers())
+		return
 	case "security-groups":
 		if live != nil {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListSecurityGroups(r.Context(), projectFromRequest(r)) })

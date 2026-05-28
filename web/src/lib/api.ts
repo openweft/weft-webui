@@ -190,3 +190,72 @@ export async function logout(): Promise<void> {
   await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   location.assign('/');
 }
+
+// ---- Tenant administration ----
+
+export interface TenantMember {
+  email: string;
+  name: string;
+  groups: string[];
+  admin: boolean;
+}
+
+export interface TenantProject {
+  name: string;
+  uuid: string;
+  created: string;
+  roles: Record<string, string>;
+}
+
+export interface TenantGroup {
+  name: string;
+  description: string;
+}
+
+export interface TenantDetail {
+  name: string;
+  domain: string;
+  status: string;
+  projects: TenantProject[];
+  members: TenantMember[];
+  groups: TenantGroup[];
+  // Set by the server : tells the SPA which affordances to render.
+  caller: { email: string; cluster_admin: boolean; tenant_admin: boolean };
+}
+
+export const getTenant = (name: string) => getJSON<TenantDetail>(`/tenants/${encodeURIComponent(name)}`);
+
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) handleUnauthorised();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `${res.status} ${res.statusText}`);
+  return data as T;
+}
+
+// Cluster-admin (admin UI). Returns 403/404 from the user UI.
+export const createTenant = (name: string, domain: string) =>
+  postJSON<{ name: string }>('/tenants', { Name: name, Domain: domain });
+
+export const addTenantAdmin = (tenant: string, email: string) =>
+  postJSON<{ email: string }>(`/tenants/${encodeURIComponent(tenant)}/admins`, { Email: email });
+
+// Tenant-admin (user UI ; cluster admins can also call from admin UI).
+export const addTenantProject = (tenant: string, name: string) =>
+  postJSON<TenantProject>(`/tenants/${encodeURIComponent(tenant)}/projects`, { Name: name });
+
+export const addTenantMember = (tenant: string, email: string, groups: string[]) =>
+  postJSON<{ email: string; groups: string[] }>(
+    `/tenants/${encodeURIComponent(tenant)}/members`,
+    { Email: email, Groups: groups },
+  );
+
+export const grantProjectRole = (project: string, email: string, role: string) =>
+  postJSON<{ email: string; role: string }>(
+    `/projects/${encodeURIComponent(project)}/roles`,
+    { Email: email, Role: role },
+  );
