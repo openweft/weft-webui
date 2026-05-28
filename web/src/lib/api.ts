@@ -341,7 +341,7 @@ export const setProjectQuota = (name: string, q: Quotas) =>
 // ---- Resource lifecycle (live gRPC) ----
 //
 // Each helper hits a /api/<kind>/... route that is wired straight to
-// vzd ; a 503 means "no live daemon" (the operator launched in mock
+// weft-agent ; a 503 means "no live daemon" (the operator launched in mock
 // mode), a 502 means the daemon refused the call. Both surface via
 // the thrown Error message so the UI can show them in a toast.
 
