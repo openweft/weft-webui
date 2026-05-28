@@ -167,9 +167,21 @@ export interface Me {
   tenant_admin: boolean;
 }
 
-// (isAdminUI used to be a heuristic based on which resources the
-// listener surfaces. /api/me now carries cluster_admin / tenant_admin
-// flags directly — use those instead.)
+// onAdminUI tells the SPA which listener served it. The admin handler
+// surfaces "hosts" + "users" + "tenants" (Scope=Admin) in
+// /api/resources ; the user handler doesn't. This is the persona
+// signal, distinct from the user's *role* — a cluster admin can be
+// browsing the user UI, and the Topbar should show "ADMIN" not
+// "SUPERADMIN" in that case ("you have admin rights while acting as a
+// regular user").
+export async function onAdminUI(): Promise<boolean> {
+  try {
+    const rs = await getResources();
+    return rs.some((r) => r.id === 'hosts');
+  } catch {
+    return false;
+  }
+}
 
 export const getMe = () => getJSON<Me>('/me');
 
