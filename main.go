@@ -86,6 +86,15 @@ func run() error {
 		live.Metrics = metrics
 		defer live.Close()
 	}
+	// Sibling weft-network controller : optional everywhere. When
+	// unset, the resources owned by it (routers, LBs, DNS, scheduling
+	// rules) fall back to the in-memory mock store.
+	var liveNet *wclient.NetworkClient
+	if cfg.WeftNetworkSocket != "" {
+		liveNet = wclient.NewNetwork(cfg.WeftNetworkSocket)
+		liveNet.Metrics = metrics
+		defer liveNet.Close()
+	}
 
 	mw, oidcAuth, err := buildAuth(logger, cfg)
 	if err != nil {
@@ -96,13 +105,14 @@ func run() error {
 	}
 
 	deps := server.Deps{
-		Logger:  logger,
-		Static:  static,
-		Live:    live,
-		Auth:    mw,
-		OIDC:    oidcAuth,
-		Metrics: metrics,
-		DevMode: cfg.DevMode,
+		Logger:     logger,
+		Static:     static,
+		Live:       live,
+		LiveNet:    liveNet,
+		Auth:       mw,
+		OIDC:       oidcAuth,
+		Metrics:    metrics,
+		DevMode:    cfg.DevMode,
 	}
 
 	// Boot announcement before opening the listeners so the journal is
