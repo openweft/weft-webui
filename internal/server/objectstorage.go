@@ -34,6 +34,61 @@ type bucket struct {
 var (
 	bucketsMu sync.Mutex
 	buckets   = seedBuckets()
+	// policies — per-bucket access policy, keyed by bucket name. Same
+	// mutex as `buckets` since they're touched together (delete cascade,
+	// PUT after a CreateBucket reload, etc.). Nil entry = no policy ;
+	// the SPA reads that as "everyone in the project can read/write".
+	policies = seedPolicies()
+)
+
+// BucketPolicy mirrors the trimmed-down S3 policy shape this dashboard
+// presents : a flat list of statements, one principal + one action +
+// one resource each. No conditions, no wildcards in principals beyond
+// "*". The Version field follows the AWS convention so the JSON looks
+// familiar to anyone copying a snippet in/out of a real S3 console.
+type BucketPolicy struct {
+	Version    string            `json:"version"`
+	Statements []PolicyStatement `json:"statements"`
+}
+
+// PolicyStatement is the SPA-presented row : Allow/Deny one principal
+// to do one action against one resource pattern. The action vocabulary
+// is restricted to the four verbs that have first-class affordances in
+// the FileBrowser : GetObject, PutObject, DeleteObject, ListBucket.
+type PolicyStatement struct {
+	Effect    string `json:"effect"`    // "Allow" | "Deny"
+	Principal string `json:"principal"` // OIDC sub OR "*"
+	Action    string `json:"action"`    // "s3:GetObject" | "s3:PutObject" | "s3:DeleteObject" | "s3:ListBucket"
+	Resource  string `json:"resource"`  // "*" | "prefix/*" | exact key
+}
+
+// seedPolicies — start with one demonstrative policy on team-data so
+// the SPA editor isn't empty on first open. Mirrors the kind of rule
+// an admin writes after onboarding a team : "read for everyone in the
+// tenant, write for the bucket's owners".
+func seedPolicies() map[string]*BucketPolicy {
+	return map[string]*BucketPolicy{
+		"team-data": {
+			Version: "2012-10-17",
+			Statements: []PolicyStatement{
+				{Effect: "Allow", Principal: "*", Action: "s3:GetObject", Resource: "*"},
+				{Effect: "Allow", Principal: "*", Action: "s3:ListBucket", Resource: "*"},
+				{Effect: "Allow", Principal: "alice@acme.example", Action: "s3:PutObject", Resource: "datasets/*"},
+				{Effect: "Allow", Principal: "alice@acme.example", Action: "s3:DeleteObject", Resource: "datasets/*"},
+			},
+		},
+	}
+}
+
+// validPolicyEffects / Actions are the closed sets the SPA editor
+// emits ; the handler refuses anything else so a bad client can't
+// silently land a policy that bypasses the UI's affordances.
+var (
+	validPolicyEffects = map[string]bool{"Allow": true, "Deny": true}
+	validPolicyActions = map[string]bool{
+		"s3:GetObject": true, "s3:PutObject": true,
+		"s3:DeleteObject": true, "s3:ListBucket": true,
+	}
 )
 
 func seedBuckets() []*bucket {
@@ -174,11 +229,91 @@ func handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 	for i, b := range buckets {
 		if b.Name == name {
 			buckets = append(buckets[:i], buckets[i+1:]...)
+			// Cascade : drop any attached policy so a re-created bucket
+			// with the same name starts clean (no surprise inherited rules).
+			delete(policies, name)
 			writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
 			return
 		}
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
+}
+
+// handleGetBucketPolicy — empty {Statements:[]} when no policy is set,
+// 404 when the bucket itself doesn't exist. Same Version constant the
+// PUT path emits so a get-then-put round-trips identically.
+func handleGetBucketPolicy(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	bucketsMu.Lock()
+	defer bucketsMu.Unlock()
+	if findBucket(name) == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
+		return
+	}
+	if p, ok := policies[name]; ok && p != nil {
+		writeJSON(w, http.StatusOK, p)
+		return
+	}
+	writeJSON(w, http.StatusOK, BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}})
+}
+
+// handleSetBucketPolicy replaces the bucket's policy atomically. An
+// empty statement list is treated as "remove the policy" so the SPA
+// can clear back to the default-allow state without a separate verb.
+func handleSetBucketPolicy(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body BucketPolicy
+	if err := decodeJSON(r, &body); err != nil {
+		badUpload(w, "invalid body")
+		return
+	}
+	// Validate against the closed-set vocabulary before mutating. One
+	// bad statement rejects the whole submission ; partial saves would
+	// leave the editor and server out of sync.
+	for i, s := range body.Statements {
+		if !validPolicyEffects[s.Effect] {
+			badUpload(w, "statement "+itoaSafe(i)+": invalid effect "+s.Effect)
+			return
+		}
+		if !validPolicyActions[s.Action] {
+			badUpload(w, "statement "+itoaSafe(i)+": invalid action "+s.Action)
+			return
+		}
+		if strings.TrimSpace(s.Principal) == "" || strings.TrimSpace(s.Resource) == "" {
+			badUpload(w, "statement "+itoaSafe(i)+": principal and resource are required")
+			return
+		}
+	}
+	bucketsMu.Lock()
+	defer bucketsMu.Unlock()
+	if findBucket(name) == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
+		return
+	}
+	if len(body.Statements) == 0 {
+		delete(policies, name)
+		writeJSON(w, http.StatusOK, BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}})
+		return
+	}
+	if body.Version == "" {
+		body.Version = "2012-10-17"
+	}
+	policies[name] = &body
+	writeJSON(w, http.StatusOK, body)
+}
+
+// itoaSafe — local strconv-free int→string for tiny indices in error
+// messages. Matches the same style network.go uses for itoa().
+func itoaSafe(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	b := []byte{}
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
 }
 
 // handleListObjects returns the folders (common prefixes) and objects directly
