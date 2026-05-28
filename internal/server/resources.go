@@ -205,33 +205,60 @@ var registry = []Resource{
 	{
 		// Routers stitch meshes together (inter-tenant peering, mesh ↔ outside)
 		// or expose a mesh to the public Internet. backend is the data-plane
-		// realisation : "wireguard" for mesh ↔ mesh peering, "linux-fou" or
-		// "vyos" for outbound NAT/BGP. Mock data : one egress router per DC.
+		// realisation : "wireguard" for mesh ↔ mesh peering, "vyos" / "frr"
+		// for outbound NAT/BGP.
+		//
+		// peer_state surfaces the live handshake info for WG peers (set by
+		// weft-network's peer subsystem) ; egress routers leave it blank
+		// since the BGP session is reported elsewhere.
 		ID: "routers", Label: "Routers", Section: "Network",
 		Columns: cols("name", "Name", "type", "Type", "backend", "Backend",
-			"networks", "Networks", "external", "External", "project", "Project", "status", "Status"),
+			"networks", "Networks", "external", "External",
+			"peer_state", "Peer state",
+			"project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "edge-dca", "type", "egress", "backend", "vyos", "networks", "tenant-net-1, mgmt", "external", "AS65010", "project", "platform", "status", "active"),
-			row("name", "edge-dcb", "type", "egress", "backend", "vyos", "networks", "tenant-net-2, mgmt", "external", "AS65010", "project", "platform", "status", "active"),
+			row("name", "edge-dca", "type", "egress", "backend", "vyos",
+				"networks", "tenant-net-1, mgmt", "external", "AS65010",
+				"peer_state", "",
+				"project", "platform", "status", "active"),
+			row("name", "edge-dcb", "type", "egress", "backend", "vyos",
+				"networks", "tenant-net-2, mgmt", "external", "AS65010",
+				"peer_state", "",
+				"project", "platform", "status", "active"),
 			row("name", "peer-alpha-beta", "type", "peer", "backend", "wireguard",
-				"networks", "tenant-net-1, tenant-net-2", "external", "—", "project", "team-alpha", "status", "active"),
+				"networks", "tenant-net-1, tenant-net-2", "external", "—",
+				"peer_state", "handshake 12s ago · rx 4.2 MiB · tx 1.8 MiB",
+				"project", "team-alpha", "status", "active"),
 		},
 	},
 	{
-		// Load balancers : programmable L4/L7 in front of microVMs/instances.
-		// Backed by Envoy on dedicated infra microVMs (one per DC, picked via
-		// SRV records — same shape as the weft agent endpoints). The "mode"
-		// column tells L4 (tcp/udp passthrough) from L7 (HTTP routing).
+		// Load balancers : programmable L4/L7 in front of microVMs and
+		// instances. Backed by Envoy on dedicated infra microVMs (one per
+		// DC : envoy-dca / envoy-dcb / envoy-dcc, picked via SRV — same
+		// shape as the weft agent endpoints).
+		//
+		// controller is the weft-network instance that currently owns the
+		// xDS stream for this LB (etcd-elected leader). When the leader
+		// fails over a replica takes the column ; the data-plane Envoys
+		// don't notice.
 		ID: "loadbalancers", Label: "Load Balancers", Section: "Network",
 		Columns: cols("name", "Name", "mode", "Mode", "address", "VIP",
-			"port", "Port", "backends", "Backends", "az", "AZ", "project", "Project", "status", "Status"),
+			"port", "Port", "backends", "Backends", "az", "AZ",
+			"controller", "Controller",
+			"project", "Project", "status", "Status"),
 		Rows: []map[string]any{
 			row("name", "web-prod", "mode", "L7", "address", "203.0.113.20", "port", 443,
-				"backends", "web-1, web-2", "az", "multi", "project", "team-alpha", "status", "active"),
+				"backends", "web-1, web-2", "az", "multi",
+				"controller", "weft-network-dca",
+				"project", "team-alpha", "status", "active"),
 			row("name", "pg-rw", "mode", "L4", "address", "10.10.0.100", "port", 5432,
-				"backends", "db-1, db-2", "az", "DC-A", "project", "team-alpha", "status", "active"),
+				"backends", "db-1, db-2", "az", "DC-A",
+				"controller", "weft-network-dca",
+				"project", "team-alpha", "status", "active"),
 			row("name", "jupyter", "mode", "L7", "address", "203.0.113.21", "port", 443,
-				"backends", "nb-1", "az", "DC-C", "project", "research", "status", "active"),
+				"backends", "nb-1", "az", "DC-C",
+				"controller", "weft-network-dcc",
+				"project", "research", "status", "active"),
 		},
 	},
 	{
