@@ -468,6 +468,84 @@ func (c *Client) DeleteVM(ctx context.Context, name, project string) (retErr err
 	return err
 }
 
+// VMStatus returns the live VMInfo for a single VM. Marshalled to the
+// same map shape the list endpoints already emit, so the drawer can
+// reuse the table-cell helpers (status badges, etc.).
+func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[string]any, retErr error) {
+	defer c.measured("VMStatus", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.VMStatus(cctx, &vzdv1.VMStatusRequest{Name: name, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Vm == nil {
+		return nil, errors.New("nil VMStatus response")
+	}
+	v := resp.Vm
+	return map[string]any{
+		"name":    v.Name,
+		"image":   v.Image,
+		"status":  vzclient.StateString(v.State),
+		"os":      v.Os,
+		"cpu":     v.Cpu,
+		"mem_mb":  v.MemMb,
+		"disk_gb": v.DiskGb,
+		"ip":      v.Ip,
+	}, nil
+}
+
+// VMTimings returns the recorded lifecycle events for a VM (state
+// transitions, network up, exec ready, …). Each event has a name, a
+// wall-clock ns timestamp, and a meta map. We translate ts_unix_ns to
+// an RFC-3339 string so the frontend can render without re-encoding.
+func (c *Client) VMTimings(ctx context.Context, name, project string) (events []map[string]any, retErr error) {
+	defer c.measured("VMTimings", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.VMTimings(cctx, &vzdv1.VMTimingsRequest{Name: name, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetEvents()))
+	for _, e := range resp.GetEvents() {
+		out = append(out, map[string]any{
+			"name": e.Name,
+			"ts":   time.Unix(0, e.TsUnixNs).UTC().Format(time.RFC3339Nano),
+			"meta": e.Meta,
+		})
+	}
+	return out, nil
+}
+
+// VMLogs returns the tail of the console log. tailBytes=0 reads
+// everything ; the frontend defaults to a sensible cap (~64 KiB).
+func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int64) (out map[string]any, retErr error) {
+	defer c.measured("VMLogs", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.VMLogs(cctx, &vzdv1.VMLogsRequest{Name: name, Project: project, TailBytes: tailBytes})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"contents":    string(resp.GetContents()),
+		"total_bytes": resp.GetTotalBytes(),
+	}, nil
+}
+
 // CreateNetwork / DeleteNetwork.
 type CreateNetworkOpts struct {
 	Project, Name, CIDR, Gateway, Type string
