@@ -30,13 +30,37 @@
     refresh();
   });
 
-  let filtered = $derived(
-    query.trim() === ''
-      ? rows
-      : rows.filter((r) =>
-          Object.values(r).some((v) => String(v).toLowerCase().includes(query.toLowerCase())),
-        ),
-  );
+  // Per-resource extra filter. dns-records gains a zone selector so
+  // a busy table (one row per record across many zones) stays usable.
+  let zoneFilter = $state('');
+  let zones = $derived.by<string[]>(() => {
+    if (meta.id !== 'dns-records') return [];
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (typeof r.zone === 'string') set.add(r.zone);
+    }
+    return [...set].sort();
+  });
+
+  // Reset the zone selector whenever the resource changes.
+  $effect(() => {
+    meta.id; // dependency
+    zoneFilter = '';
+  });
+
+  let filtered = $derived.by(() => {
+    let xs = rows;
+    if (meta.id === 'dns-records' && zoneFilter) {
+      xs = xs.filter((r) => r.zone === zoneFilter);
+    }
+    if (query.trim() !== '') {
+      const q = query.toLowerCase();
+      xs = xs.filter((r) =>
+        Object.values(r).some((v) => String(v).toLowerCase().includes(q)),
+      );
+    }
+    return xs;
+  });
 
   // ---- "+ New X" affordance ----
   //
@@ -70,6 +94,14 @@
     </p>
   </div>
   <div class="ml-auto flex items-center gap-2">
+    {#if meta.id === 'dns-records' && zones.length > 1}
+      <select class="select select-sm select-bordered" bind:value={zoneFilter}>
+        <option value="">all zones ({zones.length})</option>
+        {#each zones as z (z)}
+          <option value={z}>{z}</option>
+        {/each}
+      </select>
+    {/if}
     <label class="input input-sm input-bordered flex items-center gap-2">
       <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-50" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
