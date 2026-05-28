@@ -20,6 +20,12 @@ type User struct {
 	Email       string   `json:"email,omitempty"`
 	Name        string   `json:"name,omitempty"`
 	Groups      []string `json:"groups,omitempty"`
+	// Tenant + Project together form the user's current "scope" — the
+	// session-stored navigation choice (cascading topbar selector).
+	// Empty means "no tenant scope" / "no project scope" : the
+	// resource handlers interpret an empty tenant as a tenant-aggregate
+	// view, and an empty project as showing all projects of the tenant.
+	Tenant      string   `json:"tenant,omitempty"`
 	Project     string   `json:"project,omitempty"`
 	AccessToken string   `json:"-"` // never serialised to JSON responses
 	IDToken     string   `json:"-"`

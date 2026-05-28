@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // Mode is what callers pass to Middleware to pick a policy. None is
@@ -35,6 +36,15 @@ type Middleware struct {
 
 	// MockUser is what gets injected when Mode == ModeNone.
 	MockUser User
+
+	// devScope is the in-memory persistence layer for the cascading
+	// topbar selection in dev mode (where there's no signed cookie to
+	// carry it). Process-global on purpose — one dev session per
+	// running binary. Mutex protects the assignments since SetScope
+	// runs on a request goroutine while Wrap reads on another.
+	devScopeMu      sync.RWMutex
+	devTenant       string
+	devProject      string
 }
 
 // publicPath returns true when an /api/ path is allowed without auth.
@@ -59,10 +69,16 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		// Dev mode short-circuit : every API call sees the same user.
+		// Dev mode short-circuit : every API call sees the same user,
+		// overlaid with whatever scope the SPA has set via
+		// /api/session/scope (kept in m.devTenant / m.devProject so
+		// it survives the request boundary even without a cookie).
 		if m.Mode == ModeNone {
 			user := m.MockUser
 			user.DevMode = true
+			m.devScopeMu.RLock()
+			user.Tenant, user.Project = m.devTenant, m.devProject
+			m.devScopeMu.RUnlock()
 			r = r.WithContext(WithUser(r.Context(), &user))
 			next.ServeHTTP(w, r)
 			return
@@ -98,14 +114,22 @@ func (m *Middleware) MeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SetProjectHandler updates the session's selected project. The SPA
-// posts {"project": "..."} ; we re-mint the cookie with the new field.
+// SetScopeHandler updates the session's selected (tenant, project)
+// pair. The SPA posts {"tenant": "...", "project": "..."} ; we re-mint
+// the cookie with the new fields.
 //
-// In dev mode there's no cookie to re-mint, so we just store the
-// project on the synthesised user — the next request gets the default
-// again. The SPA caches the choice client-side, which is enough.
-func (m *Middleware) SetProjectHandler(w http.ResponseWriter, r *http.Request) {
+// Either field can be omitted to clear it. An empty tenant means
+// "cluster-wide" (cluster admin only — server-side enforced
+// elsewhere) ; an empty project means "all projects of the selected
+// tenant" (tenant-aggregate view).
+//
+// In dev mode there's no persistent cookie ; we still mutate the
+// in-context user so the rest of the request sees the new scope, but
+// the next request resets to the synthesised default. The SPA caches
+// the choice client-side, which is enough.
+func (m *Middleware) SetScopeHandler(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		Tenant  string `json:"tenant"`
 		Project string `json:"project"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
@@ -117,17 +141,23 @@ func (m *Middleware) SetProjectHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no session"})
 		return
 	}
+	u.Tenant = strings.TrimSpace(body.Tenant)
 	u.Project = strings.TrimSpace(body.Project)
 
+	scope := map[string]string{"tenant": u.Tenant, "project": u.Project}
 	if m.Mode == ModeNone {
-		writeJSON(w, http.StatusOK, map[string]string{"project": u.Project})
+		// Stash on the middleware so the next request reads it back.
+		m.devScopeMu.Lock()
+		m.devTenant, m.devProject = u.Tenant, u.Project
+		m.devScopeMu.Unlock()
+		writeJSON(w, http.StatusOK, scope)
 		return
 	}
 	if err := m.Sessions.Set(w, userToPayload(u)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"project": u.Project})
+	writeJSON(w, http.StatusOK, scope)
 }
 
 func writeAuthErr(w http.ResponseWriter, err error) {
