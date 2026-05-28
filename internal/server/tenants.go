@@ -31,6 +31,74 @@ import (
 	"github.com/openweft/weft-webui/internal/auth"
 )
 
+// Quotas carries every limit we currently track. The same struct
+// describes a tenant cap (superadmin sets it) and a project cap
+// (tenant admin sets it, must fit within the tenant's remaining).
+// Zero means unlimited at the tenant level and 0-allowed at the
+// project level — keep that in mind when summing.
+//
+// Counts (no Unit) :     vcpu, volumes, shares, buckets,
+//                        floating_ips, projects (tenant-only)
+// Capacities (GiB) :     ram_gib, volumes_gib, shares_gib,
+//                        buckets_gib, registry_gib
+type Quotas struct {
+	VCPU        int `json:"vcpu"`
+	RAMGiB      int `json:"ram_gib"`
+	Volumes     int `json:"volumes"`
+	VolumesGiB  int `json:"volumes_gib"`
+	Shares      int `json:"shares"`
+	SharesGiB   int `json:"shares_gib"`
+	Buckets     int `json:"buckets"`
+	BucketsGiB  int `json:"buckets_gib"`
+	RegistryGiB int `json:"registry_gib"`
+	FloatingIPs int `json:"floating_ips"`
+	// Projects is only meaningful at the tenant level — caps how many
+	// projects a tenant admin can carve out. Ignored on projectInfo.
+	Projects int `json:"projects"`
+}
+
+// add returns the field-wise sum. Used to compute "what the projects
+// of a tenant currently consume" before validating a new cap.
+func (q Quotas) add(o Quotas) Quotas {
+	return Quotas{
+		VCPU: q.VCPU + o.VCPU, RAMGiB: q.RAMGiB + o.RAMGiB,
+		Volumes: q.Volumes + o.Volumes, VolumesGiB: q.VolumesGiB + o.VolumesGiB,
+		Shares: q.Shares + o.Shares, SharesGiB: q.SharesGiB + o.SharesGiB,
+		Buckets: q.Buckets + o.Buckets, BucketsGiB: q.BucketsGiB + o.BucketsGiB,
+		RegistryGiB: q.RegistryGiB + o.RegistryGiB,
+		FloatingIPs: q.FloatingIPs + o.FloatingIPs,
+		Projects:    q.Projects + o.Projects,
+	}
+}
+
+// fits reports whether candidate ≤ cap on every dimension. Used in two
+// places : project quota PUT ↔ (sum-of-other-projects + new) ↔ tenant
+// cap. Returns the offending dimension name on failure.
+func (q Quotas) fits(cap Quotas) (string, bool) {
+	checks := []struct {
+		name string
+		got  int
+		max  int
+	}{
+		{"vcpu", q.VCPU, cap.VCPU},
+		{"ram_gib", q.RAMGiB, cap.RAMGiB},
+		{"volumes", q.Volumes, cap.Volumes},
+		{"volumes_gib", q.VolumesGiB, cap.VolumesGiB},
+		{"shares", q.Shares, cap.Shares},
+		{"shares_gib", q.SharesGiB, cap.SharesGiB},
+		{"buckets", q.Buckets, cap.Buckets},
+		{"buckets_gib", q.BucketsGiB, cap.BucketsGiB},
+		{"registry_gib", q.RegistryGiB, cap.RegistryGiB},
+		{"floating_ips", q.FloatingIPs, cap.FloatingIPs},
+	}
+	for _, c := range checks {
+		if c.got > c.max {
+			return c.name, false
+		}
+	}
+	return "", true
+}
+
 // Tenant is one identity boundary. Projects live in exactly one tenant,
 // users can be members of several with different group sets per tenant.
 type Tenant struct {
@@ -44,6 +112,9 @@ type Tenant struct {
 	// Groups defined within this tenant. Beyond "admins" each tenant
 	// can carve its own (developers, viewers, …). "admins" is implicit.
 	Groups map[string]string // group name → description
+	// Quotas is the cluster-admin-set hard cap. Sum of all project
+	// Quotas + the tenant's direct consumption must stay ≤ this.
+	Quotas Quotas
 }
 
 // projectInfo is the per-project record kept alongside tenants for
@@ -54,6 +125,7 @@ type projectInfo struct {
 	Created string
 	Tenant  string
 	Roles   map[string]string // email → role ("owner" | "editor" | "viewer")
+	Quotas  Quotas            // distributed share of the tenant cap
 }
 
 type tenantStore struct {
@@ -89,12 +161,32 @@ func newTenantStore() *tenantStore {
 	}
 }
 
+// defaultTenantQuota is the cap a freshly created tenant inherits —
+// generous enough to be useful in dev, finite enough to exercise the
+// hard-cap path. Cluster admins reset it via PUT /api/tenants/{n}/quota.
+var defaultTenantQuota = Quotas{
+	VCPU: 128, RAMGiB: 1024,
+	Volumes: 64, VolumesGiB: 4096,
+	Shares: 32, SharesGiB: 8192,
+	Buckets: 32, BucketsGiB: 4096,
+	RegistryGiB: 512,
+	FloatingIPs: 16,
+	Projects:    16,
+}
+
 func (s *tenantStore) seed() {
 	// Tenants.
 	for _, t := range []*Tenant{
-		{Name: "acme", Domain: "acme.example", Status: "active"},
-		{Name: "globex", Domain: "globex.example", Status: "active"},
-		{Name: "initech", Domain: "initech.example", Status: "disabled"},
+		{Name: "acme", Domain: "acme.example", Status: "active",
+			Quotas: Quotas{VCPU: 96, RAMGiB: 512, Volumes: 32, VolumesGiB: 2048,
+				Shares: 16, SharesGiB: 4096, Buckets: 24, BucketsGiB: 2048,
+				RegistryGiB: 256, FloatingIPs: 8, Projects: 10}},
+		{Name: "globex", Domain: "globex.example", Status: "active",
+			Quotas: Quotas{VCPU: 32, RAMGiB: 192, Volumes: 12, VolumesGiB: 512,
+				Shares: 8, SharesGiB: 1024, Buckets: 8, BucketsGiB: 512,
+				RegistryGiB: 64, FloatingIPs: 4, Projects: 5}},
+		{Name: "initech", Domain: "initech.example", Status: "disabled",
+			Quotas: defaultTenantQuota},
 	} {
 		t.Admins = map[string]struct{}{}
 		t.Members = map[string][]string{}
@@ -132,9 +224,18 @@ func (s *tenantStore) seed() {
 
 	// Projects.
 	projects := []*projectInfo{
-		{Name: "team-alpha", UUID: "1c5d8a9e-7c11-4d2a-9c5e-aab742c0a112", Created: "2026-04-12", Tenant: "acme"},
-		{Name: "team-beta", UUID: "2d3e9b7c-8e22-4ab3-9b0e-bbe853d1b223", Created: "2026-04-18", Tenant: "acme"},
-		{Name: "research", UUID: "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", Created: "2026-05-03", Tenant: "globex"},
+		{Name: "team-alpha", UUID: "1c5d8a9e-7c11-4d2a-9c5e-aab742c0a112", Created: "2026-04-12", Tenant: "acme",
+			Quotas: Quotas{VCPU: 32, RAMGiB: 192, Volumes: 8, VolumesGiB: 512,
+				Shares: 4, SharesGiB: 1024, Buckets: 4, BucketsGiB: 256,
+				RegistryGiB: 64, FloatingIPs: 2}},
+		{Name: "team-beta", UUID: "2d3e9b7c-8e22-4ab3-9b0e-bbe853d1b223", Created: "2026-04-18", Tenant: "acme",
+			Quotas: Quotas{VCPU: 16, RAMGiB: 96, Volumes: 4, VolumesGiB: 256,
+				Shares: 2, SharesGiB: 512, Buckets: 2, BucketsGiB: 128,
+				RegistryGiB: 32, FloatingIPs: 1}},
+		{Name: "research", UUID: "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", Created: "2026-05-03", Tenant: "globex",
+			Quotas: Quotas{VCPU: 16, RAMGiB: 96, Volumes: 6, VolumesGiB: 256,
+				Shares: 4, SharesGiB: 512, Buckets: 4, BucketsGiB: 256,
+				RegistryGiB: 32, FloatingIPs: 2}},
 	}
 	for _, p := range projects {
 		p.Roles = map[string]string{}
@@ -338,6 +439,7 @@ func (s *tenantStore) createTenant(name, domain string) error {
 			"developers": "Read/write on tenant projects",
 			"viewers":    "Read-only",
 		},
+		Quotas: defaultTenantQuota,
 	}
 	return nil
 }
@@ -443,6 +545,148 @@ func (s *tenantStore) grantRole(projectName, email, role string) error {
 	}
 	p.Roles[email] = role
 	return nil
+}
+
+// ---- Quotas ----
+
+// tenantQuotaView returns the tenant's hard cap, the sum of its
+// project quotas, and the per-dimension "remaining" for the tenant
+// admin. Tenant-level Projects (count of projects) is computed live
+// from len(t.Projects) so it never drifts from reality.
+func (s *tenantStore) tenantQuotaView(name string) (map[string]any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[name]
+	if !ok {
+		return nil, false
+	}
+	allocated := Quotas{Projects: len(t.Projects)}
+	for _, pn := range t.Projects {
+		if p := s.projects[pn]; p != nil {
+			allocated = allocated.add(p.Quotas)
+		}
+	}
+	return map[string]any{
+		"cap":       t.Quotas,
+		"allocated": allocated, // sum of children + live project count
+		"remaining": remainingMap(t.Quotas, allocated),
+	}, true
+}
+
+// projectQuotaView returns the project's quota + the parent tenant's
+// remaining (so the SPA can draw a "tenant : 32/96 used" bar without
+// a second round-trip).
+func (s *tenantStore) projectQuotaView(name string) (map[string]any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.projects[name]
+	if !ok {
+		return nil, false
+	}
+	t := s.tenants[p.Tenant]
+	if t == nil {
+		return nil, false
+	}
+	// allocated_by_siblings = sum(other projects) ; the project itself
+	// is excluded so the SPA can model "if I bump my quota to X, do I
+	// still fit ?"
+	siblings := Quotas{}
+	for _, otherName := range t.Projects {
+		if otherName == name {
+			continue
+		}
+		if other := s.projects[otherName]; other != nil {
+			siblings = siblings.add(other.Quotas)
+		}
+	}
+	return map[string]any{
+		"project":         p.Quotas,
+		"tenant_cap":      t.Quotas,
+		"siblings_total":  siblings,
+		"tenant_remaining": remainingMap(t.Quotas, siblings.add(p.Quotas)),
+	}, true
+}
+
+// setTenantQuota validates and replaces a tenant's cap. Rejected if
+// the new cap is lower than the current allocated total on any
+// dimension — operator must shrink projects first.
+func (s *tenantStore) setTenantQuota(name string, q Quotas) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tenants[name]
+	if !ok {
+		return errNotFound("tenant")
+	}
+	allocated := Quotas{Projects: len(t.Projects)}
+	for _, pn := range t.Projects {
+		if p := s.projects[pn]; p != nil {
+			allocated = allocated.add(p.Quotas)
+		}
+	}
+	if dim, ok := allocated.fits(q); !ok {
+		return errBadReq("new cap is below current allocation on `" + dim + "` ; shrink the projects first")
+	}
+	t.Quotas = q
+	return nil
+}
+
+// setProjectQuota validates against the parent tenant's remaining
+// (sum-of-other-projects + new must ≤ tenant cap).
+func (s *tenantStore) setProjectQuota(name string, q Quotas) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[name]
+	if !ok {
+		return errNotFound("project")
+	}
+	t := s.tenants[p.Tenant]
+	if t == nil {
+		return errNotFound("tenant")
+	}
+	candidate := Quotas{Projects: len(t.Projects)}
+	for _, otherName := range t.Projects {
+		other := s.projects[otherName]
+		if other == nil {
+			continue
+		}
+		if otherName == name {
+			candidate = candidate.add(q)
+		} else {
+			candidate = candidate.add(other.Quotas)
+		}
+	}
+	if dim, ok := candidate.fits(t.Quotas); !ok {
+		return errBadReq("over tenant cap on `" + dim + "`")
+	}
+	p.Quotas = q
+	return nil
+}
+
+// remainingMap projects each capacity into a {got, max, free} triplet
+// for the SPA's progress bars. Keeps the same field order as Quotas
+// so the UI doesn't need to know about the dimension list.
+func remainingMap(cap, used Quotas) map[string]map[string]int {
+	pairs := []struct {
+		name string
+		u, c int
+	}{
+		{"vcpu", used.VCPU, cap.VCPU},
+		{"ram_gib", used.RAMGiB, cap.RAMGiB},
+		{"volumes", used.Volumes, cap.Volumes},
+		{"volumes_gib", used.VolumesGiB, cap.VolumesGiB},
+		{"shares", used.Shares, cap.Shares},
+		{"shares_gib", used.SharesGiB, cap.SharesGiB},
+		{"buckets", used.Buckets, cap.Buckets},
+		{"buckets_gib", used.BucketsGiB, cap.BucketsGiB},
+		{"registry_gib", used.RegistryGiB, cap.RegistryGiB},
+		{"floating_ips", used.FloatingIPs, cap.FloatingIPs},
+		{"projects", used.Projects, cap.Projects},
+	}
+	out := make(map[string]map[string]int, len(pairs))
+	for _, p := range pairs {
+		out[p.name] = map[string]int{"used": p.u, "cap": p.c, "free": p.c - p.u}
+	}
+	return out
 }
 
 // ---- Authorisation helpers ----

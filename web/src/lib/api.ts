@@ -268,3 +268,81 @@ export const grantProjectRole = (project: string, email: string, role: string) =
     `/projects/${encodeURIComponent(project)}/roles`,
     { Email: email, Role: role },
   );
+
+// ---- Quotas ----
+
+export interface Quotas {
+  vcpu: number;
+  ram_gib: number;
+  volumes: number;
+  volumes_gib: number;
+  shares: number;
+  shares_gib: number;
+  buckets: number;
+  buckets_gib: number;
+  registry_gib: number;
+  floating_ips: number;
+  projects: number;
+}
+
+export interface QuotaDim { used: number; cap: number; free: number }
+export type QuotaBars = Record<string, QuotaDim>;
+
+export interface TenantQuotaView {
+  cap: Quotas;
+  allocated: Quotas;
+  remaining: QuotaBars;
+}
+
+export interface ProjectQuotaView {
+  project: Quotas;
+  tenant_cap: Quotas;
+  siblings_total: Quotas;
+  tenant_remaining: QuotaBars;
+}
+
+export const getTenantQuota = (name: string) =>
+  getJSON<TenantQuotaView>(`/tenants/${encodeURIComponent(name)}/quota`);
+
+export const getProjectQuota = (name: string) =>
+  getJSON<ProjectQuotaView>(`/projects/${encodeURIComponent(name)}/quota`);
+
+async function putJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) handleUnauthorised();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `${res.status} ${res.statusText}`);
+  return data as T;
+}
+
+export const setTenantQuota = (name: string, q: Quotas) =>
+  putJSON<TenantQuotaView>(`/tenants/${encodeURIComponent(name)}/quota`, q);
+
+export const setProjectQuota = (name: string, q: Quotas) =>
+  putJSON<ProjectQuotaView>(`/projects/${encodeURIComponent(name)}/quota`, q);
+
+// Quota dimension metadata for UI labels + units. Order matters : it
+// drives the visual layout. Mirrors internal/server/tenants.go.
+export interface QuotaDimMeta {
+  key: keyof Quotas;
+  label: string;
+  unit?: string;
+  tenantOnly?: boolean;
+}
+export const QUOTA_DIMS: QuotaDimMeta[] = [
+  { key: 'vcpu',         label: 'vCPU' },
+  { key: 'ram_gib',      label: 'RAM',       unit: 'GiB' },
+  { key: 'volumes',      label: 'Volumes' },
+  { key: 'volumes_gib',  label: 'Volume capacity', unit: 'GiB' },
+  { key: 'shares',       label: 'Shares' },
+  { key: 'shares_gib',   label: 'Share capacity',  unit: 'GiB' },
+  { key: 'buckets',      label: 'Buckets' },
+  { key: 'buckets_gib',  label: 'Bucket capacity', unit: 'GiB' },
+  { key: 'registry_gib', label: 'Registry',  unit: 'GiB' },
+  { key: 'floating_ips', label: 'Floating IPs' },
+  { key: 'projects',     label: 'Projects',  tenantOnly: true },
+];

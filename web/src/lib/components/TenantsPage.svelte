@@ -20,11 +20,20 @@
     addTenantProject,
     addTenantMember,
     grantProjectRole,
+    getTenantQuota,
+    setTenantQuota,
+    getProjectQuota,
+    setProjectQuota,
+    QUOTA_DIMS,
     type ResourceMeta,
     type Row,
     type TenantDetail,
+    type TenantQuotaView,
+    type ProjectQuotaView,
+    type Quotas,
   } from '../api';
   import ResourceTable from './ResourceTable.svelte';
+  import QuotaBars from './QuotaBars.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -70,11 +79,13 @@
     selected = name;
     detail = null;
     detailErr = '';
+    tenantQuota = null;
     try {
       detail = await getTenant(name);
     } catch (e) {
       detailErr = String(e);
     }
+    refreshTenantQuota(name); // parallel with detail render, populates the card
   }
   async function refreshDetail() {
     if (selected) await openTenant(selected);
@@ -113,6 +124,89 @@
   let grantEmail = $state('');
   let grantRole = $state('editor');
   let grantErr = $state('');
+
+  // ---------- quotas ----------
+  // tenantQuota is the read-only view rendered in the Quotas card.
+  // Loaded on drill-down (alongside getTenant). projectQuotas keep the
+  // per-project view available for the "Edit quotas" modal.
+  let tenantQuota = $state<TenantQuotaView | null>(null);
+  let projectQuotaCache = $state<Record<string, ProjectQuotaView>>({});
+
+  async function refreshTenantQuota(name: string) {
+    try { tenantQuota = await getTenantQuota(name); }
+    catch { tenantQuota = null; }
+  }
+
+  let tenantQuotaDlg: HTMLDialogElement;
+  let tenantQuotaDraft = $state<Quotas>(zeroQuotas());
+  let tenantQuotaErr = $state('');
+
+  let projectQuotaDlg: HTMLDialogElement;
+  let projectQuotaProject = $state('');
+  let projectQuotaView = $state<ProjectQuotaView | null>(null);
+  let projectQuotaDraft = $state<Quotas>(zeroQuotas());
+  let projectQuotaErr = $state('');
+
+  function zeroQuotas(): Quotas {
+    return {
+      vcpu: 0, ram_gib: 0, volumes: 0, volumes_gib: 0, shares: 0, shares_gib: 0,
+      buckets: 0, buckets_gib: 0, registry_gib: 0, floating_ips: 0, projects: 0,
+    };
+  }
+
+  function openEditTenantQuota() {
+    if (!tenantQuota) return;
+    tenantQuotaDraft = { ...tenantQuota.cap };
+    tenantQuotaErr = '';
+    tenantQuotaDlg.showModal();
+  }
+  async function submitTenantQuota(e: SubmitEvent) {
+    e.preventDefault();
+    tenantQuotaErr = '';
+    if (!selected) return;
+    try {
+      await setTenantQuota(selected, tenantQuotaDraft);
+      tenantQuotaDlg.close();
+      refreshTenantQuota(selected);
+    } catch (err) { tenantQuotaErr = String(err); }
+  }
+
+  async function openEditProjectQuota(projectName: string) {
+    projectQuotaProject = projectName;
+    projectQuotaErr = '';
+    try {
+      const v = await getProjectQuota(projectName);
+      projectQuotaCache[projectName] = v;
+      projectQuotaView = v;
+      projectQuotaDraft = { ...v.project };
+      projectQuotaDlg.showModal();
+    } catch (err) { projectQuotaErr = String(err); }
+  }
+  async function submitProjectQuota(e: SubmitEvent) {
+    e.preventDefault();
+    projectQuotaErr = '';
+    try {
+      const v = await setProjectQuota(projectQuotaProject, projectQuotaDraft);
+      projectQuotaCache[projectQuotaProject] = v;
+      projectQuotaView = v;
+      projectQuotaDlg.close();
+      if (selected) refreshTenantQuota(selected);
+    } catch (err) { projectQuotaErr = String(err); }
+  }
+
+  // For the project modal : "what extra am I asking compared to the
+  // current value?" — passed to QuotaBars as `extra` so the bar
+  // overlays current siblings_total with the requested delta.
+  function projectExtra(view: ProjectQuotaView | null, draft: Quotas): Partial<Quotas> {
+    if (!view) return {};
+    const out: Partial<Quotas> = {};
+    (Object.keys(draft) as (keyof Quotas)[]).forEach((k) => {
+      const delta = draft[k] - (view.project[k] ?? 0);
+      if (delta > 0) (out as Record<string, number>)[k] = delta;
+    });
+    return out;
+  }
+  let projectDraftExtra = $derived(projectExtra(projectQuotaView, projectQuotaDraft));
 
   async function submitCreateTenant(e: SubmitEvent) {
     e.preventDefault();
@@ -261,9 +355,14 @@
                       <div class="text-xs text-base-content/50 font-mono">{p.uuid}</div>
                     </div>
                     {#if detail.caller.tenant_admin}
-                      <button class="ml-auto btn btn-xs btn-ghost" onclick={() => openGrant(p.name)}>
-                        Grant role
-                      </button>
+                      <div class="ml-auto flex gap-1">
+                        <button class="btn btn-xs btn-ghost" onclick={() => openEditProjectQuota(p.name)}>
+                          Quotas
+                        </button>
+                        <button class="btn btn-xs btn-ghost" onclick={() => openGrant(p.name)}>
+                          Grant role
+                        </button>
+                      </div>
                     {/if}
                   </div>
                   {#if Object.keys(p.roles).length > 0}
@@ -299,6 +398,30 @@
               </li>
             {/each}
           </ul>
+        </div>
+      </section>
+
+      <!-- Quotas (tenant cap + sum-of-projects bars). Edit gated to
+           cluster admin (the only persona allowed to bump the cap). -->
+      <section class="lg:col-span-3 card bg-base-100 shadow">
+        <div class="card-body p-4">
+          <div class="flex items-center">
+            <h3 class="card-title text-base">Quotas</h3>
+            <span class="ml-2 text-xs text-base-content/60">
+              tenant cap · used by projects · remaining
+            </span>
+            {#if detail.caller.cluster_admin}
+              <button class="ml-auto btn btn-xs btn-outline"
+                onclick={openEditTenantQuota} disabled={!tenantQuota}>
+                Edit cap
+              </button>
+            {/if}
+          </div>
+          {#if !tenantQuota}
+            <div class="py-4 text-center text-base-content/50 text-sm">loading…</div>
+          {:else}
+            <QuotaBars bars={tenantQuota.remaining} />
+          {/if}
         </div>
       </section>
 
@@ -428,6 +551,77 @@
     <div class="modal-action">
       <button type="button" class="btn btn-sm btn-ghost" onclick={() => grantDlg.close()}>Cancel</button>
       <button type="submit" class="btn btn-sm btn-primary">Grant</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Tenant quota cap edit (cluster admin). Plain number inputs : the
+     cap is open-ended ; the only constraint is "≥ current allocated"
+     which the server enforces. -->
+<dialog class="modal" bind:this={tenantQuotaDlg}>
+  <form method="dialog" class="modal-box max-w-2xl" onsubmit={submitTenantQuota}>
+    <h3 class="text-lg font-bold">Edit tenant cap — {selected}</h3>
+    <p class="text-sm text-base-content/60">
+      Sets the hard upper bound that the sum of all project quotas may consume.
+      Cannot be lowered below current allocation ; shrink the projects first.
+    </p>
+    <div class="mt-4 grid gap-2 sm:grid-cols-2">
+      {#each QUOTA_DIMS as d (d.key)}
+        <label class="form-control">
+          <span class="label-text text-xs">{d.label}{d.unit ? ' (' + d.unit + ')' : ''}</span>
+          <input type="number" min="0" class="input input-sm input-bordered tabular-nums"
+            bind:value={tenantQuotaDraft[d.key]} />
+        </label>
+      {/each}
+    </div>
+    {#if tenantQuotaErr}<div class="mt-3 alert alert-error py-2 text-sm">{tenantQuotaErr}</div>{/if}
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm btn-ghost" onclick={() => tenantQuotaDlg.close()}>Cancel</button>
+      <button type="submit" class="btn btn-sm btn-primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Project quota edit (tenant admin). Numeric inputs + a live
+     "tenant remaining" overlay : the bar shows current sibling usage
+     and overlays the requested delta in lighter text. Bars switch
+     red when total exceeds cap ; server still validates on submit. -->
+<dialog class="modal" bind:this={projectQuotaDlg}>
+  <form method="dialog" class="modal-box max-w-3xl" onsubmit={submitProjectQuota}>
+    <h3 class="text-lg font-bold">Project quotas — {projectQuotaProject}</h3>
+    {#if projectQuotaView}
+      <p class="text-sm text-base-content/60">
+        Stays within the tenant cap below. The lighter "+ N" is what your draft adds on top of the other projects.
+      </p>
+
+      <div class="mt-3 rounded-box border border-base-300 bg-base-200/40 p-3">
+        <div class="text-xs font-medium text-base-content/70 mb-1">Tenant remaining (siblings + this draft)</div>
+        {#key projectDraftExtra}
+          <QuotaBars
+            bars={projectQuotaView.tenant_remaining}
+            extra={projectExtra(projectQuotaView, projectQuotaDraft)}
+            omit={['projects']}
+            pulseOver={true}
+          />
+        {/key}
+      </div>
+
+      <div class="mt-4 grid gap-2 sm:grid-cols-2">
+        {#each QUOTA_DIMS as d (d.key)}
+          {#if !d.tenantOnly}
+            <label class="form-control">
+              <span class="label-text text-xs">{d.label}{d.unit ? ' (' + d.unit + ')' : ''}</span>
+              <input type="number" min="0" class="input input-sm input-bordered tabular-nums"
+                bind:value={projectQuotaDraft[d.key]} />
+            </label>
+          {/if}
+        {/each}
+      </div>
+      {#if projectQuotaErr}<div class="mt-3 alert alert-error py-2 text-sm">{projectQuotaErr}</div>{/if}
+    {/if}
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm btn-ghost" onclick={() => projectQuotaDlg.close()}>Cancel</button>
+      <button type="submit" class="btn btn-sm btn-primary">Save</button>
     </div>
   </form>
 </dialog>
