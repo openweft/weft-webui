@@ -6,6 +6,8 @@
   import CreateNetworkModal from './CreateNetworkModal.svelte';
   import CreateSchedulingRuleModal from './CreateSchedulingRuleModal.svelte';
   import CreateSecurityGroupModal from './CreateSecurityGroupModal.svelte';
+  import AllocateFloatingIPModal from './AllocateFloatingIPModal.svelte';
+  import MapFloatingIPModal from './MapFloatingIPModal.svelte';
   import MicroVMDrawer from './MicroVMDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
@@ -76,15 +78,29 @@
   function handleSelect(row: Row) {
     if (meta.id === 'microvms') selectedRow = row;
   }
-  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups'];
+
+  // Row dropdown intercept for FIP "Map" — ResourceTable invokes this
+  // when the user picks the action that isn't a plain mutation.
+  function handleRowAction(row: Row, action: string) {
+    if (meta.id === 'floating-ips' && action === 'map') {
+      mapFipTarget = { uuid: String(row.uuid), address: String(row.address) };
+    }
+  }
+  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups', 'floating-ips'];
   let canCreate = $derived(creatable.includes(meta.id));
   let createLabel = $derived(
     meta.label
       .replace(/s$/, '')
       .replace('microVMs', 'microVM')
       .replace('Scheduling Rule', 'rule')
-      .replace('Security Group', 'SG'),
+      .replace('Security Group', 'SG')
+      .replace('Floating IP', 'FIP'),
   );
+
+  // Floating-IP "Map" action carries an extra modal triggered from the
+  // row dropdown ; ResourcePage owns its open state so the modal lives
+  // outside ResourceTable.
+  let mapFipTarget = $state<{ uuid: string; address: string } | null>(null);
 </script>
 
 <div class="flex items-center gap-3">
@@ -129,7 +145,8 @@
   {:else}
     <ResourceTable columns={meta.columns} rows={filtered}
       resourceId={meta.id} onChange={refresh}
-      onSelect={meta.id === 'microvms' ? handleSelect : undefined} />
+      onSelect={meta.id === 'microvms' ? handleSelect : undefined}
+      onAction={handleRowAction} />
   {/if}
 </div>
 
@@ -146,6 +163,16 @@
   <CreateSchedulingRuleModal bind:open={createOpen} onCreated={refresh} />
 {:else if meta.id === 'security-groups'}
   <CreateSecurityGroupModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'floating-ips'}
+  <AllocateFloatingIPModal bind:open={createOpen} onCreated={refresh} />
+{/if}
+
+{#if mapFipTarget}
+  <MapFloatingIPModal
+    fip={mapFipTarget}
+    onClose={() => (mapFipTarget = null)}
+    onMapped={refresh}
+  />
 {/if}
 
 {#if meta.id === 'microvms' && selectedRow}
