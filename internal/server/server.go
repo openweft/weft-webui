@@ -13,11 +13,20 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
+// live is the optional gRPC client to the weft daemon, set by New when the
+// server is launched with --weft-socket. Resources wired to live mode (see
+// handleResourceRows) call through it ; everything else falls back to mock.
+var live *wclient.Client
+
 // New returns an http.Handler with the API + SPA routes mounted. static is
-// the built SvelteJS app (web/dist), embedded by the caller.
-func New(logger *slog.Logger, static fs.FS) http.Handler {
+// the built SvelteJS app (web/dist) ; liveClient is optional — nil means
+// every handler serves mock data.
+func New(logger *slog.Logger, static fs.FS, liveClient *wclient.Client) http.Handler {
+	live = liveClient
 	mux := http.NewServeMux()
 
 	// --- API ---
@@ -104,6 +113,16 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	case "buckets":
 		writeJSON(w, http.StatusOK, bucketSummaries())
 		return
+	case "projects":
+		if live != nil {
+			rows, err := live.ListProjects(r.Context())
+			if err != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, rows)
+			return
+		}
 	}
 	rows := res.Rows
 	if rows == nil {
