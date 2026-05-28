@@ -1,0 +1,234 @@
+// shares.go — in-memory store for the dashboard's view of CubeFS
+// shares.
+//
+// vzd doesn't have a CreateShare RPC : the CubeFS volume itself is
+// provisioned out-of-band on the storage cluster, vzd's
+// PublishShareToProject just fans the resulting mount out to the
+// project's VMs over its event bus. The webui's tenant-admin
+// "Create share" affordance therefore records the *intent* — the
+// share row appears here, and a future wrapper RPC (or direct CubeFS
+// admin call) will turn that into a real volume.
+//
+// Authorisation is the same model as the rest of the tenant-scoped
+// resources : a tenant admin (or cluster admin) can create / delete
+// shares whose `project` lies in their tenants. Reads honour the
+// session scope.
+package server
+
+import (
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/openweft/weft-webui/internal/auth"
+)
+
+type Share struct {
+	Name     string
+	Project  string
+	Backend  string // currently always "cubefs"
+	SizeGB   int64
+	ReadOnly bool
+	Mounts   int    // observed mounts (set by weft-network's reconciler later)
+	Status   string // "active" | "provisioning" | "failed"
+}
+
+type shareStore struct {
+	mu     sync.RWMutex
+	shares map[string]*Share
+}
+
+var sharesDB = func() *shareStore {
+	s := &shareStore{shares: make(map[string]*Share)}
+	// Seed fixtures matching the rows resources.go used to hold inline.
+	for _, sh := range []*Share{
+		{Name: "team-data", Project: "team-alpha", Backend: "cubefs", SizeGB: 2048, Mounts: 6, Status: "active"},
+		{Name: "notebooks", Project: "research", Backend: "cubefs", SizeGB: 512, Mounts: 9, Status: "active"},
+		{Name: "models", Project: "research", Backend: "cubefs", SizeGB: 4096, ReadOnly: true, Mounts: 3, Status: "active"},
+	} {
+		s.shares[sh.Name] = sh
+	}
+	return s
+}()
+
+// list filters by project when projectFilter != "" ; an empty filter
+// returns everything (used by cluster admin / tenant-aggregate views).
+func (s *shareStore) list(projectFilter string) []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.shares))
+	for k := range s.shares {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := make([]map[string]any, 0, len(names))
+	for _, n := range names {
+		sh := s.shares[n]
+		if projectFilter != "" && sh.Project != projectFilter {
+			continue
+		}
+		out = append(out, shareToRow(sh))
+	}
+	return out
+}
+
+// listByTenant returns shares whose project belongs to the named
+// tenant (per tenantsDB). Used when the session has a tenant but no
+// project — the tenant-aggregate "show me everything in this tenant"
+// view.
+func (s *shareStore) listByTenant(tenant string) []map[string]any {
+	projects := tenantsDB.projectsInTenant(tenant)
+	if projects == nil {
+		return []map[string]any{}
+	}
+	allowed := map[string]struct{}{}
+	for _, p := range projects {
+		allowed[p] = struct{}{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.shares))
+	for k := range s.shares {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := make([]map[string]any, 0, len(names))
+	for _, n := range names {
+		sh := s.shares[n]
+		if _, ok := allowed[sh.Project]; !ok {
+			continue
+		}
+		out = append(out, shareToRow(sh))
+	}
+	return out
+}
+
+func shareToRow(sh *Share) map[string]any {
+	return map[string]any{
+		"name":     sh.Name,
+		"project":  sh.Project,
+		"backend":  sh.Backend,
+		"size_gb":  sh.SizeGB,
+		"readonly": sh.ReadOnly,
+		"mounts":   sh.Mounts,
+		"status":   sh.Status,
+	}
+}
+
+func (s *shareStore) create(sh *Share) error {
+	sh.Name = strings.TrimSpace(sh.Name)
+	if sh.Name == "" {
+		return errBadReq("name is required")
+	}
+	if sh.Project == "" {
+		return errBadReq("project is required")
+	}
+	if sh.SizeGB <= 0 {
+		return errBadReq("size_gb must be > 0")
+	}
+	if sh.Backend == "" {
+		sh.Backend = "cubefs"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.shares[sh.Name]; exists {
+		return errConflict("share already exists")
+	}
+	sh.Status = "provisioning" // becomes "active" once CubeFS reports back
+	s.shares[sh.Name] = sh
+	return nil
+}
+
+func (s *shareStore) delete(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.shares[name]; !ok {
+		return errNotFound("share")
+	}
+	delete(s.shares, name)
+	return nil
+}
+
+func (s *shareStore) shareProject(name string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sh, ok := s.shares[name]
+	if !ok {
+		return "", false
+	}
+	return sh.Project, true
+}
+
+// ---- HTTP handlers ------------------------------------------------
+
+// handleCreateShare : POST /api/shares  {Name, Project, SizeGB, ReadOnly}
+//
+// Gated on tenant admin of the project's tenant ; cluster admin
+// passes implicitly. Project defaults to the session scope when
+// missing (so the operator doesn't have to repeat themselves after
+// picking it in the topbar).
+func handleCreateShare(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name, Project, Backend string
+		SizeGB                 int64
+		ReadOnly               bool
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.Project == "" {
+		_, body.Project = scopeFromRequest(r)
+	}
+	if body.Project == "" {
+		writeErr(w, errBadReq("project is required (set scope via the topbar or pass project=...)"))
+		return
+	}
+	tenant, ok := tenantsDB.projectTenant(body.Project)
+	if !ok {
+		writeErr(w, errBadReq("unknown project: "+body.Project))
+		return
+	}
+	u := auth.UserFromContext(r.Context())
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	sh := &Share{
+		Name: body.Name, Project: body.Project, Backend: body.Backend,
+		SizeGB: body.SizeGB, ReadOnly: body.ReadOnly,
+	}
+	if err := sharesDB.create(sh); err != nil {
+		writeErr(w, err)
+		return
+	}
+	userAction(r, "share.create")
+	writeJSON(w, http.StatusCreated, shareToRow(sh))
+}
+
+// handleDeleteShare : DELETE /api/shares/{name}
+func handleDeleteShare(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	project, ok := sharesDB.shareProject(name)
+	if !ok {
+		writeErr(w, errNotFound("share"))
+		return
+	}
+	tenant, ok := tenantsDB.projectTenant(project)
+	if !ok {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	u := auth.UserFromContext(r.Context())
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	if err := sharesDB.delete(name); err != nil {
+		writeErr(w, err)
+		return
+	}
+	userAction(r, "share.delete")
+	w.WriteHeader(http.StatusNoContent)
+}

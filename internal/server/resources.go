@@ -199,13 +199,12 @@ var registry = []Resource{
 		},
 	},
 	{
+		// Shares are served from sharesDB (shares.go) so a tenant admin's
+		// "Create share" round-trips. Rows stay nil here ; the switch in
+		// handleResourceRows hits the store.
 		ID: "shares", Label: "Shares", Section: "Storage",
-		Columns: cols("name", "Name", "backend", "Backend", "size_gb", "Size (GB)", "mounts", "Mounts", "status", "Status"),
-		Rows: []map[string]any{
-			row("name", "team-data", "backend", "cubefs", "size_gb", 2048, "mounts", 6, "status", "active"),
-			row("name", "notebooks", "backend", "cubefs", "size_gb", 512, "mounts", 9, "status", "active"),
-			row("name", "models", "backend", "cubefs", "size_gb", 4096, "mounts", 3, "status", "active"),
-		},
+		Columns: cols("name", "Name", "project", "Project", "backend", "Backend",
+			"size_gb", "Size (GB)", "readonly", "Read-only", "mounts", "Mounts", "status", "Status"),
 	},
 	{
 		// Object storage (CubeFS S3). Rows = bucket summaries (see

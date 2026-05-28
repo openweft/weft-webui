@@ -255,6 +255,9 @@ func RouteLabel(method, path string) string {
 		return method + " /api/scheduling-rules/:name"
 	case path == "/api/scheduling-rules":
 		return method + " /api/scheduling-rules"
+	case path == "/api/shares":
+		return method + " /api/shares"
+
 	case prefix(path, "/api/buckets/") && suffix(path, "/objects"):
 		return method + " /api/buckets/:name/objects"
 	case prefix(path, "/api/buckets/") && suffix(path, "/object"):
@@ -265,6 +268,9 @@ func RouteLabel(method, path string) string {
 		return method + " /api/shares/:name/objects"
 	case prefix(path, "/api/shares/") && suffix(path, "/object"):
 		return "GET /api/shares/:name/object"
+	case prefix(path, "/api/shares/"):
+		// DELETE /api/shares/{name} — share-level mutations.
+		return method + " /api/shares/:name"
 	}
 	return "api-other"
 }
