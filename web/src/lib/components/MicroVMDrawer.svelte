@@ -1,18 +1,20 @@
 <script lang="ts">
   // Right-side drawer that opens when a microVM row is clicked.
-  // Three tabs hit three RPCs lazily on first activation :
-  //   Summary  → /api/microvms/:name/status   (VMStatus)
-  //   Timings  → /api/microvms/:name/timings  (VMTimings)
-  //   Logs     → /api/microvms/:name/logs     (VMLogs)
+  // Four tabs hit different RPCs lazily on first activation :
+  //   Summary  → /api/microvms/:name/status        (VMStatus)
+  //   Volumes  → /api/resources/volumes (filtered) (ListVolumes)
+  //   Timings  → /api/microvms/:name/timings       (VMTimings)
+  //   Logs     → /api/microvms/:name/logs          (VMLogs)
   //
   // Each tab carries its own refresh button so the operator can poll
   // without re-opening the drawer. A "Refresh all" up top hits all
-  // three at once. Mock-mode (no daemon) surfaces the 503 inline
+  // of them at once. Mock-mode (no daemon) surfaces the 503 inline
   // instead of leaving the panel empty.
   import { onMount } from 'svelte';
   import {
-    getVMStatus, getVMTimings, getVMLogs,
+    getVMStatus, getVMTimings, getVMLogs, getRows,
     startVM, stopVM, deleteVM,
+    attachVolume, detachVolume,
     type VMStatus, type VMTimingEvent, type VMLogs, type Row,
   } from '../api';
 
@@ -31,7 +33,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'volumes' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -45,6 +47,17 @@
   let logs = $state<VMLogs | null>(null);
   let logsErr = $state('');
   let logsBusy = $state(false);
+
+  // Volumes tab : the table-wide volume list, filtered by
+  // attached_to == this VM's name OR uuid. The "available" pool is the
+  // detached subset of the same project, used by the Attach picker.
+  let volumes = $state<Row[] | null>(null);
+  let volumesErr = $state('');
+  let volumesBusy = $state(false);
+  let attachBusy = $state<string | null>(null); // volume uuid being attached/detached
+  // Inline "Attach" picker state.
+  let pickerOpen = $state(false);
+  let pickerError = $state('');
 
   // Action-button state.
   let actionErr = $state('');
@@ -68,17 +81,71 @@
     catch (e) { logsErr = String(e); }
     finally { logsBusy = false; }
   }
+  async function loadVolumes() {
+    volumesBusy = true; volumesErr = '';
+    try { volumes = await getRows('volumes'); }
+    catch (e) { volumesErr = String(e); }
+    finally { volumesBusy = false; }
+  }
 
   onMount(loadStatus);
 
-  // Lazy-load timings / logs the first time their tab is shown.
+  // Lazy-load timings / logs / volumes the first time their tab is shown.
   $effect(() => {
     if (tab === 'timings' && !timings && !timingsErr) loadTimings();
     if (tab === 'logs' && !logs && !logsErr) loadLogs();
+    if (tab === 'volumes' && !volumes && !volumesErr) loadVolumes();
   });
 
   async function refreshAll() {
-    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs()]);
+    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs(), loadVolumes()]);
+  }
+
+  // Volume sets : attached to this VM, vs available (detached) in
+  // the same project. We match on attached_to == VM name (the mock
+  // uses names) OR the VM's UUID (live mode).
+  let vmUUID = $derived((status?.name ? (status as VMStatus & {uuid?: string}).uuid : (row.uuid as string)) || '');
+  let projectScope = $derived(String(row.project ?? ''));
+  let attached = $derived.by<Row[]>(() => {
+    if (!volumes) return [];
+    return volumes.filter((v) => {
+      const at = String(v.attached_to ?? '');
+      return at === name || (vmUUID && at === vmUUID);
+    });
+  });
+  let available = $derived.by<Row[]>(() => {
+    if (!volumes) return [];
+    return volumes.filter((v) => {
+      const at = String(v.attached_to ?? '');
+      const sameProject = !projectScope || String(v.project ?? '') === projectScope;
+      return at === '' && sameProject;
+    });
+  });
+
+  async function attach(volumeUUID: string) {
+    if (!vmUUID) {
+      pickerError = 'this VM has no UUID yet — VMStatus must succeed first';
+      return;
+    }
+    pickerError = '';
+    attachBusy = volumeUUID;
+    try {
+      await attachVolume(volumeUUID, vmUUID);
+      pickerOpen = false;
+      await loadVolumes();
+      onChanged();
+    } catch (e) { pickerError = String(e); }
+    finally { attachBusy = null; }
+  }
+  async function detach(volumeUUID: string) {
+    if (!confirm('Detach the volume ? Data on the volume is preserved.')) return;
+    attachBusy = volumeUUID;
+    try {
+      await detachVolume(volumeUUID);
+      await loadVolumes();
+      onChanged();
+    } catch (e) { volumesErr = String(e); }
+    finally { attachBusy = null; }
   }
 
   async function runAction(verb: 'start' | 'stop' | 'delete') {
@@ -162,6 +229,10 @@
   <!-- Tabs -->
   <div role="tablist" class="tabs tabs-bordered shrink-0 px-5">
     <button role="tab" class="tab" class:tab-active={tab === 'summary'} onclick={() => (tab = 'summary')}>Summary</button>
+    <button role="tab" class="tab" class:tab-active={tab === 'volumes'} onclick={() => (tab = 'volumes')}>
+      Volumes
+      {#if attached.length > 0}<span class="ml-1 badge badge-xs">{attached.length}</span>{/if}
+    </button>
     <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>Timings</button>
     <button role="tab" class="tab" class:tab-active={tab === 'logs'}    onclick={() => (tab = 'logs')}>Logs</button>
   </div>
@@ -189,6 +260,67 @@
         </dl>
       {:else}
         <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+      {/if}
+
+    {:else if tab === 'volumes'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Attached volumes</h3>
+        <button class="ml-auto btn btn-xs btn-ghost" disabled={volumesBusy} onclick={loadVolumes}>
+          {#if volumesBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
+        </button>
+      </div>
+      {#if volumesErr}
+        <div class="mt-2 alert alert-error text-sm">{volumesErr}</div>
+      {:else if !volumes}
+        <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+      {:else if attached.length === 0}
+        <p class="mt-3 text-sm text-base-content/50">No volumes attached.</p>
+      {:else}
+        <ul class="mt-2 divide-y divide-base-300">
+          {#each attached as v (v.uuid ?? v.name)}
+            <li class="flex items-baseline gap-3 py-2 text-sm">
+              <span class="font-medium">{v.name}</span>
+              <span class="text-xs text-base-content/60">{v.size_gib} GiB · {v.format}</span>
+              <button class="ml-auto btn btn-xs btn-ghost text-error"
+                disabled={!!attachBusy}
+                onclick={() => detach(String(v.uuid))}>
+                {#if attachBusy === v.uuid}<span class="loading loading-spinner loading-xs"></span>{/if}
+                Detach
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <div class="mt-4 flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Attach</h3>
+        <button class="ml-auto btn btn-xs btn-primary"
+          disabled={pickerOpen || !volumes || available.length === 0}
+          onclick={() => { pickerOpen = true; pickerError = ''; }}>
+          {#if available.length === 0}no available volumes{:else}+ attach…{/if}
+        </button>
+      </div>
+      {#if pickerOpen}
+        <div class="mt-2 rounded-box border border-base-300 p-2">
+          <p class="text-xs text-base-content/60">Pick a detached volume from project {projectScope || '—'}.</p>
+          <ul class="mt-2 max-h-60 divide-y divide-base-300 overflow-y-auto">
+            {#each available as v (v.uuid ?? v.name)}
+              <li class="flex items-baseline gap-3 py-2 text-sm">
+                <button class="font-medium hover:underline text-left grow"
+                  disabled={!!attachBusy}
+                  onclick={() => attach(String(v.uuid))}>
+                  {v.name}
+                </button>
+                <span class="text-xs text-base-content/60">{v.size_gib} GiB · {v.format}</span>
+                {#if attachBusy === v.uuid}<span class="loading loading-spinner loading-xs"></span>{/if}
+              </li>
+            {/each}
+          </ul>
+          {#if pickerError}<div class="mt-2 alert alert-error py-2 text-xs">{pickerError}</div>{/if}
+          <div class="mt-2 text-right">
+            <button class="btn btn-xs btn-ghost" onclick={() => (pickerOpen = false)}>Close</button>
+          </div>
+        </div>
       {/if}
 
     {:else if tab === 'timings'}
