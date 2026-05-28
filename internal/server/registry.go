@@ -7,13 +7,17 @@ import (
 	"sync"
 )
 
-// OCI registry images live in their own little store rather than the static
-// registry, because the dashboard can push to it (upload). Seeded with mock
-// artifacts ; wiring to the real registry (zot) means replacing imagesAdd /
-// imagesList with oras/containerd calls — the HTTP shapes stay the same.
+// OCI registry artifacts live in their own little store rather than the
+// static registry, because the dashboard can push to it (upload). Seeded
+// with mock artifacts ; wiring to the real registry (zot) means replacing
+// registryAdd / registryList with oras/containerd calls — the HTTP shapes
+// stay the same.
+//
+// "artifact" rather than "image" : container images, raw multi-arch
+// disks, Helm charts, model weights — all OCI-wrapped blobs.
 var (
-	imagesMu sync.Mutex
-	images   = []map[string]any{
+	registryMu        sync.Mutex
+	registryArtifacts = []map[string]any{
 		row("repository", "library/alpine", "tag", "3.21", "type", "container",
 			"arch", "amd64, arm64", "registry", "zot.dc-a", "size", "7.8 MiB", "pushed", "3d ago"),
 		row("repository", "team-alpha/web", "tag", "v1.4.2", "type", "container",
@@ -27,30 +31,31 @@ var (
 	}
 )
 
-func imagesList() []map[string]any {
-	imagesMu.Lock()
-	defer imagesMu.Unlock()
-	out := make([]map[string]any, len(images))
-	copy(out, images)
+func registryList() []map[string]any {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	out := make([]map[string]any, len(registryArtifacts))
+	copy(out, registryArtifacts)
 	return out
 }
 
-func imagesCount() int {
-	imagesMu.Lock()
-	defer imagesMu.Unlock()
-	return len(images)
+func registryCount() int {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	return len(registryArtifacts)
 }
 
-// imagesAdd prepends so the newest upload shows first.
-func imagesAdd(r map[string]any) {
-	imagesMu.Lock()
-	defer imagesMu.Unlock()
-	images = append([]map[string]any{r}, images...)
+// registryAdd prepends so the newest upload shows first.
+func registryAdd(r map[string]any) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	registryArtifacts = append([]map[string]any{r}, registryArtifacts...)
 }
 
-// handleImageUpload accepts a container or a raw multi-arch image. It does not
-// (yet) push to a registry — it records the artifact so the UI round-trips.
-func handleImageUpload(w http.ResponseWriter, r *http.Request) {
+// handleRegistryUpload accepts any OCI artifact (container image, raw
+// multi-arch disk, chart, model blob). It does not (yet) push to a real
+// registry — it records the artifact so the UI round-trips.
+func handleRegistryUpload(w http.ResponseWriter, r *http.Request) {
 	// Cap the in-memory parse buffer ; large files spill to temp files.
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form: " + err.Error()})
@@ -99,7 +104,7 @@ func handleImageUpload(w http.ResponseWriter, r *http.Request) {
 		"size", humanSize(total),
 		"pushed", "just now",
 	)
-	imagesAdd(newRow)
+	registryAdd(newRow)
 	writeJSON(w, http.StatusCreated, newRow)
 }
 
