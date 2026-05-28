@@ -13,6 +13,7 @@
   import { onMount } from 'svelte';
   import {
     getRows,
+    getMe,
     getTenant,
     createTenant,
     addTenantAdmin,
@@ -32,7 +33,12 @@
   let loading = $state(true);
   let error = $state('');
   let selected = $state<string | null>(null);
-  let canCreateTenant = $state(false); // true when /api/tenants is reachable (admin UI)
+  // canCreateTenant is driven by the user's role. The POST is only
+  // wired on the admin listener — clicking from the user UI yields a
+  // 404, which the modal surfaces as an error. Keeping the gate
+  // role-based (not port-based) means a cluster admin sees the
+  // affordance wherever they're working from.
+  let canCreateTenant = $state(false);
 
   async function refreshList() {
     loading = true;
@@ -46,14 +52,13 @@
   }
   onMount(refreshList);
 
-  // Probe the cluster-admin POST endpoint with an OPTIONS-style ping :
-  // the simplest heuristic is "is the /metrics endpoint reachable", which
-  // mirrors the admin UI. We already filter by hosts presence elsewhere ;
-  // here we just check the same heuristic that the Topbar uses.
+  // Resolve the role flag once. cluster_admin == superadmin in /api/me's
+  // vocabulary ; tenant-level admin is detected per-tenant via the
+  // `caller` block returned by /api/tenants/{name}.
   onMount(async () => {
     try {
-      const r = await fetch('/metrics', { method: 'HEAD' });
-      canCreateTenant = r.ok && (r.headers.get('content-type') || '').includes('text/plain');
+      const me = await getMe();
+      canCreateTenant = me.cluster_admin;
     } catch { canCreateTenant = false; }
   });
 

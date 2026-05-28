@@ -102,7 +102,9 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	}
 
 	// --- Auth-protected routes ---
-	mux.HandleFunc("GET /api/me", d.Auth.MeHandler)
+	// /api/me lives in this package (not in auth) because the role
+	// flags depend on the tenant store, which sits in this layer.
+	mux.HandleFunc("GET /api/me", handleMe)
 	mux.HandleFunc("POST /api/session/project", d.Auth.SetProjectHandler)
 
 	// Resource catalogue + rows : filtered by scope so the user-facing
@@ -369,6 +371,39 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 // devLogin / devLogout — stubs that make the SPA's auth helpers work
 // in dev mode without an IdP. Login bounces home (synthetic user is
 // always present) ; logout returns 204.
+// handleMe returns the current user's profile + the two role flags
+// the SPA uses to gate affordances and pick a topbar badge :
+//
+//   - cluster_admin : OIDC group claim is "admin"/"admins" (the
+//                     auth.MeHandler equivalent of "superadmin")
+//   - tenant_admin  : the email is in at least one Tenant.Admins set,
+//                     even when cluster_admin is false. Cluster admins
+//                     pass the implicit check elsewhere ; here we
+//                     report the *raw* state so the SPA can render a
+//                     distinct "ADMIN" badge for delegated tenant
+//                     admins who are not cluster admins.
+//
+// Returning 401 when there's no session lets api.ts trigger the
+// /api/auth/login redirect without a separate code path.
+func handleMe(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
+	if u == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no session", "login": "/api/auth/login"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"sub":           u.Subject,
+		"email":         u.Email,
+		"name":          u.Name,
+		"groups":        u.Groups,
+		"project":       u.Project,
+		"initials":      u.Initials(),
+		"dev":           u.DevMode,
+		"cluster_admin": isClusterAdmin(u),
+		"tenant_admin":  tenantsDB.isAnyTenantAdmin(u.Email),
+	})
+}
+
 func devLogin(w http.ResponseWriter, r *http.Request) {
 	rt := r.URL.Query().Get("return_to")
 	if rt == "" {
