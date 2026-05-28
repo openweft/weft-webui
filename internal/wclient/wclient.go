@@ -21,6 +21,7 @@ import (
 	vzclient "github.com/openweft/weft-client"
 	vzdv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -716,4 +717,314 @@ func (c *Client) ProjectUUIDByName(ctx context.Context, name string) (string, er
 		}
 	}
 	return "", nil
+}
+
+// --- New RPCs (post-proto-extension) -------------------------------
+//
+// Tenants / Quotas / Shares / Floating IPs. Each returns
+// codes.Unimplemented while the daemon catches up ; handlers call
+// IsUnimplemented(err) to decide whether to fall back to the webui's
+// in-memory mock store or surface the error.
+
+// IsUnimplemented reports whether err is a gRPC Unimplemented status.
+// Used by handlers to fall back gracefully to the mock store while
+// the daemon catches up with the proto.
+func IsUnimplemented(err error) bool {
+	return err != nil && status.Code(err) == codes.Unimplemented
+}
+
+// ---- Tenants ----
+
+func (c *Client) ListTenants(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListTenants", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListTenants(cctx, &vzdv1.ListTenantsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetTenants()))
+	for _, t := range resp.GetTenants() {
+		out = append(out, map[string]any{
+			"name":     t.Name,
+			"uuid":     t.Uuid,
+			"domain":   t.Domain,
+			"status":   t.Status,
+			"projects": t.Projects,
+			"members":  t.Members,
+			"admins":   t.Admins,
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) CreateTenant(ctx context.Context, name, domain string) (uuid string, retErr error) {
+	defer c.measured("CreateTenant", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateTenant(cctx, &vzdv1.CreateTenantRequest{Name: name, Domain: domain})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Tenant == nil {
+		return "", errors.New("nil CreateTenant response")
+	}
+	return resp.Tenant.Uuid, nil
+}
+
+func (c *Client) AddTenantAdmin(ctx context.Context, tenantUUID, email string) (retErr error) {
+	defer c.measured("AddTenantAdmin", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.AddTenantAdmin(cctx, &vzdv1.AddTenantAdminRequest{
+		TenantUuid: tenantUUID, Email: email,
+	})
+	return err
+}
+
+func (c *Client) AddTenantMember(ctx context.Context, tenantUUID, email string, groups []string) (retErr error) {
+	defer c.measured("AddTenantMember", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.AddTenantMember(cctx, &vzdv1.AddTenantMemberRequest{
+		TenantUuid: tenantUUID, Email: email, Groups: groups,
+	})
+	return err
+}
+
+// ---- Quotas ----
+//
+// The webui's Quotas struct doesn't depend on vzdv1 ; the
+// translation table here keeps the two shapes from drifting.
+
+func quotasToProto(in map[string]int) *vzdv1.Quotas {
+	return &vzdv1.Quotas{
+		Vcpu: int32(in["vcpu"]), RamGib: int32(in["ram_gib"]),
+		Volumes: int32(in["volumes"]), VolumesGib: int32(in["volumes_gib"]),
+		Shares: int32(in["shares"]), SharesGib: int32(in["shares_gib"]),
+		Buckets: int32(in["buckets"]), BucketsGib: int32(in["buckets_gib"]),
+		RegistryGib: int32(in["registry_gib"]),
+		FloatingIps: int32(in["floating_ips"]),
+		Projects:    int32(in["projects"]),
+	}
+}
+
+func quotasFromProto(q *vzdv1.Quotas) map[string]int {
+	if q == nil {
+		return nil
+	}
+	return map[string]int{
+		"vcpu": int(q.Vcpu), "ram_gib": int(q.RamGib),
+		"volumes": int(q.Volumes), "volumes_gib": int(q.VolumesGib),
+		"shares": int(q.Shares), "shares_gib": int(q.SharesGib),
+		"buckets": int(q.Buckets), "buckets_gib": int(q.BucketsGib),
+		"registry_gib": int(q.RegistryGib),
+		"floating_ips": int(q.FloatingIps),
+		"projects":     int(q.Projects),
+	}
+}
+
+func (c *Client) GetTenantQuota(ctx context.Context, tenantUUID string) (cap, alloc map[string]int, retErr error) {
+	defer c.measured("GetTenantQuota", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetTenantQuota(cctx, &vzdv1.GetTenantQuotaRequest{TenantUuid: tenantUUID})
+	if err != nil {
+		return nil, nil, err
+	}
+	return quotasFromProto(resp.Cap), quotasFromProto(resp.Allocated), nil
+}
+
+func (c *Client) SetTenantQuota(ctx context.Context, tenantUUID string, cap map[string]int) (retErr error) {
+	defer c.measured("SetTenantQuota", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetTenantQuota(cctx, &vzdv1.SetTenantQuotaRequest{
+		TenantUuid: tenantUUID, Cap: quotasToProto(cap),
+	})
+	return err
+}
+
+func (c *Client) SetProjectQuota(ctx context.Context, projectUUID string, q map[string]int) (retErr error) {
+	defer c.measured("SetProjectQuota", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetProjectQuota(cctx, &vzdv1.SetProjectQuotaRequest{
+		ProjectUuid: projectUUID, Quota: quotasToProto(q),
+	})
+	return err
+}
+
+// ---- Shares ----
+
+func (c *Client) ListShares(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListShares", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListShares(cctx, &vzdv1.ListSharesRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetShares()))
+	for _, s := range resp.GetShares() {
+		out = append(out, map[string]any{
+			"name":     s.Name,
+			"uuid":     s.Uuid,
+			"project":  s.ProjectUuid,
+			"backend":  s.Backend,
+			"size_gb":  s.SizeGb,
+			"readonly": s.Readonly,
+			"mounts":   s.Mounts,
+			"status":   s.Status,
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) CreateShare(ctx context.Context, project, name string, sizeGB int64, readonly bool, backend string) (uuid string, retErr error) {
+	defer c.measured("CreateShare", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateShare(cctx, &vzdv1.CreateShareRequest{
+		Project: project, Name: name, SizeGb: sizeGB, Readonly: readonly, Backend: backend,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Share == nil {
+		return "", errors.New("nil CreateShare response")
+	}
+	return resp.Share.Uuid, nil
+}
+
+func (c *Client) DeleteShare(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteShare", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteShare(cctx, &vzdv1.DeleteShareRequest{Uuid: uuid})
+	return err
+}
+
+// ---- Floating IPs ----
+
+func (c *Client) ListFloatingIPs(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListFloatingIPs", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListFloatingIPs(cctx, &vzdv1.ListFloatingIPsRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetFloatingIps()))
+	for _, f := range resp.GetFloatingIps() {
+		out = append(out, map[string]any{
+			"uuid":      f.Uuid,
+			"address":   f.Address,
+			"network":   f.Network,
+			"project":   f.ProjectUuid,
+			"mapped_to": f.MappedTo,
+			"status":    f.Status,
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) AllocateFloatingIP(ctx context.Context, project, network string) (uuid, address string, retErr error) {
+	defer c.measured("AllocateFloatingIP", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.AllocateFloatingIP(cctx, &vzdv1.AllocateFloatingIPRequest{Project: project, Network: network})
+	if err != nil {
+		return "", "", err
+	}
+	if resp == nil || resp.FloatingIp == nil {
+		return "", "", errors.New("nil AllocateFloatingIP response")
+	}
+	return resp.FloatingIp.Uuid, resp.FloatingIp.Address, nil
+}
+
+func (c *Client) ReleaseFloatingIP(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("ReleaseFloatingIP", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.ReleaseFloatingIP(cctx, &vzdv1.ReleaseFloatingIPRequest{Uuid: uuid})
+	return err
+}
+
+func (c *Client) MapFloatingIP(ctx context.Context, uuid, targetKind, targetName string) (retErr error) {
+	defer c.measured("MapFloatingIP", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.MapFloatingIP(cctx, &vzdv1.MapFloatingIPRequest{
+		Uuid: uuid, TargetKind: targetKind, TargetName: targetName,
+	})
+	return err
+}
+
+func (c *Client) UnmapFloatingIP(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("UnmapFloatingIP", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UnmapFloatingIP(cctx, &vzdv1.UnmapFloatingIPRequest{Uuid: uuid})
+	return err
 }
