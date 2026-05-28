@@ -78,6 +78,30 @@
     return [...rows].sort((x, y) => cmp(x[sortKey], y[sortKey]) * dir);
   });
 
+  // ---- pagination ----
+  //
+  // Client-side : pageSize ∈ {10,25,50,100,all}. Default 25. Reset
+  // to page 1 whenever the visible set shrinks (new filter, new
+  // resource) so we never end up beyond the last page.
+  const PAGE_SIZES = [10, 25, 50, 100];
+  let pageSize = $state<number>(
+    Number(localStorage.getItem('weft-table-page-size')) || 25,
+  );
+  let page = $state(1);
+  $effect(() => { localStorage.setItem('weft-table-page-size', String(pageSize)); });
+
+  let totalPages = $derived(pageSize === 0 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize)));
+  // Clamp current page on data shrink.
+  $effect(() => { if (page > totalPages) page = totalPages; });
+
+  let paged = $derived.by(() => {
+    if (pageSize === 0) return sorted;
+    const start = (page - 1) * pageSize;
+    return sorted.slice(start, start + pageSize);
+  });
+  let firstIdx = $derived(sorted.length === 0 ? 0 : (page - 1) * pageSize + 1);
+  let lastIdx = $derived(Math.min(page * pageSize, sorted.length));
+
   // ---- row actions ----
   //
   // Tables that pass resourceId light up the dropdown with real
@@ -168,7 +192,7 @@
       </tr>
     </thead>
     <tbody>
-      {#each sorted as r, i (i)}
+      {#each paged as r, i (i)}
         <tr class="hover"
           class:cursor-pointer={!!onSelect}
           data-name={typeof r.name === 'string' ? r.name : ''}
@@ -224,3 +248,35 @@
     </tbody>
   </table>
 </div>
+
+<!-- Pagination controls : hidden when the whole set fits one page
+     (i.e. pageSize=all OR row count ≤ smallest size). -->
+{#if sorted.length > PAGE_SIZES[0]}
+  <div class="mt-2 flex items-center gap-3 text-xs text-base-content/70">
+    <span class="tabular-nums">
+      {#if sorted.length === 0}
+        no rows
+      {:else}
+        {firstIdx}–{lastIdx} of {sorted.length}
+      {/if}
+    </span>
+    <span class="ml-auto inline-flex items-center gap-1">
+      <span>rows / page</span>
+      <select class="select select-xs select-bordered"
+        value={pageSize}
+        onchange={(e) => { pageSize = Number(e.currentTarget.value); page = 1; }}>
+        {#each PAGE_SIZES as n (n)}
+          <option value={n}>{n}</option>
+        {/each}
+        <option value={0}>all</option>
+      </select>
+    </span>
+    <span class="inline-flex items-center gap-1">
+      <button class="btn btn-ghost btn-xs" disabled={page <= 1} onclick={() => (page = 1)}>«</button>
+      <button class="btn btn-ghost btn-xs" disabled={page <= 1} onclick={() => (page -= 1)}>‹</button>
+      <span class="tabular-nums px-1">{page} / {totalPages}</span>
+      <button class="btn btn-ghost btn-xs" disabled={page >= totalPages} onclick={() => (page += 1)}>›</button>
+      <button class="btn btn-ghost btn-xs" disabled={page >= totalPages} onclick={() => (page = totalPages)}>»</button>
+    </span>
+  </div>
+{/if}
