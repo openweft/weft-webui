@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { getRows, type ResourceMeta, type Row } from '../api';
   import { lastEvents, eventToResource } from '../events';
+  import { routeParams, go } from '../router';
   import ResourceTable from './ResourceTable.svelte';
   import CreateVMModal from './CreateVMModal.svelte';
   import CreateVolumeModal from './CreateVolumeModal.svelte';
@@ -122,6 +123,29 @@
     if (selectableDrawer.includes(meta.id)) selectedRow = row;
   }
 
+  // Deep-link : if the hash carries ?detail=<key>, try to open the
+  // drawer for the row whose uuid OR name matches. The palette uses
+  // this to jump straight from search results into a detail view.
+  // Reactive so the same page can re-open a different drawer when
+  // the query param changes.
+  $effect(() => {
+    const key = $routeParams.detail;
+    if (!key) {
+      selectedRow = null;
+      return;
+    }
+    if (!selectableDrawer.includes(meta.id)) return;
+    const hit = rows.find((r) => r.uuid === key || r.name === key);
+    if (hit) selectedRow = hit;
+  });
+
+  function closeDrawer() {
+    selectedRow = null;
+    // Drop ?detail= from the URL so a refresh / back-button doesn't
+    // pop it open again.
+    if ($routeParams.detail) go(meta.id);
+  }
+
   // Row dropdown intercept for FIP "Map" — ResourceTable invokes this
   // when the user picks the action that isn't a plain mutation.
   function handleRowAction(row: Row, action: string) {
@@ -235,19 +259,19 @@
 {#if meta.id === 'microvms' && selectedRow}
   <MicroVMDrawer
     row={selectedRow}
-    onClose={() => (selectedRow = null)}
+    onClose={closeDrawer}
     onChanged={refresh}
   />
 {:else if meta.id === 'security-groups' && selectedRow}
   <SecurityGroupDrawer
     row={selectedRow}
-    onClose={() => (selectedRow = null)}
+    onClose={closeDrawer}
     onChanged={refresh}
   />
 {:else if meta.id === 'loadbalancers' && selectedRow}
   <LoadBalancerDrawer
     row={selectedRow}
-    onClose={() => (selectedRow = null)}
+    onClose={closeDrawer}
     onChanged={refresh}
   />
 {/if}
