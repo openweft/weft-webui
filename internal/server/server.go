@@ -218,6 +218,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/buckets/{name}/objects", handleListObjects)
 	mux.HandleFunc("POST /api/buckets/{name}/objects", handleUploadObject)
 	mux.HandleFunc("GET /api/buckets/{name}/object", handleGetObject)
+	mux.HandleFunc("DELETE /api/buckets/{name}/object", handleDeleteObject)
 	mux.HandleFunc("GET /api/buckets/{name}/policy", handleGetBucketPolicy)
 	mux.HandleFunc("PUT /api/buckets/{name}/policy", handleSetBucketPolicy)
 

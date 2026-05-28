@@ -461,6 +461,36 @@ func handleGetObject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
 }
 
+// handleDeleteObject removes one object from the bucket by key. Policy
+// gate : s3:DeleteObject on the requested key — same shape as
+// handleGetObject. 404 if the bucket OR the key doesn't exist.
+func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		badUpload(w, "missing ?key")
+		return
+	}
+	if !requirePolicy(w, r, name, "s3:DeleteObject", key) {
+		return
+	}
+	bucketsMu.Lock()
+	defer bucketsMu.Unlock()
+	b := findBucket(name)
+	if b == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
+		return
+	}
+	for i, o := range b.Objects {
+		if o.Key == key {
+			b.Objects = append(b.Objects[:i], b.Objects[i+1:]...)
+			writeJSON(w, http.StatusOK, map[string]any{"deleted": key})
+			return
+		}
+	}
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
+}
+
 // handleUploadObject stores uploaded files under ?prefix in the bucket.
 // Policy gate : s3:PutObject on the destination prefix (the upload
 // places files under <prefix>/<filename>, so the prefix is what the
