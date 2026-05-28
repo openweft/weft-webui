@@ -196,6 +196,40 @@ func handleCreateVolume(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"name": body.Name, "project": project, "size_gib": body.SizeGiB})
 }
 
+// handleCreateNetwork : POST /api/networks  {Name, CIDR, Gateway,
+// Type, DNSServers[]}. Project comes from the session scope.
+func handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct {
+		Name, CIDR, Gateway, Type string
+		DNSServers                []string
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.Name == "" || body.CIDR == "" {
+		writeErr(w, errBadReq("name and cidr are required"))
+		return
+	}
+	if cerr := live.CreateNetwork(r.Context(), wclient.CreateNetworkOpts{
+		Project: project, Name: body.Name, CIDR: body.CIDR,
+		Gateway: body.Gateway, Type: body.Type, DNSServers: body.DNSServers,
+	}); cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	userAction(r, "network.create")
+	writeJSON(w, http.StatusCreated, map[string]any{"name": body.Name, "project": project, "cidr": body.CIDR})
+}
+
 func handleDeleteNetwork(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
 		return

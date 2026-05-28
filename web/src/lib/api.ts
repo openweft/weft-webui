@@ -380,6 +380,32 @@ export const deleteVolume = (uuid: string) => deleteJSON(`/volumes/${encodeURICo
 
 export const deleteNetwork = (uuid: string) => deleteJSON(`/networks/${encodeURIComponent(uuid)}`);
 
+export interface CreateNetworkBody {
+  Name: string;
+  CIDR: string;
+  Gateway?: string;
+  Type?: string;           // "nat" | "overlay" | "wireguard" — empty defaults to "nat" on the daemon
+  DNSServers?: string[];
+}
+export const createNetwork = (b: CreateNetworkBody) =>
+  postJSON<{ name: string; project: string; cidr: string }>('/networks', b);
+
+// ---- Scheduling rules (mock store ; no daemon RPC yet) ----
+
+export interface CreateSchedulingRuleBody {
+  Name: string;
+  Selector: string;
+  Count: number;
+  AZ?: string;
+  Rack?: string;
+  Host?: string;
+  Project?: string;
+}
+export const createSchedulingRule = (b: CreateSchedulingRuleBody) =>
+  postJSON<Row>('/scheduling-rules', b);
+export const deleteSchedulingRule = (name: string) =>
+  deleteJSON(`/scheduling-rules/${encodeURIComponent(name)}`);
+
 // Quota dimension metadata for UI labels + units. Order matters : it
 // drives the visual layout. Mirrors internal/server/tenants.go.
 export interface QuotaDimMeta {
