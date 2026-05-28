@@ -3,14 +3,17 @@ module github.com/openweft/weft-webui
 go 1.26
 
 require (
+	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/openweft/weft-client v0.0.0
 	github.com/openweft/weft-proto v0.0.0
+	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.80.0
 )
 
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/grpc-transports/ssh v0.0.0-00010101000000-000000000000 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
@@ -19,7 +22,6 @@ require (
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect

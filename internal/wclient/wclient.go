@@ -16,9 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openweft/weft-webui/internal/auth"
 	vzclient "github.com/openweft/weft-client"
 	vzdv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 func tsDate(unixNs int64) string {
@@ -49,12 +51,35 @@ func (c *Client) dial() (vzdv1.VzdServiceClient, error) {
 	if c.rpc != nil {
 		return c.rpc, nil
 	}
+	// We install our own interceptors here so the bearer comes from the
+	// request context (one access token per signed-in user) rather than
+	// the on-disk cache vzclient.CachedTokenSource() reads. Vzclient's
+	// Client() already installs its own bearer interceptor on top — both
+	// stamp `authorization` metadata, and the per-request one wins when
+	// it sets a value (metadata.AppendToOutgoingContext concatenates,
+	// vzd's validator accepts the first valid bearer).
 	rpc, conn, err := vzclient.Client(c.socket)
 	if err != nil {
 		return nil, err
 	}
 	c.rpc, c.conn = rpc, conn
 	return c.rpc, nil
+}
+
+// withBearer derives a new context that carries the signed-in user's
+// access token as gRPC outgoing metadata. No user / no token = the
+// context is returned unchanged ; vzd then sees an unauthenticated
+// call and decides per its auth-mode whether to reject it.
+//
+// Bypassing this when a token is already present (e.g. a daemon
+// running in dev-mode that ignores auth) keeps the webui usable
+// against a no-auth vzd without crashing on every list call.
+func withBearer(ctx context.Context) context.Context {
+	u := auth.UserFromContext(ctx)
+	if u == nil || u.AccessToken == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+u.AccessToken)
 }
 
 // Close releases the cached connection (best-effort).
@@ -83,7 +108,7 @@ func (c *Client) ListProjects(ctx context.Context) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListProjects(cctx, &vzdv1.ListProjectsRequest{})
 	if err != nil {
@@ -108,7 +133,7 @@ func (c *Client) ListVMs(ctx context.Context, project string) ([]map[string]any,
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListVMs(cctx, &vzdv1.ListVMsRequest{Project: project})
 	if err != nil {
@@ -135,7 +160,7 @@ func (c *Client) ListNetworks(ctx context.Context, project string) ([]map[string
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListNetworks(cctx, &vzdv1.ListNetworksRequest{Project: project})
 	if err != nil {
@@ -159,7 +184,7 @@ func (c *Client) ListHosts(ctx context.Context, az string) ([]map[string]any, er
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListHosts(cctx, &vzdv1.ListHostsRequest{Az: az})
 	if err != nil {
@@ -185,7 +210,7 @@ func (c *Client) ListVolumes(ctx context.Context, project string) ([]map[string]
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListVolumes(cctx, &vzdv1.ListVolumesRequest{Project: project})
 	if err != nil {
@@ -210,7 +235,7 @@ func (c *Client) ListUsers(ctx context.Context) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListUsers(cctx, &vzdv1.ListUsersRequest{})
 	if err != nil {
@@ -234,7 +259,7 @@ func (c *Client) ListSecurityGroups(ctx context.Context, project string) ([]map[
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := rpcCtx(ctx)
+	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.ListSecurityGroups(cctx, &vzdv1.ListSecurityGroupsRequest{Project: project})
 	if err != nil {
