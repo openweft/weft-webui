@@ -79,6 +79,23 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 			m.devScopeMu.RLock()
 			user.Tenant, user.Project = m.devTenant, m.devProject
 			m.devScopeMu.RUnlock()
+			// Dev impersonation : ?as_user=alice@... [&as_groups=g1,g2]
+			// lets the smoke harness exercise non-admin code paths
+			// without wiring a real OIDC IdP. Honoured only in ModeNone
+			// — production never sees this branch. Omitting as_groups
+			// clears the synthetic user's groups so the impersonated
+			// identity is non-admin by default (the common case worth
+			// testing).
+			if as := r.URL.Query().Get("as_user"); as != "" {
+				user.Subject = as
+				user.Email = as
+				user.Name = as
+				if g := r.URL.Query().Get("as_groups"); g != "" {
+					user.Groups = strings.Split(g, ",")
+				} else {
+					user.Groups = nil
+				}
+			}
 			r = r.WithContext(WithUser(r.Context(), &user))
 			next.ServeHTTP(w, r)
 			return
