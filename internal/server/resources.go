@@ -137,6 +137,61 @@ var registry = []Resource{
 			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
 		},
 	},
+	{
+		// Scheduling rules — declarative constraints the weft scheduler
+		// honours when picking hosts for the matched workloads.
+		//
+		// Each rule carries :
+		//   count       desired replicas of the matching VMs
+		//   selector    label expression matching the scheduled VMs
+		//   placement   az / rack / host directives (same | different |
+		//               <name>) drawn from the proximity hierarchy
+		//               AZ ⊃ Rack ⊃ Host
+		//
+		// Status reflects observed compliance :
+		//   compliant      ready == desired AND placement honoured
+		//   drifting       ready < desired (replicas missing or wrong host)
+		//   unschedulable  no host pool satisfies the directives
+		//
+		// "Scheduling Rules" rather than "Policies" so it doesn't collide
+		// with Security Group / RBAC / Quota policies elsewhere in the UI.
+		ID: "scheduling-rules", Label: "Scheduling Rules", Section: "Compute",
+		Columns: cols("name", "Name", "count", "Count",
+			"placement", "Placement", "selector", "Selector",
+			"project", "Project", "status", "Status"),
+		Rows: []map[string]any{
+			row("name", "nats-quorum",
+				"count", "3/3",
+				"placement", "az=different, rack=different, host=different",
+				"selector", "app=nats",
+				"project", "platform", "status", "compliant"),
+			row("name", "etcd-quorum",
+				"count", "3/3",
+				"placement", "az=different, rack=different, host=different",
+				"selector", "app=etcd",
+				"project", "platform", "status", "compliant"),
+			row("name", "cubefs-meta",
+				"count", "3/3",
+				"placement", "az=different, host=different",
+				"selector", "app=cubefs-master",
+				"project", "platform", "status", "compliant"),
+			row("name", "web-tier",
+				"count", "2/2",
+				"placement", "host=different",
+				"selector", "project=team-alpha, app=web",
+				"project", "team-alpha", "status", "compliant"),
+			row("name", "research-batch",
+				"count", "4/5",
+				"placement", "az=DC-C",
+				"selector", "project=research, kind=batch",
+				"project", "research", "status", "drifting"),
+			row("name", "ci-burst",
+				"count", "0/0",
+				"placement", "any",
+				"selector", "kind=ci-job",
+				"project", "team-beta", "status", "compliant"),
+		},
+	},
 
 	// ---------- Storage ----------
 	{
