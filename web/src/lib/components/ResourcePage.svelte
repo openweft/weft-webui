@@ -9,6 +9,7 @@
   import AllocateFloatingIPModal from './AllocateFloatingIPModal.svelte';
   import MapFloatingIPModal from './MapFloatingIPModal.svelte';
   import MicroVMDrawer from './MicroVMDrawer.svelte';
+  import SecurityGroupDrawer from './SecurityGroupDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -75,8 +76,10 @@
   // resources will get their own drawer components as the relevant
   // RPCs land (volumes → VolumeInfo, networks → NetworkInfo, …).
   let selectedRow = $state<Row | null>(null);
+  // selectableDrawer : resources that open a detail drawer on row click.
+  const selectableDrawer = ['microvms', 'security-groups'];
   function handleSelect(row: Row) {
-    if (meta.id === 'microvms') selectedRow = row;
+    if (selectableDrawer.includes(meta.id)) selectedRow = row;
   }
 
   // Row dropdown intercept for FIP "Map" — ResourceTable invokes this
@@ -145,7 +148,7 @@
   {:else}
     <ResourceTable columns={meta.columns} rows={filtered}
       resourceId={meta.id} onChange={refresh}
-      onSelect={meta.id === 'microvms' ? handleSelect : undefined}
+      onSelect={selectableDrawer.includes(meta.id) ? handleSelect : undefined}
       onAction={handleRowAction} />
   {/if}
 </div>
@@ -177,6 +180,12 @@
 
 {#if meta.id === 'microvms' && selectedRow}
   <MicroVMDrawer
+    row={selectedRow}
+    onClose={() => (selectedRow = null)}
+    onChanged={refresh}
+  />
+{:else if meta.id === 'security-groups' && selectedRow}
+  <SecurityGroupDrawer
     row={selectedRow}
     onClose={() => (selectedRow = null)}
     onChanged={refresh}

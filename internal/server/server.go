@@ -160,6 +160,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
 	mux.HandleFunc("POST /api/security-groups", handleCreateSecurityGroup)
 	mux.HandleFunc("DELETE /api/security-groups/{uuid}", handleDeleteSecurityGroup)
+	mux.HandleFunc("GET /api/security-groups/{uuid}/rules", handleGetSecurityGroupRules)
+	mux.HandleFunc("PUT /api/security-groups/{uuid}/rules", handleSetSecurityGroupRules)
 	mux.HandleFunc("POST /api/floating-ips", handleAllocateFloatingIP)
 	mux.HandleFunc("DELETE /api/floating-ips/{uuid}", handleReleaseFloatingIP)
 	mux.HandleFunc("POST /api/floating-ips/{uuid}/map", handleMapFloatingIP)
