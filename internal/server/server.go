@@ -124,8 +124,15 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/shares/{name}/objects", handleUploadShareObject)
 	mux.HandleFunc("GET /api/shares/{name}/object", handleGetShareObject)
 
-	// Network topology + quotas
-	mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
+	// Network topology + quotas. Topology exposes host-placement info
+	// for every node so it's admin-only ; the user listener returns
+	// 404 so a stale SPA build never accidentally reveals which host
+	// runs a VM.
+	if scope == ScopeAdmin {
+		mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
+	} else {
+		mux.HandleFunc("GET /api/network-topology", notFound)
+	}
 	mux.HandleFunc("GET /api/quotas", handleQuotas)
 
 	// /metrics is admin-only — never expose the user's TSDB to the
@@ -333,6 +340,14 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func devLogout(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
+
+// notFound is mounted on routes that exist on the admin listener but
+// must not be acknowledged on the user one — same shape as the
+// "unknown resource" branch so probes can't distinguish "endpoint not
+// here" from "endpoint here but you're not allowed".
+func notFound(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+}
 
 func decodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))

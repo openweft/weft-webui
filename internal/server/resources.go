@@ -115,7 +115,11 @@ var registry = []Resource{
 		// Graphical mesh map (custom SVG view). Rows are unused ; the sidebar
 		// badge shows the number of networks (see rowCount). Served by
 		// /api/network-topology.
-		ID: "topology", Label: "Topology", Section: "Network",
+		//
+		// Admin-only : the node payload exposes host placement (which
+		// host runs which microVM), which is infrastructure info that
+		// project users don't need and shouldn't see.
+		ID: "topology", Label: "Topology", Section: "Network", Scope: ScopeAdmin,
 		Columns: nil,
 		Rows:    nil,
 	},
