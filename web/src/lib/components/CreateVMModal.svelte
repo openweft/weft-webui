@@ -7,7 +7,7 @@
   // Flavor list is loaded from /api/resources/flavors — picking one
   // pre-fills cpu / mem / disk_gb so the operator can either accept
   // the envelope or override per field.
-  import { createVM, getMe, getRows, type Row } from '../api';
+  import { createVM, getMe, getFlavors, type Row } from '../api';
 
   let {
     open = $bindable(false),
@@ -40,7 +40,7 @@
     if (open) {
       dialog?.showModal();
       getMe().then((u) => (project = u.project));
-      getRows('flavors').then((rs) => (flavors = rs)).catch(() => { /* ok if empty */ });
+      getFlavors().then((rs) => (flavors = rs)).catch(() => { /* ok if empty */ });
     } else {
       dialog?.close();
     }

@@ -38,6 +38,11 @@ async function getJSON<T>(path: string): Promise<T> {
 
 export const getResources = () => getJSON<ResourceMeta[]>('/resources');
 export const getRows = (id: string) => getJSON<Row[]>(`/resources/${id}`);
+
+// Flavors catalogue — separate endpoint because the sidebar entry is
+// admin-only (so a user UI can't reach /api/resources/flavors) but
+// the catalogue itself is needed in CreateVMModal on both UIs.
+export const getFlavors = () => getJSON<Row[]>('/flavors');
 export const getSummary = () =>
   getJSON<{ id: string; label: string; count: number }[]>('/summary');
 

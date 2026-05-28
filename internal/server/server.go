@@ -163,6 +163,12 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)
 	mux.HandleFunc("DELETE /api/scheduling-rules/{name}", handleDeleteSchedulingRule)
 
+	// Flavors catalogue — exposed on BOTH listeners so the user UI's
+	// CreateVMModal can offer the flavor picker even when the user UI
+	// hides the read-only sidebar entry. Same data the admin's
+	// /api/resources/flavors returns.
+	mux.HandleFunc("GET /api/flavors", handleListFlavors)
+
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
 	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
@@ -525,6 +531,22 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		// tenant the user belongs to, each with its projects.
 		"scopes": tenantsDB.userScopes(u),
 	})
+}
+
+// handleListFlavors returns the flavor catalogue. Sourced from the
+// registry's flavors entry so it stays in sync with what the admin
+// sidebar shows — only the access path differs.
+func handleListFlavors(w http.ResponseWriter, _ *http.Request) {
+	res, ok := resourceByID["flavors"]
+	if !ok {
+		writeJSON(w, http.StatusOK, []map[string]any{})
+		return
+	}
+	rows := res.Rows
+	if rows == nil {
+		rows = []map[string]any{}
+	}
+	writeJSON(w, http.StatusOK, rows)
 }
 
 func devLogin(w http.ResponseWriter, r *http.Request) {
