@@ -143,9 +143,16 @@ var registry = []Resource{
 	{
 		// SSH keys catalogue — operator-managed named keys (manual
 		// entry or imported from GitHub / GitLab / Forgejo). VMs
-		// reference them by name from the drawer. Same model +
-		// migration path as flavors / scripts.
-		ID: "ssh-keys", Label: "SSH Keys", Section: "Compute", Scope: ScopeAdmin,
+		// reference them by name from the drawer.
+		//
+		// Visible on BOTH ports : every user needs to push their
+		// own keys (laptops, yubikeys, gh:<self> imports). Write is
+		// gated server-side on tenant_admin (or cluster_admin) ;
+		// regular users see a read-only view + can request access.
+		// Section "Identity" because keys are identity material,
+		// not compute primitives — and that's where users
+		// instinctively look.
+		ID: "ssh-keys", Label: "SSH Keys", Section: "Identity",
 		Columns: cols("name", "Name", "description", "Description",
 			"fingerprint", "Fingerprint", "source", "Source",
 			"source_account", "Account", "updated_at", "Updated", "updated_by", "By"),
