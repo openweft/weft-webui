@@ -195,9 +195,15 @@
         <select class="select select-sm select-bordered" bind:value={schedulingRule}>
           <option value="">(none — scheduler picks any host)</option>
           {#each rules as r (r.uuid ?? r.name)}
-            <option value={String(r.name)}>{r.name} — {r.placement ?? 'any'}</option>
+            <option value={String(r.name)}>
+              {r.name} · {r.count ?? '0/0'} · {r.placement ?? 'any'}{r.selector ? ' · sel: ' + r.selector : ''}
+            </option>
           {/each}
         </select>
+        <span class="mt-1 text-xs text-base-content/50">
+          ready/desired · placement · selector — the rule's selector
+          must match the VM's labels for this VM to count toward it.
+        </span>
       </label>
       <label class="form-control">
         <span class="label-text text-xs">Private network</span>
