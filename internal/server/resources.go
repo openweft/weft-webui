@@ -124,15 +124,11 @@ var registry = []Resource{
 		ID: "flavors", Label: "Flavors", Section: "Compute", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "vcpu", "vCPU", "ram", "RAM",
 			"ephemeral_gb", "Ephemeral (GB)", "gpu", "GPU"),
-		Rows: []map[string]any{
-			row("name", "small",       "vcpu", 2,  "ram", "4Gi",  "ephemeral_gb", 8,   "gpu", ""),
-			row("name", "medium",      "vcpu", 4,  "ram", "8Gi",  "ephemeral_gb", 16,  "gpu", ""),
-			row("name", "large",       "vcpu", 8,  "ram", "32Gi", "ephemeral_gb", 32,  "gpu", ""),
-			row("name", "xlarge",      "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64,  "gpu", ""),
-			row("name", "gpu-small",   "vcpu", 4,  "ram", "16Gi", "ephemeral_gb", 32,  "gpu", "1×L4-24G"),
-			row("name", "gpu-medium",  "vcpu", 8,  "ram", "64Gi", "ephemeral_gb", 64,  "gpu", "1×A100-40G"),
-			row("name", "gpu-large",   "vcpu", 32, "ram", "256Gi", "ephemeral_gb", 256, "gpu", "4×H100-80G"),
-		},
+		// Rows nil — flavors live in flavorsCatalogue (flavors.go) so
+		// the swap to weft-agent's ListFlavors RPC (etcd-backed,
+		// cluster-wide) is a single-implementation switch. The
+		// handleResourceRows + handleListFlavors paths both project
+		// through flavorRows() / flavorsCatalogue.Get().
 	},
 	{
 		// Scheduling rules — declarative constraints the weft scheduler

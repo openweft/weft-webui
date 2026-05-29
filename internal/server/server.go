@@ -11,6 +11,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io/fs"
@@ -430,6 +431,9 @@ func rowCount(res *Resource) int {
 	switch res.ID {
 	case "registry":
 		return registryCount()
+	case "flavors":
+		fl, _ := flavorsCatalogue.List(context.Background())
+		return len(fl)
 	case "buckets":
 		return bucketsCount()
 	case "topology":
@@ -496,6 +500,11 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	switch id {
 	case "registry":
 		writePage(w, r, registryList())
+		return
+	case "flavors":
+		// Same source as /api/flavors — see flavors.go for the etcd
+		// migration plan that makes this branch a thin proxy.
+		writePage(w, r, flavorRows(r.Context()))
 		return
 	case "buckets":
 		writePage(w, r, bucketSummaries())
@@ -821,20 +830,13 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleListFlavors returns the flavor catalogue. Sourced from the
-// registry's flavors entry so it stays in sync with what the admin
-// sidebar shows — only the access path differs.
-func handleListFlavors(w http.ResponseWriter, _ *http.Request) {
-	res, ok := resourceByID["flavors"]
-	if !ok {
-		writeJSON(w, http.StatusOK, []map[string]any{})
-		return
-	}
-	rows := res.Rows
-	if rows == nil {
-		rows = []map[string]any{}
-	}
-	writeJSON(w, http.StatusOK, rows)
+// handleListFlavors returns the flavor catalogue via flavorsCatalogue
+// (see flavors.go). Both this endpoint and the admin sidebar's
+// /api/resources/flavors path share the same source, so the day
+// weft-agent's ListFlavors RPC ships, swapping the implementation is
+// a single var assignment.
+func handleListFlavors(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, flavorRows(r.Context()))
 }
 
 func devLogin(w http.ResponseWriter, r *http.Request) {
