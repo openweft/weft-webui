@@ -78,7 +78,20 @@ type Deps struct {
 
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
+
+	// PolicyStrict flips the bucket-policy evaluator's no-match
+	// fallback from allow → deny (AWS-aligned default-deny when a
+	// policy exists at all). Propagated to a package-global so
+	// evaluatePolicy in objectstorage.go can read it from any handler
+	// without threading the flag down every call. See cmd/Deps wiring
+	// in New() / NewAdmin().
+	PolicyStrict bool
 }
+
+// policyStrict is the process-wide read of Deps.PolicyStrict. Set
+// once in New()/NewAdmin() so handlers don't need a closure dance.
+// See the field comment on Deps.PolicyStrict for semantics.
+var policyStrict bool
 
 // New returns the user-facing http.Handler — the public listener.
 // Admin-only resources (hosts, users, tenants, groups) and /metrics
@@ -103,6 +116,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	live = d.Live
 	liveNet = d.LiveNet
 	metrics = d.Metrics
+	policyStrict = d.PolicyStrict
 	mux := http.NewServeMux()
 
 	// --- Public routes (no auth) ---
