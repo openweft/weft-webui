@@ -9,6 +9,7 @@
   import TenantsPage from './lib/components/TenantsPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import SharesPage from './lib/components/SharesPage.svelte';
+  import ScriptsPage from './lib/components/ScriptsPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
@@ -85,6 +86,8 @@
         <ObjectStoragePage />
       {:else if active === 'shares'}
         <SharesPage />
+      {:else if active === 'scripts'}
+        <ScriptsPage />
       {:else if active === 'topology'}
         <NetworkTopology />
       {:else}
