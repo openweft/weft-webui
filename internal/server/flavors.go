@@ -23,6 +23,20 @@
 // quorum semantics fit exactly. bbolt would have been single-writer
 // local only, no HA, wrong tool.
 //
+// Dev-mode topology — DECIDED : etcd embedded
+// (go.etcd.io/etcd/server/v3/embed) inside weft-agent itself when
+// no external --etcd-endpoints is configured. Single-node, no HA, but
+// same client code paths + same watch semantics as the prod HA case.
+// Operator's cluster.hcl picks the mode :
+//
+//	etcd { embed = true  data_dir = "~/.weft/etcd" }   # dev (single-binary)
+//	etcd { endpoints = ["https://etcd-{0,1,2}:2379", …] }  # prod (HA cluster)
+//
+// HCL fallback for the catalogue itself is NOT a thing — the embedded
+// etcd carries the same wire shape, so dev and prod hit the same
+// reads. Same-codepaths-everywhere wins over any complexity saved by
+// a side HCL parser.
+//
 // In the meantime : seedFlavors() below mirrors what used to be in
 // resources.go. Both the user-facing /api/flavors endpoint and the
 // admin "Flavors" sidebar page now flow through the catalogue, so
