@@ -1,36 +1,99 @@
 <script lang="ts">
-  // SSHKeysPage — CRUD for the named SSH-keys catalogue. Same master-
-  // detail layout as ScriptsPage. Admin-only (the route is mounted
-  // when the sidebar carries the "ssh-keys" entry, server-side already
-  // restricts POST/DELETE to the admin port).
+  // SSHKeysPage — table of named SSH keys + right-side drawer for
+  // detail / edit. Replaces the previous master-detail-in-page
+  // layout (didn't scale past a dozen entries — the user flagged it).
   //
-  // The Import flow (GitHub / GitLab / Forgejo) is queued for the next
-  // commit. The hint at the top of the right pane documents it so
-  // operators know it's coming + understand the manual flow today.
+  // Row click opens SSHKeyDrawer. "+ New key" opens the same drawer
+  // in create-mode. "Import" opens the gh/gl/forgejo modal. Admin
+  // affordances are gated on canEdit (cluster_admin || tenant_admin)
+  // ; non-admins see the table + drawer in read-only mode.
   import {
-    listSSHKeyCatalogue, getSSHKeyCatalogue, setSSHKeyCatalogue, deleteSSHKeyCatalogue,
-    importSSHKeys, getMe,
+    listSSHKeyCatalogue, importSSHKeys, getMe,
     type SSHKeyEntry, type Me, type ImportSSHKeysResult,
   } from '../api';
+  import SSHKeyDrawer from './SSHKeyDrawer.svelte';
 
   let keys = $state<SSHKeyEntry[]>([]);
-  let selected = $state<string>('');
-  let current = $state<SSHKeyEntry | null>(null);
   let listErr = $state('');
   let listBusy = $state(false);
-
-  let editName = $state('');
-  let editDesc = $state('');
-  let editPublicKey = $state('');
-  let editBusy = $state(false);
-  let editErr = $state('');
 
   let me = $state<Me | null>(null);
   let canEdit = $derived(!!me && (me.cluster_admin || me.tenant_admin));
 
+  // Drawer state : either an existing entry is selected or we're
+  // creating a new one. Mutually exclusive.
+  let selected = $state<SSHKeyEntry | null>(null);
   let creating = $state(false);
 
-  // Import modal state
+  // Table filter — quick substring match on name / description /
+  // fingerprint / source / account. Inline since the table is small
+  // and the search shape is uniform.
+  let query = $state('');
+
+  function refresh() {
+    listBusy = true; listErr = '';
+    listSSHKeyCatalogue()
+      .then((ks) => (keys = ks))
+      .catch((e) => (listErr = String(e)))
+      .finally(() => (listBusy = false));
+  }
+  $effect(refresh);
+  $effect(() => { getMe().then((u) => (me = u)).catch(() => { /* api.ts handled */ }); });
+
+  let filtered = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return keys;
+    return keys.filter((k) =>
+      k.name.toLowerCase().includes(q)
+      || (k.description ?? '').toLowerCase().includes(q)
+      || k.fingerprint.toLowerCase().includes(q)
+      || (k.source ?? '').toLowerCase().includes(q)
+      || (k.source_account ?? '').toLowerCase().includes(q),
+    );
+  });
+
+  // sshTypeOf extracts the "ssh-ed25519" prefix from a stored
+  // public_key. Cheaper than re-parsing + decoding ; we just need
+  // the first whitespace-separated word.
+  function sshTypeOf(line: string): string {
+    const i = line.indexOf(' ');
+    return i > 0 ? line.slice(0, i) : '';
+  }
+
+  function sourceBadge(s: string): string {
+    switch (s) {
+      case 'github': return 'badge-success';
+      case 'gitlab': return 'badge-warning';
+      case 'forgejo': return 'badge-info';
+      case 'manual': return 'badge-ghost';
+      default: return 'badge-ghost';
+    }
+  }
+
+  function openRow(k: SSHKeyEntry) {
+    creating = false;
+    selected = k;
+  }
+  function startNew() {
+    selected = null;
+    creating = true;
+  }
+  function closeDrawer() {
+    selected = null;
+    creating = false;
+  }
+  function onSaved(saved: SSHKeyEntry) {
+    creating = false;
+    selected = saved;
+    refresh();
+  }
+  function onDeleted(name: string) {
+    selected = null;
+    creating = false;
+    refresh();
+  }
+
+  // ---- Import modal state ----
   let importOpen = $state(false);
   let importProvider = $state<'github' | 'gitlab' | 'forgejo'>('github');
   let importAccount = $state('');
@@ -42,7 +105,7 @@
   async function runImport() {
     if (!importAccount.trim()) { importErr = 'account is required'; return; }
     if (importProvider === 'forgejo' && !importForgejoBase.trim()) {
-      importErr = 'forgejo instance base URL is required (e.g. https://codeberg.org)';
+      importErr = 'forgejo base URL is required (e.g. https://codeberg.org)';
       return;
     }
     importBusy = true; importErr = ''; importResult = null;
@@ -53,8 +116,7 @@
         forgejo_base: importProvider === 'forgejo' ? importForgejoBase.trim() : undefined,
       });
       importResult = res;
-      const ks = await listSSHKeyCatalogue();
-      keys = ks;
+      refresh();
     } catch (e) {
       importErr = String(e);
     } finally {
@@ -69,109 +131,24 @@
     importOpen = false;
     resetImport();
   }
-
-  function refresh(keepName = selected) {
-    listBusy = true;
-    listErr = '';
-    listSSHKeyCatalogue()
-      .then((ks) => {
-        keys = ks;
-        if (creating) return;
-        const names = ks.map((k) => k.name);
-        const next = names.includes(keepName) ? keepName : (names[0] ?? '');
-        selectKey(next);
-      })
-      .catch((e) => (listErr = String(e)))
-      .finally(() => (listBusy = false));
-  }
-  $effect(refresh);
-  $effect(() => { getMe().then((u) => (me = u)).catch(() => { /* api.ts handled */ }); });
-
-  function selectKey(name: string) {
-    selected = name;
-    creating = false;
-    editErr = '';
-    if (!name) { current = null; editName = ''; editDesc = ''; editPublicKey = ''; return; }
-    getSSHKeyCatalogue(name).then((k) => {
-      current = k;
-      editName = k.name;
-      editDesc = k.description;
-      editPublicKey = k.public_key;
-    }).catch((e) => (editErr = String(e)));
-  }
-
-  function startNew() {
-    selected = '';
-    current = null;
-    creating = true;
-    editName = '';
-    editDesc = '';
-    editPublicKey = '';
-    editErr = '';
-  }
-
-  let dirty = $derived.by(() => {
-    if (creating) return editName.trim().length > 0 && editPublicKey.trim().length > 0;
-    if (!current) return false;
-    return editName !== current.name
-        || editDesc !== current.description
-        || editPublicKey !== current.public_key;
-  });
-
-  async function save() {
-    if (!editName.trim()) { editErr = 'name is required'; return; }
-    if (!editPublicKey.trim()) { editErr = 'public key is required'; return; }
-    editBusy = true; editErr = '';
-    try {
-      const saved = await setSSHKeyCatalogue({
-        name: editName.trim(),
-        description: editDesc,
-        public_key: editPublicKey,
-      });
-      creating = false;
-      selected = saved.name;
-      const ks = await listSSHKeyCatalogue();
-      keys = ks;
-      current = saved;
-    } catch (e) {
-      editErr = String(e);
-    } finally {
-      editBusy = false;
-    }
-  }
-
-  async function del() {
-    if (!selected) return;
-    if (!confirm(`Delete key "${selected}" ? VMs that reference it by name will lose access on the next sshkeys publish ; existing connections aren't dropped.`)) return;
-    try {
-      await deleteSSHKeyCatalogue(selected);
-      const ks = await listSSHKeyCatalogue();
-      keys = ks;
-      selectKey(ks[0]?.name ?? '');
-    } catch (e) { editErr = String(e); }
-  }
-
-  function sourceBadge(s: string): string {
-    switch (s) {
-      case 'github': return 'badge-success';
-      case 'gitlab': return 'badge-warning';
-      case 'forgejo': return 'badge-info';
-      case 'manual': return 'badge-ghost';
-      default: return 'badge-ghost';
-    }
-  }
 </script>
 
 <div class="flex items-center gap-3">
   <div>
     <h2 class="text-2xl font-bold">SSH Keys</h2>
     <p class="text-sm text-base-content/60">
-      Named SSH public keys. VMs reference them by name from the drawer.
-      Imports from GitHub / GitLab / Forgejo arrive in a follow-on commit.
+      Named SSH public keys. Click a row for details + edit ; VMs
+      reference them by name from the drawer's SSH-keys tab.
     </p>
   </div>
-  {#if canEdit}
-    <div class="ml-auto flex items-center gap-2">
+  <div class="ml-auto flex items-center gap-2">
+    <label class="input input-sm input-bordered flex items-center gap-2">
+      <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-50" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
+      </svg>
+      <input type="search" class="grow" placeholder="Filter…" bind:value={query} />
+    </label>
+    {#if canEdit}
       <button class="btn btn-sm btn-ghost gap-1" onclick={() => (importOpen = true)}>
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
@@ -181,9 +158,68 @@
       <button class="btn btn-sm btn-primary gap-1" onclick={startNew}>
         <span class="text-base leading-none">+</span> New key
       </button>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
+
+{#if listErr}
+  <div class="mt-2 alert alert-error text-sm">{listErr}</div>
+{/if}
+
+<div class="mt-4 overflow-x-auto rounded-box border border-base-300 bg-base-100">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Type</th>
+        <th>Fingerprint</th>
+        <th>Source</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#if listBusy}
+        <tr><td colspan="6" class="py-8 text-center">
+          <span class="loading loading-spinner"></span>
+        </td></tr>
+      {:else if filtered.length === 0}
+        <tr><td colspan="6" class="py-8 text-center text-base-content/50">
+          {keys.length === 0
+            ? 'No keys yet. Create one with "+ New key" or pull a forge account via Import.'
+            : 'No keys match the filter.'}
+        </td></tr>
+      {:else}
+        {#each filtered as k (k.name)}
+          <tr class="hover cursor-pointer" onclick={() => openRow(k)}>
+            <td class="font-mono">{k.name}</td>
+            <td class="max-w-xs truncate">{k.description || '—'}</td>
+            <td><span class="badge badge-xs badge-ghost">{sshTypeOf(k.public_key)}</span></td>
+            <td class="font-mono text-xs">{k.fingerprint.slice(0, 28)}…</td>
+            <td>
+              <span class="badge badge-sm {sourceBadge(k.source)}">{k.source || 'manual'}</span>
+              {#if k.source_account}<span class="ml-1 font-mono text-xs text-base-content/60">{k.source_account}</span>{/if}
+            </td>
+            <td class="text-xs text-base-content/70">
+              {k.updated_at.slice(0, 10)} <span class="text-base-content/40">· {k.updated_by || '—'}</span>
+            </td>
+          </tr>
+        {/each}
+      {/if}
+    </tbody>
+  </table>
+</div>
+
+{#if selected || creating}
+  <SSHKeyDrawer
+    entry={selected}
+    {creating}
+    {canEdit}
+    onClose={closeDrawer}
+    {onSaved}
+    {onDeleted}
+  />
+{/if}
 
 <!-- Import modal : fetches <provider>/<account>.keys server-side. -->
 {#if importOpen}
@@ -227,14 +263,16 @@
       {/if}
       {#if importResult}
         <div class="mt-3 alert alert-success py-2 text-sm">
-          Added {importResult.added} ·
-          Skipped {importResult.skipped_existing} (duplicate fingerprint) ·
-          Total seen {importResult.total_seen}
-          {#if importResult.names.length > 0}
-            <div class="mt-1 font-mono text-xs">
-              {importResult.names.join(', ')}
-            </div>
-          {/if}
+          <div>
+            Added {importResult.added} ·
+            Skipped {importResult.skipped_existing} (duplicate fingerprint) ·
+            Total seen {importResult.total_seen}
+            {#if importResult.names.length > 0}
+              <div class="mt-1 font-mono text-xs">
+                {importResult.names.join(', ')}
+              </div>
+            {/if}
+          </div>
         </div>
       {/if}
 
@@ -251,121 +289,3 @@
     <button class="modal-backdrop" aria-label="close" onclick={closeImport}></button>
   </dialog>
 {/if}
-
-{#if listErr}
-  <div class="mt-2 alert alert-error text-sm">{listErr}</div>
-{/if}
-
-<div class="mt-4 flex gap-4">
-  <aside class="w-64 shrink-0">
-    <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
-      Catalogue {#if listBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
-    </div>
-    <ul class="menu menu-sm w-full rounded-box border border-base-300 bg-base-100">
-      {#each keys as k (k.name)}
-        <li>
-          <button class:menu-active={selected === k.name} onclick={() => selectKey(k.name)}>
-            <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" stroke-linejoin="round" />
-            </svg>
-            <div class="min-w-0">
-              <div class="truncate">{k.name}</div>
-              <div class="text-[10px] text-base-content/50 flex items-center gap-1">
-                <span class="badge badge-xs {sourceBadge(k.source)}">{k.source || 'manual'}</span>
-                <span class="font-mono truncate">{k.fingerprint.slice(0, 18)}…</span>
-              </div>
-            </div>
-          </button>
-        </li>
-      {:else}
-        <li class="px-3 py-2 text-sm text-base-content/50">No keys. Create one with "+ New key".</li>
-      {/each}
-    </ul>
-  </aside>
-
-  <section class="min-w-0 flex-1">
-    {#if !creating && !selected}
-      <div class="rounded-box border border-base-300 bg-base-100 p-10 text-center text-base-content/50">
-        Pick a key on the left, or create a new one.
-      </div>
-    {:else}
-      <div class="rounded-box border border-base-300 bg-base-100 p-4">
-        <div class="grid gap-3 sm:grid-cols-[1fr_2fr]">
-          <label class="form-control">
-            <span class="label-text text-xs">Name</span>
-            <input
-              class="input input-sm input-bordered font-mono"
-              placeholder="alice-laptop"
-              disabled={!canEdit || (!creating && !!current)}
-              bind:value={editName}
-            />
-            {#if !creating && current}
-              <span class="mt-1 text-xs text-base-content/40">Renaming not supported ; delete + recreate.</span>
-            {/if}
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs">Description</span>
-            <input
-              class="input input-sm input-bordered"
-              placeholder="surfaced in the picker + the per-VM drawer"
-              disabled={!canEdit}
-              bind:value={editDesc}
-            />
-          </label>
-        </div>
-
-        <label class="form-control mt-3">
-          <span class="label-text text-xs flex items-baseline gap-2">
-            Public key
-            <span class="text-base-content/40">
-              "&lt;type&gt; &lt;base64&gt; [comment]" — fingerprint computed server-side
-            </span>
-          </span>
-          <textarea
-            class="textarea textarea-sm textarea-bordered font-mono text-xs"
-            rows="4"
-            spellcheck="false"
-            disabled={!canEdit}
-            bind:value={editPublicKey}
-            placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host"
-          ></textarea>
-        </label>
-
-        {#if current && !creating}
-          <div class="mt-2 grid grid-cols-[6rem_1fr] gap-y-1 text-xs text-base-content/60">
-            <span class="text-base-content/40">Fingerprint</span>
-            <span class="font-mono break-all">{current.fingerprint}</span>
-            <span class="text-base-content/40">Source</span>
-            <span>
-              <span class="badge badge-xs {sourceBadge(current.source)}">{current.source}</span>
-              {#if current.source_account}<span class="font-mono ml-1">{current.source_account}</span>{/if}
-            </span>
-            <span class="text-base-content/40">Last edit</span>
-            <span>{current.updated_at} by {current.updated_by || '—'}</span>
-          </div>
-        {/if}
-
-        {#if editErr}
-          <div class="mt-3 alert alert-error py-2 text-sm">{editErr}</div>
-        {/if}
-
-        <div class="mt-3 flex items-center gap-2">
-          {#if canEdit && !creating && current}
-            <button class="btn btn-sm btn-ghost text-error" onclick={del}>Delete</button>
-          {/if}
-          <div class="ml-auto flex items-center gap-2">
-            {#if creating}
-              <button class="btn btn-sm btn-ghost" onclick={() => { creating = false; selectKey(keys[0]?.name ?? ''); }}>Cancel</button>
-            {/if}
-            {#if canEdit}
-              <button class="btn btn-sm btn-primary" disabled={!dirty || editBusy} onclick={save}>
-                {#if editBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
-                Save
-              </button>
-            {/if}
-          </div>
-        </div>
-      </div>
-    {/if}
-  </section>
-</div>
