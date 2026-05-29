@@ -662,6 +662,54 @@ export const addVMKey = (name: string, publicKey: string) =>
 export const removeVMKey = (name: string, fingerprint: string) =>
   deleteJSON(`/microvms/${encodeURIComponent(name)}/keys/${encodeURIComponent(fingerprint)}`);
 
+// ---- Per-VM properties (host-set annotations) ----
+//
+// Free-form key/value bag on a VM. The `guest_readable` flag opts the
+// entry into the read-side surface the in-guest weft-vm-agent exposes
+// over NATS — host-only metadata (cost-center, security label, …)
+// leaves it off.
+
+export interface VMProperty {
+  key: string;
+  value: string;
+  guest_readable: boolean;
+  updated_at: string;
+}
+
+export const listVMProperties = (name: string) =>
+  getJSON<VMProperty[]>(`/microvms/${encodeURIComponent(name)}/properties`);
+
+export const setVMProperty = (name: string, p: { key: string; value: string; guest_readable: boolean }) =>
+  postJSON<VMProperty>(`/microvms/${encodeURIComponent(name)}/properties`, p);
+
+export const removeVMProperty = (name: string, key: string) =>
+  deleteJSON(`/microvms/${encodeURIComponent(name)}/properties/${encodeURIComponent(key)}`);
+
+// ---- UEFI NVRAM variables ----
+//
+// Per-VM firmware variables. Keyed by (namespace GUID, name). The
+// editor surfaces value as hex — the byte semantics depend on the
+// variable (uint16 LE for BootOrder, a UTF-16 + flags blob for
+// Boot####, etc.). Empty namespace defaults to the EFI Global GUID
+// server-side.
+
+export interface UEFIVar {
+  namespace: string;   // GUID
+  name: string;
+  value_hex: string;
+  attributes: string[];
+  updated_at: string;
+}
+
+export const listUEFIVars = (name: string) =>
+  getJSON<UEFIVar[]>(`/microvms/${encodeURIComponent(name)}/uefi-vars`);
+
+export const setUEFIVar = (name: string, v: { namespace?: string; name: string; value_hex: string; attributes: string[] }) =>
+  postJSON<UEFIVar>(`/microvms/${encodeURIComponent(name)}/uefi-vars`, v);
+
+export const removeUEFIVar = (vmName: string, namespace: string, varName: string) =>
+  deleteJSON(`/microvms/${encodeURIComponent(vmName)}/uefi-vars/${encodeURIComponent(namespace)}/${encodeURIComponent(varName)}`);
+
 // Quota dimension metadata for UI labels + units. Order matters : it
 // drives the visual layout. Mirrors internal/server/tenants.go.
 export interface QuotaDimMeta {
