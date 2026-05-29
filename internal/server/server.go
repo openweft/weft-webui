@@ -191,8 +191,9 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// mutation to a NATS subject the in-guest weft-vm-agent subscribes
 	// to ; this dashboard surface is the operator-facing CRUD.
 	mux.HandleFunc("GET /api/microvms/{name}/keys", handleListVMKeys)
-	mux.HandleFunc("POST /api/microvms/{name}/keys", handleAddVMKey)
-	mux.HandleFunc("DELETE /api/microvms/{name}/keys/{fp}", handleRemoveVMKey)
+	mux.HandleFunc("POST /api/microvms/{name}/keys", handleAddVMKey)            // {name: "..."} — assign by catalogue name
+	mux.HandleFunc("PUT /api/microvms/{name}/keys", handleSetVMKeyAssignments)  // {names: [...]} — replace-set
+	mux.HandleFunc("DELETE /api/microvms/{name}/keys/{key_name}", handleRemoveVMKey)
 	// Properties : host-set application-level annotations on a VM. Some
 	// are flagged guest-readable — the in-guest weft-vm-agent reads
 	// those via NATS. Same Subscriber+ApplyFunc concern pattern.
