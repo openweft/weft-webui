@@ -13,7 +13,7 @@
   // honest : "what kind, where, behind which entry point".
   import {
     createVM, getMe, getFlavors, getRowsPage,
-    type Row, type VMIngressKind,
+    type Row, type VMIngressKind, type VMProvisioningSourceKind,
   } from '../api';
   import Combobox from './Combobox.svelte';
 
@@ -40,6 +40,16 @@
   let ingressKind = $state<VMIngressKind>('none');
   let ingressFIP = $state('');     // FIP uuid
   let ingressLB = $state('');      // LB uuid
+
+  // First-boot provisioning : pull a payload + run a sh script. Stored
+  // on the VM as guest-readable weft.boot/* properties by the server ;
+  // the in-guest weft-vm-agent reads them on first boot, performs
+  // git clone / oras pull + extract, then runs the script through
+  // mvdan.cc/sh/v3 (POSIX sh in Go, no /bin/sh required).
+  let provSource = $state<VMProvisioningSourceKind>('none');
+  let provURL = $state('');
+  let provRef = $state('');
+  let provScript = $state('');
 
   // Loaded once when the modal opens.
   let project = $state('');
@@ -110,6 +120,8 @@
     }
     busy = true;
     try {
+      const hasProvisioning =
+        provSource !== 'none' || provScript.trim() !== '';
       const res = await createVM({
         Name: name.trim(),
         Image: image.trim(),
@@ -119,6 +131,12 @@
         IngressKind: ingressKind,
         IngressFloatingIP: ingressFIP || undefined,
         IngressLoadBalancer: ingressLB || undefined,
+        Provisioning: hasProvisioning ? {
+          source_kind: provSource,
+          source_url: provURL.trim(),
+          source_ref: provRef.trim(),
+          script: provScript,
+        } : undefined,
       }) as { name: string; project: string; warnings?: string[] };
       warnings = res.warnings ?? [];
       onCreated();
@@ -139,6 +157,7 @@
     flavorName = '';
     schedulingRule = ''; network = '';
     ingressKind = 'none'; ingressFIP = ''; ingressLB = '';
+    provSource = 'none'; provURL = ''; provRef = ''; provScript = '';
     error = ''; warnings = [];
   }
 
@@ -302,6 +321,68 @@
           </span>
         </div>
       {/if}
+    </fieldset>
+
+    <!-- First-boot provisioning -->
+    <fieldset class="mt-4 rounded-box border border-base-300 p-3">
+      <legend class="px-1 text-xs text-base-content/60">First-boot provisioning</legend>
+      <p class="mb-2 text-xs text-base-content/60">
+        Optional. Pulled + run by the in-guest <code>weft-vm-agent</code> on
+        first boot, via <code>mvdan.cc/sh/v3</code> (POSIX sh in Go — no
+        <code>/bin/sh</code> needed). Stored as guest-readable
+        <code>weft.boot/*</code> properties ; visible on the drawer's
+        Properties tab after create.
+      </p>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <label class="label cursor-pointer gap-1">
+          <input type="radio" class="radio radio-sm" value="none" bind:group={provSource} />
+          <span>No payload (script-only or none)</span>
+        </label>
+        <label class="label cursor-pointer gap-1">
+          <input type="radio" class="radio radio-sm" value="git" bind:group={provSource} />
+          <span>Git repo</span>
+        </label>
+        <label class="label cursor-pointer gap-1">
+          <input type="radio" class="radio radio-sm" value="oci" bind:group={provSource} />
+          <span>OCI artifact (+ extract)</span>
+        </label>
+      </div>
+
+      {#if provSource !== 'none'}
+        <div class="mt-2 grid gap-2 sm:grid-cols-[2fr_1fr]">
+          <label class="form-control">
+            <span class="label-text text-xs">
+              {provSource === 'git' ? 'Git URL' : 'OCI reference'}
+            </span>
+            <input class="input input-xs input-bordered font-mono"
+              placeholder={provSource === 'git'
+                ? 'https://github.com/team/payload.git'
+                : 'ghcr.io/team/payload:v1.2.3'}
+              bind:value={provURL} />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">
+              {provSource === 'git' ? 'Branch / tag / SHA' : 'Digest / tag'}
+            </span>
+            <input class="input input-xs input-bordered font-mono"
+              placeholder={provSource === 'git' ? 'main' : 'sha256:…'}
+              bind:value={provRef} />
+          </label>
+        </div>
+      {/if}
+
+      <label class="form-control mt-2">
+        <span class="label-text text-xs">Script (sh)</span>
+        <textarea class="textarea textarea-sm textarea-bordered font-mono text-xs"
+          rows="4"
+          placeholder={'#!/bin/sh\nset -eu\ncd payload\n./setup.sh'}
+          bind:value={provScript}></textarea>
+        <span class="mt-1 text-xs text-base-content/50">
+          Runs in the payload's CWD post-pull. Exit non-zero marks the
+          provisioning as failed on the VM's Timings stream ; the VM
+          stays up so you can debug.
+        </span>
+      </label>
     </fieldset>
 
     {#if error}<div class="mt-3 alert alert-error py-2 text-sm">{error}</div>{/if}
