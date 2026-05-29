@@ -10,6 +10,7 @@
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import SharesPage from './lib/components/SharesPage.svelte';
   import ScriptsPage from './lib/components/ScriptsPage.svelte';
+  import SSHKeysPage from './lib/components/SSHKeysPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
@@ -88,6 +89,8 @@
         <SharesPage />
       {:else if active === 'scripts'}
         <ScriptsPage />
+      {:else if active === 'ssh-keys'}
+        <SSHKeysPage />
       {:else if active === 'topology'}
         <NetworkTopology />
       {:else}
