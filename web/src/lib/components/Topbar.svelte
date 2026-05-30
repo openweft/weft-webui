@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getMe, setProject, logout, type Me } from '../api';
+  import { getMe, setProject, logout, onAdminUI, type Me } from '../api';
 
   let { title }: { title: string } = $props();
 
@@ -17,6 +17,7 @@
   // to a placeholder while the request is in flight so the header
   // doesn't jump.
   let me = $state<Me | null>(null);
+  let adminUI = $state(false);          // which listener served us
   let project = $state('');
   const projects = ['team-alpha', 'team-beta', 'research']; // until ListProjects exposes scoped lists
 
@@ -27,14 +28,26 @@
         project = u.project || projects[0];
       })
       .catch(() => { /* api.ts already triggered the login redirect */ });
+    onAdminUI().then((v) => { adminUI = v; });
   });
 
-  // The title reflects the badge so the operator can spot context on
-  // the OS task switcher without expanding the window.
+  // Badge = persona-then-role :
+  //   - on the admin listener → SUPERADMIN ("you're on the cluster-wide UI")
+  //   - on the user listener with admin rights → ADMIN ("you're acting
+  //     as a regular user but with admin capabilities somewhere")
+  //   - otherwise → no badge
+  // cluster_admin and tenant_admin both count as "admin rights"
+  // because a cluster admin is implicitly tenant admin of every tenant.
+  let badge = $derived(
+    adminUI ? 'superadmin'
+      : me?.cluster_admin || me?.tenant_admin ? 'admin'
+      : null,
+  );
+
+  // Title reflects the badge so the operator can spot context on the
+  // OS task switcher without expanding the window.
   $effect(() => {
-    if (me?.cluster_admin) document.title = 'Weft · superadmin';
-    else if (me?.tenant_admin) document.title = 'Weft · admin';
-    else document.title = 'Weft';
+    document.title = badge ? `Weft · ${badge}` : 'Weft';
   });
 
   async function chooseProject(p: string) {
@@ -47,11 +60,11 @@
 <header class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100 px-6">
   <h1 class="text-base font-semibold">{title}</h1>
 
-  <!-- Role badge — cluster-admin wins over tenant-admin so a
-       cluster operator always sees the broader role they hold. -->
-  {#if me?.cluster_admin}
-    <span class="badge badge-error badge-sm uppercase tracking-wide" title="Cluster-wide operator">superadmin</span>
-  {:else if me?.tenant_admin}
+  <!-- Persona badge — set by which listener served us (admin vs user),
+       refined by the user's admin rights when they're on the user UI. -->
+  {#if badge === 'superadmin'}
+    <span class="badge badge-error badge-sm uppercase tracking-wide" title="Cluster-wide UI">superadmin</span>
+  {:else if badge === 'admin'}
     <span class="badge badge-warning badge-sm uppercase tracking-wide" title="Tenant administrator">admin</span>
   {/if}
   {#if me?.dev}
