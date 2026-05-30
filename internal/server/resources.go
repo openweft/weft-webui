@@ -203,6 +203,63 @@ var registry = []Resource{
 		},
 	},
 	{
+		// DNS zones served by the per-DC CoreDNS microVMs. The platform
+		// owns the root (`weft.internal`) ; each tenant carves a
+		// subdomain (`<tenant>.weft.internal`) and each project carves
+		// one below it. Backed by either CoreDNS file plugin (zone
+		// transfers) or its etcd plugin (live writes from weft-network's
+		// reconciler when VMs come up).
+		ID: "dns-zones", Label: "DNS Zones", Section: "Network",
+		Columns: cols("name", "Name", "type", "Type",
+			"records", "Records", "ttl_default", "Default TTL",
+			"backend", "Backend", "project", "Project", "status", "Status"),
+		Rows: []map[string]any{
+			row("name", "weft.internal", "type", "authoritative",
+				"records", 9, "ttl_default", 60, "backend", "coredns",
+				"project", "platform", "status", "active"),
+			row("name", "acme.weft.internal", "type", "authoritative",
+				"records", 5, "ttl_default", 60, "backend", "coredns",
+				"project", "platform", "status", "active"),
+			row("name", "team-alpha.acme.weft.internal", "type", "authoritative",
+				"records", 4, "ttl_default", 30, "backend", "coredns",
+				"project", "team-alpha", "status", "active"),
+			row("name", "research.globex.weft.internal", "type", "authoritative",
+				"records", 2, "ttl_default", 30, "backend", "coredns",
+				"project", "research", "status", "active"),
+		},
+	},
+	{
+		// DNS records inside the zones above. `name` is the leaf (or `@`
+		// for the apex) ; `zone` is the parent. Records flagged `auto`
+		// are reconciled by weft-network from the live VM list — operator
+		// edits to those are clobbered on the next reconcile.
+		ID: "dns-records", Label: "DNS Records", Section: "Network",
+		Columns: cols("name", "Name", "zone", "Zone", "type", "Type",
+			"value", "Value", "ttl", "TTL", "source", "Source"),
+		Rows: []map[string]any{
+			// Platform service discovery — the SRVs that anchor `weft agent`.
+			row("name", "_weft._tcp", "zone", "weft.internal", "type", "SRV",
+				"value", "0 33 7443 weft-a.weft.internal.", "ttl", 60, "source", "static"),
+			row("name", "_weft._tcp", "zone", "weft.internal", "type", "SRV",
+				"value", "0 33 7443 weft-b.weft.internal.", "ttl", 60, "source", "static"),
+			row("name", "_weft._tcp", "zone", "weft.internal", "type", "SRV",
+				"value", "0 33 7443 weft-c.weft.internal.", "ttl", 60, "source", "static"),
+			row("name", "weft-a", "zone", "weft.internal", "type", "A",
+				"value", "10.0.0.10", "ttl", 60, "source", "static"),
+			// Tenant-level glue.
+			row("name", "@", "zone", "acme.weft.internal", "type", "NS",
+				"value", "ns.weft.internal.", "ttl", 3600, "source", "static"),
+			// Project-level, auto-reconciled from the live microVM list.
+			row("name", "web-1", "zone", "team-alpha.acme.weft.internal", "type", "A",
+				"value", "10.10.0.21", "ttl", 30, "source", "auto"),
+			row("name", "db", "zone", "team-alpha.acme.weft.internal", "type", "CNAME",
+				"value", "db-1.team-alpha.acme.weft.internal.", "ttl", 60, "source", "static"),
+			// Public ingress, fed from the LoadBalancer table.
+			row("name", "web", "zone", "acme.weft.internal", "type", "A",
+				"value", "203.0.113.20", "ttl", 60, "source", "auto"),
+		},
+	},
+	{
 		// Routers stitch meshes together (inter-tenant peering, mesh ↔ outside)
 		// or expose a mesh to the public Internet. backend is the data-plane
 		// realisation : "wireguard" for mesh ↔ mesh peering, "vyos" / "frr"
