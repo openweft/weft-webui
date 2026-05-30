@@ -577,7 +577,7 @@ export interface CreateRouterBody {
 export const createRouter = async (b: CreateRouterBody) => {
   const { data, error } = await client.POST('/api/routers', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; uuid: string };
+  return data;
 };
 
 export const deleteRouter = async (uuid: string): Promise<void> => {
@@ -596,7 +596,7 @@ export interface CreateLoadBalancerBody {
 export const createLoadBalancer = async (b: CreateLoadBalancerBody) => {
   const { data, error } = await client.POST('/api/loadbalancers', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; uuid: string };
+  return data;
 };
 
 export const deleteLoadBalancer = async (uuid: string): Promise<void> => {
@@ -623,7 +623,7 @@ export interface CreateDNSZoneBody {
 export const createDNSZone = async (b: CreateDNSZoneBody) => {
   const { data, error } = await client.POST('/api/dns-zones', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; uuid: string };
+  return data;
 };
 
 export const deleteDNSZone = async (uuid: string): Promise<void> => {
@@ -642,7 +642,7 @@ export interface CreateDNSRecordBody {
 export const createDNSRecord = async (b: CreateDNSRecordBody) => {
   const { data, error } = await client.POST('/api/dns-records', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { uuid: string; name: string; type: string };
+  return data;
 };
 
 export const deleteDNSRecord = async (uuid: string): Promise<void> => {
@@ -663,7 +663,7 @@ export interface CreateNetworkBody {
 export const createNetwork = async (b: CreateNetworkBody) => {
   const { data, error } = await client.POST('/api/networks', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; project: string; cidr: string };
+  return data;
 };
 
 export const deleteNetwork = async (uuid: string): Promise<void> => {
@@ -732,7 +732,7 @@ export interface CreateSecurityGroupBody {
 export const createSecurityGroup = async (b: CreateSecurityGroupBody) => {
   const { data, error } = await client.POST('/api/security-groups', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; project: string; uuid: string; rules: number };
+  return data;
 };
 
 export const deleteSecurityGroup = async (uuid: string): Promise<void> => {
@@ -762,7 +762,7 @@ export interface AllocateFloatingIPBody { network: string }
 export const allocateFloatingIP = async (b: AllocateFloatingIPBody) => {
   const { data, error } = await client.POST('/api/floating-ips', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { uuid: string; address: string; network: string; project: string };
+  return data;
 };
 
 export const releaseFloatingIP = async (uuid: string): Promise<void> => {

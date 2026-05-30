@@ -506,6 +506,39 @@
         ],
         "type": "object"
       },
+      "AllocateFloatingIPResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AllocateFloatingIPResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "address",
+          "network",
+          "project"
+        ],
+        "type": "object"
+      },
       "AttachVolumeInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -640,6 +673,35 @@
         ],
         "type": "object"
       },
+      "CreateDNSRecordResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateDNSRecordResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
       "CreateDNSZoneInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -719,6 +781,31 @@
         ],
         "type": "object"
       },
+      "CreateNameUUID": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateNameUUID.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "uuid"
+        ],
+        "type": "object"
+      },
       "CreateNetworkInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -761,6 +848,35 @@
         },
         "required": [
           "name",
+          "cidr"
+        ],
+        "type": "object"
+      },
+      "CreateNetworkResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateNetworkResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cidr": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project",
           "cidr"
         ],
         "type": "object"
@@ -883,6 +999,40 @@
         },
         "required": [
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateSecurityGroupResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateSecurityGroupResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "rules": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project",
+          "uuid",
+          "rules"
         ],
         "type": "object"
       },
@@ -2394,7 +2544,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDNSRecordResp"
+                }
               }
             },
             "description": "Created"
@@ -2483,7 +2635,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateNameUUID"
+                }
               }
             },
             "description": "Created"
@@ -2652,7 +2806,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AllocateFloatingIPResp"
+                }
               }
             },
             "description": "Created"
@@ -2860,7 +3016,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateNameUUID"
+                }
               }
             },
             "description": "Created"
@@ -4038,7 +4196,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateNetworkResp"
+                }
               }
             },
             "description": "Created"
@@ -4587,7 +4747,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateNameUUID"
+                }
               }
             },
             "description": "Created"
@@ -4924,7 +5086,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSecurityGroupResp"
+                }
               }
             },
             "description": "Created"
