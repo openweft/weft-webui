@@ -91,10 +91,16 @@ go run . --weft-socket "ssh://you@dc-a.example/.vzd/vzd.sock"
 
 **Wired so far** :
 
-| Resource    | Status | Backing RPC                              |
-| ----------- | ------ | ---------------------------------------- |
-| Projects    | live   | `VzdService.ListProjects`                |
-| everything else | mock | -                                    |
+| Resource         | Status | Backing RPC                          |
+| ---------------- | ------ | ------------------------------------ |
+| Projects         | live   | `VzdService.ListProjects`            |
+| microVMs         | live   | `VzdService.ListVMs`                 |
+| Networks         | live   | `VzdService.ListNetworks`            |
+| Hosts            | live   | `VzdService.ListHosts`               |
+| Volumes          | live   | `VzdService.ListVolumes`             |
+| Users            | live   | `VzdService.ListUsers`               |
+| Security Groups  | live   | `VzdService.ListSecurityGroups`      |
+| everything else  | mock   | —                                    |
 
 When a live RPC fails (daemon unreachable, permission denied, …) the handler
 returns **502 Bad Gateway** with the underlying error message — easier to
