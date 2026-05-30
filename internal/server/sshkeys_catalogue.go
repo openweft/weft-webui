@@ -16,14 +16,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/openweft/weft-webui/internal/auth"
 )
 
 // SSHKey is one named entry in the catalogue. Fingerprint is
@@ -207,113 +202,8 @@ func sshKeyRows(ctx context.Context) []map[string]any {
 	return out
 }
 
-// ---- handlers ----
-
-func handleListSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
-	ks, err := sshKeysCatalogue.List(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if ks == nil {
-		ks = []SSHKey{}
-	}
-	writeJSON(w, http.StatusOK, ks)
-}
-
-func handleGetSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
-	k, ok := sshKeysCatalogue.Get(r.Context(), r.PathValue("name"))
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such key"})
-		return
-	}
-	writeJSON(w, http.StatusOK, k)
-}
-
-// requireSSHKeyWriter is the server-side gate for the write surface.
-// Now that the routes are mounted on both ports (so regular users see
-// the page in the sidebar), we have to enforce admin / tenant-admin
-// in the handler itself ; the route-level gate from before only
-// worked because only admins ever hit the admin port. Returns true
-// when the caller is allowed and the handler can proceed ; on a deny
-// it writes a 403 with a message + returns false.
-func requireSSHKeyWriter(w http.ResponseWriter, r *http.Request) bool {
-	u := auth.UserFromContext(r.Context())
-	if u == nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "ssh-keys writes require an authenticated user",
-		})
-		return false
-	}
-	if isClusterAdmin(u) || tenantsDB.isAnyTenantAdmin(u.Email) {
-		return true
-	}
-	writeJSON(w, http.StatusForbidden, map[string]string{
-		"error": "ssh-keys writes are restricted to tenant admins (or cluster admins) ; ask yours to add the key, or import via your own tenant's account.",
-	})
-	return false
-}
-
-// handleSetSSHKeyCatalogue : tenant-admin (or cluster-admin) only.
-// Validates the public_key against the closed type whitelist and
-// computes the fingerprint server-side ; clients can't pre-fill it.
-// Description / Source / SourceAccount are pass-through.
-func handleSetSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
-	if !requireSSHKeyWriter(w, r) {
-		return
-	}
-	var body SSHKey
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	body.Name = strings.TrimSpace(body.Name)
-	if body.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
-		return
-	}
-	typ, comment, fp, ok := parseSSHLine(body.PublicKey)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "public_key must be '<type> <base64> [comment]' with a known algorithm",
-		})
-		return
-	}
-	_ = typ // kept available for future filtering ; not part of the stored shape
-	if body.Description == "" {
-		// Fall back to the OpenSSH comment when the operator didn't
-		// add a description — common case for imported keys.
-		body.Description = comment
-	}
-	if body.Source == "" {
-		body.Source = "manual"
-	}
-	body.Fingerprint = fp
-	body.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if u := auth.UserFromContext(r.Context()); u != nil {
-		body.UpdatedBy = u.Email
-		if body.UpdatedBy == "" {
-			body.UpdatedBy = u.Subject
-		}
-	}
-	if err := sshKeysCatalogue.Set(r.Context(), body); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, body)
-}
-
-func handleDeleteSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
-	if !requireSSHKeyWriter(w, r) {
-		return
-	}
-	name := r.PathValue("name")
-	if err := sshKeysCatalogue.Delete(r.Context(), name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
-}
+// (Catalogue handlers moved to huma — see api_sshkeys.go. The
+// write-gate logic survives as requireSSHKeyWriterCtx there.)
 
 // ErrUnknownSSHKey is what assignVMKeys returns when a referenced
 // name doesn't resolve. Exported because the per-VM assignment

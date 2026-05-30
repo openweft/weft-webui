@@ -17,11 +17,12 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/danielgtaylor/huma/v2 v2.38.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/grpc-transports/ssh v0.0.0-00010101000000-000000000000 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
-	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -30,7 +31,7 @@ require (
 	github.com/zclconf/go-cty v1.18.1 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/mod v0.34.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect

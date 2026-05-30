@@ -31,13 +31,9 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
 )
 
@@ -286,73 +282,4 @@ func scriptRows(ctx context.Context) []map[string]any {
 	return out
 }
 
-// ---- handlers ----
-
-// handleListScripts — GET /api/scripts (both ports).
-func handleListScripts(w http.ResponseWriter, r *http.Request) {
-	ss, err := scriptsCatalogue.List(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if ss == nil {
-		ss = []Script{}
-	}
-	writeJSON(w, http.StatusOK, ss)
-}
-
-// handleGetScript — GET /api/scripts/{name}. The body is the heavy
-// payload ; the modal calls this only when the operator picks a
-// script (lazy load to avoid sending every script's body in the
-// /api/scripts listing).
-func handleGetScript(w http.ResponseWriter, r *http.Request) {
-	s, ok := scriptsCatalogue.Get(r.Context(), r.PathValue("name"))
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such script"})
-		return
-	}
-	writeJSON(w, http.StatusOK, s)
-}
-
-// handleSetScript — POST /api/scripts (create or update).
-// Admin-gated by the registry's ScopeAdmin handling ; the route is
-// only mounted on the admin listener.
-//
-// The handler stamps UpdatedAt + UpdatedBy server-side so the client
-// can't lie about provenance.
-func handleSetScript(w http.ResponseWriter, r *http.Request) {
-	var body Script
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	body.Name = strings.TrimSpace(body.Name)
-	if body.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
-		return
-	}
-	body.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if u := auth.UserFromContext(r.Context()); u != nil {
-		body.UpdatedBy = u.Email
-		if body.UpdatedBy == "" {
-			body.UpdatedBy = u.Subject
-		}
-	}
-	if err := scriptsCatalogue.Set(r.Context(), body); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, body)
-}
-
-// handleDeleteScript — DELETE /api/scripts/{name}. Idempotent : a
-// missing script is 200, not 404, so a retried client doesn't see a
-// confusing inconsistency.
-func handleDeleteScript(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if err := scriptsCatalogue.Delete(r.Context(), name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
-}
+// (Scripts handlers moved to huma — see api_scripts.go.)
