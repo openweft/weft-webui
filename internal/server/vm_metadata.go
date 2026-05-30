@@ -1,4 +1,7 @@
-// vm_metadata.go — per-VM property bag + UEFI NVRAM variables editor.
+// vm_metadata.go — per-VM property bag + UEFI NVRAM variables stores.
+//
+// The HTTP handlers moved to api_microvm_metadata.go (huma) ; this
+// file owns the in-memory stores + the seed data.
 //
 // Two related-but-distinct stores share this file :
 //
@@ -17,19 +20,11 @@
 //       BootServiceAccess, RuntimeAccess, …
 //
 // Both stores are in-memory mocks today. Once weft-agent grows the
-// matching RPCs (`SetVMProperty` / `ListVMProperties` / `SetUEFIVar`
-// / `ListUEFIVars`) and the in-guest weft-vm-agent learns the
-// property subject, this binary becomes a thin proxy — the wire shape
-// stays.
+// matching RPCs and the in-guest weft-vm-agent learns the property
+// subject, this file becomes a thin live-first wrapper.
 package server
 
-import (
-	"encoding/json"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
-)
+import "sync"
 
 // ---- Properties --------------------------------------------------
 
@@ -57,68 +52,6 @@ func seedVMProperties() map[string][]VMProperty {
 			{Key: "tier", Value: "production", GuestReadable: true, UpdatedAt: now},
 		},
 	}
-}
-
-// handleListVMProperties — GET /api/microvms/{name}/properties
-func handleListVMProperties(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	vmPropsMu.Lock()
-	defer vmPropsMu.Unlock()
-	props := vmProps[name]
-	if props == nil {
-		props = []VMProperty{}
-	}
-	writeJSON(w, http.StatusOK, props)
-}
-
-// handleSetVMProperty — POST /api/microvms/{name}/properties
-// Body : {key, value, guest_readable}. Setting an existing key
-// replaces the value + bumps UpdatedAt ; the operation is idempotent
-// at the (key) granularity. Returns the stored row.
-func handleSetVMProperty(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var body VMProperty
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	body.Key = strings.TrimSpace(body.Key)
-	if body.Key == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key is required"})
-		return
-	}
-	body.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	vmPropsMu.Lock()
-	defer vmPropsMu.Unlock()
-	props := vmProps[name]
-	for i, p := range props {
-		if p.Key == body.Key {
-			props[i] = body
-			vmProps[name] = props
-			writeJSON(w, http.StatusOK, body)
-			return
-		}
-	}
-	vmProps[name] = append(props, body)
-	writeJSON(w, http.StatusCreated, body)
-}
-
-// handleDeleteVMProperty — DELETE /api/microvms/{name}/properties/{key}
-func handleDeleteVMProperty(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	key := r.PathValue("key")
-	vmPropsMu.Lock()
-	defer vmPropsMu.Unlock()
-	props := vmProps[name]
-	for i, p := range props {
-		if p.Key == key {
-			vmProps[name] = append(props[:i], props[i+1:]...)
-			writeJSON(w, http.StatusOK, map[string]any{"removed": key})
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such property"})
 }
 
 // ---- UEFI variables ----------------------------------------------
@@ -160,80 +93,6 @@ func seedUEFIVars() map[string][]UEFIVar {
 				Attributes: []string{"BootServiceAccess", "RuntimeAccess"}, UpdatedAt: now},
 		},
 	}
-}
-
-func handleListUEFIVars(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	uefiVarsMu.Lock()
-	defer uefiVarsMu.Unlock()
-	v := uefiVars[name]
-	if v == nil {
-		v = []UEFIVar{}
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-// handleSetUEFIVar — POST /api/microvms/{name}/uefi-vars
-//
-// Body : {namespace, name, value_hex, attributes}. (namespace, name)
-// is the natural key — an existing pair is replaced. Empty namespace
-// defaults to the EFI Global Variable GUID so the common case
-// (BootOrder, SecureBoot, …) doesn't require typing the GUID.
-func handleSetUEFIVar(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var body UEFIVar
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	body.Name = strings.TrimSpace(body.Name)
-	if body.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
-		return
-	}
-	if strings.TrimSpace(body.Namespace) == "" {
-		body.Namespace = efiGlobalNS
-	}
-	body.ValueHex = strings.ReplaceAll(strings.TrimSpace(body.ValueHex), " ", "")
-	if !validHex(body.ValueHex) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "value_hex must be a (possibly empty) sequence of hex pairs",
-		})
-		return
-	}
-	body.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	uefiVarsMu.Lock()
-	defer uefiVarsMu.Unlock()
-	vars := uefiVars[name]
-	for i, v := range vars {
-		if v.Namespace == body.Namespace && v.Name == body.Name {
-			vars[i] = body
-			uefiVars[name] = vars
-			writeJSON(w, http.StatusOK, body)
-			return
-		}
-	}
-	uefiVars[name] = append(vars, body)
-	writeJSON(w, http.StatusCreated, body)
-}
-
-// handleDeleteUEFIVar — DELETE /api/microvms/{name}/uefi-vars/{ns}/{varname}
-func handleDeleteUEFIVar(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	ns := r.PathValue("ns")
-	varname := r.PathValue("varname")
-	uefiVarsMu.Lock()
-	defer uefiVarsMu.Unlock()
-	vars := uefiVars[name]
-	for i, v := range vars {
-		if v.Namespace == ns && v.Name == varname {
-			uefiVars[name] = append(vars[:i], vars[i+1:]...)
-			writeJSON(w, http.StatusOK, map[string]any{"removed": varname})
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such variable"})
 }
 
 // validHex returns true when s is an even-length string of [0-9a-fA-F].

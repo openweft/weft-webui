@@ -1,8 +1,11 @@
-// sshkeys.go — per-VM SSH-key ASSIGNMENT store + endpoints.
+// sshkeys.go — per-VM SSH-key ASSIGNMENT store + resolver.
+//
+// The HTTP handlers moved to api_microvm_metadata.go (huma) ; this
+// file owns the in-memory assignment map + the name→catalogue
+// resolver used at read time.
 //
 // Operators define keys once in the catalogue (sshkeys_catalogue.go)
-// and assign them to VMs BY NAME from the drawer. This file owns the
-// assignment map and the resolution at read time. The wire to the
+// and assign them to VMs BY NAME from the drawer. The wire to the
 // in-guest weft-vm-agent is unchanged : the host resolves names to
 // OpenSSH lines before publishing on weft.sshkeys.<vmID>, the guest
 // still sees the same KeySet shape (openweft/weft-vm-agent commit
@@ -11,12 +14,13 @@
 // Storage shape :
 //
 //	vmKeyAssignments map[vmName][]catalogueName
+//	vmKeyAddedAt     map[vmName]map[catalogueName]RFC3339
 //
 // Read path : iterate the names, GET from catalogue, project to the
 // existing VMSSHKey response shape (so the SPA's render code didn't
 // have to change). A name that no longer resolves (catalogue entry
-// deleted) is skipped + a warning logged — VMs lose access on the
-// next publish, which is the intended semantic.
+// deleted) is skipped silently — the VM's effective key set updates
+// on the next host publish, no stale entries leak.
 package server
 
 import (
@@ -25,8 +29,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
-	"net/http"
 	"sync"
 	"time"
 )
@@ -34,10 +36,10 @@ import (
 func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // VMSSHKey is the wire shape returned for one assigned key. Fields
-// other than Name are resolved from the catalogue at read time ; the
-// SPA already renders this shape.
+// other than Name + AddedAt are resolved from the catalogue at read
+// time ; the SPA already renders this shape.
 type VMSSHKey struct {
-	Name        string `json:"name"`        // catalogue name (new)
+	Name        string `json:"name"`        // catalogue name
 	Fingerprint string `json:"fingerprint"` // resolved from catalogue
 	Type        string `json:"type"`        // resolved
 	PublicKey   string `json:"public_key"`  // resolved
@@ -103,156 +105,4 @@ func resolveVMKey(ctx interface{}, name, addedAt string) (VMSSHKey, bool) {
 		Comment:     comment,
 		AddedAt:     addedAt,
 	}, true
-}
-
-// ---- handlers ----
-
-// handleListVMKeys — GET /api/microvms/{name}/keys
-// Returns the resolved assignment list. Names that no longer resolve
-// (catalogue entry deleted) are silently skipped — the VM's effective
-// key set updates on the next host publish, no stale entries leak.
-func handleListVMKeys(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	vmKeysMu.Lock()
-	names := append([]string(nil), vmKeyAssignments[name]...)
-	addedMap := map[string]string{}
-	for k, v := range vmKeyAddedAt[name] {
-		addedMap[k] = v
-	}
-	vmKeysMu.Unlock()
-
-	out := make([]VMSSHKey, 0, len(names))
-	for _, cn := range names {
-		k, ok := resolveVMKey(nil, cn, addedMap[cn])
-		if !ok {
-			continue
-		}
-		out = append(out, k)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-// handleAddVMKey — POST /api/microvms/{name}/keys  {"name": "alice-laptop"}.
-// Assigns the named catalogue entry to this VM. Rejects unknown names
-// with a 400 + the catalogue's name in the error so the operator can
-// see the typo. Idempotent : re-assigning a name that's already on
-// the VM is a no-op (200, no duplicate stamp).
-func handleAddVMKey(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var body struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	if body.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "name is required (the catalogue entry to assign)",
-		})
-		return
-	}
-	if _, ok := sshKeysCatalogue.Get(r.Context(), body.Name); !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "no such key in catalogue : " + body.Name + " — create it on the SSH Keys page first",
-		})
-		return
-	}
-
-	vmKeysMu.Lock()
-	defer vmKeysMu.Unlock()
-	for _, existing := range vmKeyAssignments[name] {
-		if existing == body.Name {
-			// idempotent : already assigned
-			addedAt := ""
-			if vmKeyAddedAt[name] != nil {
-				addedAt = vmKeyAddedAt[name][body.Name]
-			}
-			k, _ := resolveVMKey(nil, body.Name, addedAt)
-			writeJSON(w, http.StatusOK, k)
-			return
-		}
-	}
-	vmKeyAssignments[name] = append(vmKeyAssignments[name], body.Name)
-	if vmKeyAddedAt[name] == nil {
-		vmKeyAddedAt[name] = map[string]string{}
-	}
-	now := nowRFC3339()
-	vmKeyAddedAt[name][body.Name] = now
-	k, _ := resolveVMKey(nil, body.Name, now)
-	writeJSON(w, http.StatusCreated, k)
-}
-
-// handleSetVMKeyAssignments — PUT /api/microvms/{name}/keys  {"names": [...]}
-// Replace-set semantics. Unknown names cause the whole call to fail
-// with the offender in the error message — partial saves would leave
-// the VM in a state the operator didn't pick.
-func handleSetVMKeyAssignments(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var body struct {
-		Names []string `json:"names"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	for _, n := range body.Names {
-		if _, ok := sshKeysCatalogue.Get(r.Context(), n); !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "no such key in catalogue : " + n,
-			})
-			return
-		}
-	}
-
-	vmKeysMu.Lock()
-	defer vmKeysMu.Unlock()
-	// Preserve AddedAt for names that were already assigned ; stamp
-	// new ones with now.
-	old := map[string]string{}
-	if vmKeyAddedAt[name] != nil {
-		old = vmKeyAddedAt[name]
-	}
-	fresh := map[string]string{}
-	now := nowRFC3339()
-	for _, n := range body.Names {
-		if t, ok := old[n]; ok {
-			fresh[n] = t
-		} else {
-			fresh[n] = now
-		}
-	}
-	vmKeyAssignments[name] = append([]string(nil), body.Names...)
-	vmKeyAddedAt[name] = fresh
-
-	out := make([]VMSSHKey, 0, len(body.Names))
-	for _, n := range body.Names {
-		if k, ok := resolveVMKey(nil, n, fresh[n]); ok {
-			out = append(out, k)
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-// handleRemoveVMKey — DELETE /api/microvms/{name}/keys/{key_name}.
-// {key_name} is the catalogue name (not the fingerprint anymore). The
-// underlying SPA helper takes care of URL-encoding for names that
-// carry "/" (e.g. "gh:alice/0" from a GitHub import).
-func handleRemoveVMKey(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	keyName := r.PathValue("key_name")
-	vmKeysMu.Lock()
-	defer vmKeysMu.Unlock()
-	assigned := vmKeyAssignments[name]
-	for i, n := range assigned {
-		if n == keyName {
-			vmKeyAssignments[name] = append(assigned[:i], assigned[i+1:]...)
-			if vmKeyAddedAt[name] != nil {
-				delete(vmKeyAddedAt[name], keyName)
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"removed": keyName})
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such assignment"})
 }
