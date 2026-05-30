@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getMe, setProject, logout, onAdminUI, type Me } from '../api';
+  import { getMe, setScope, logout, onAdminUI, type Me, type ScopeEntry } from '../api';
 
   let { title }: { title: string } = $props();
 
@@ -13,55 +13,78 @@
     localStorage.setItem('weft-theme', theme);
   });
 
-  // /api/me drives the user chip + the available projects. Falls back
-  // to a placeholder while the request is in flight so the header
-  // doesn't jump.
   let me = $state<Me | null>(null);
   let adminUI = $state(false);          // which listener served us
+
+  // Selected scope mirrors me.tenant / me.project once /api/me lands.
+  // Empty strings are intentional :
+  //   tenant=""             → "(all tenants)" — cluster admin only
+  //   tenant set, project="" → tenant-aggregate
+  //   both set              → project-scoped
+  let tenant = $state('');
   let project = $state('');
-  const projects = ['team-alpha', 'team-beta', 'research']; // until ListProjects exposes scoped lists
 
   $effect(() => {
     getMe()
       .then((u) => {
         me = u;
-        project = u.project || projects[0];
+        tenant = u.tenant;
+        project = u.project;
       })
       .catch(() => { /* api.ts already triggered the login redirect */ });
     onAdminUI().then((v) => { adminUI = v; });
   });
 
-  // Badge = persona-then-role :
-  //   - on the admin listener → SUPERADMIN ("you're on the cluster-wide UI")
-  //   - on the user listener with admin rights → ADMIN ("you're acting
-  //     as a regular user but with admin capabilities somewhere")
-  //   - otherwise → no badge
-  // cluster_admin and tenant_admin both count as "admin rights"
-  // because a cluster admin is implicitly tenant admin of every tenant.
+  // The user's tenants from /api/me. Cluster admins additionally see
+  // "(all)" so they can keep their global view.
+  let tenantOptions = $derived<{ value: string; label: string }[]>(
+    [
+      ...(adminUI || me?.cluster_admin ? [{ value: '', label: '(all tenants)' }] : []),
+      ...(me?.scopes ?? []).map((s) => ({ value: s.name, label: s.name })),
+    ],
+  );
+
+  // Projects for the selected tenant, plus an "(all projects)" entry
+  // (tenant-aggregate view). Empty when no tenant is selected.
+  let projectOptions = $derived.by<{ value: string; label: string }[]>(() => {
+    if (!tenant) return [];
+    const scope = me?.scopes.find((s) => s.name === tenant);
+    if (!scope) return [];
+    return [
+      { value: '', label: '(all projects)' },
+      ...scope.projects.map((p) => ({ value: p, label: p })),
+    ];
+  });
+
+  async function chooseTenant(t: string) {
+    tenant = t;
+    // Picking a different tenant invalidates the project (unless empty,
+    // meaning "all tenants" where project must also be empty).
+    project = '';
+    if (me?.dev) return; // dev mode : no persistent cookie
+    try { await setScope(tenant, project); } catch { /* surface elsewhere */ }
+  }
+  async function chooseProject(p: string) {
+    project = p;
+    if (me?.dev) return;
+    try { await setScope(tenant, project); } catch { /* surface elsewhere */ }
+  }
+
+  // Badge = persona-then-role.
   let badge = $derived(
     adminUI ? 'superadmin'
       : me?.cluster_admin || me?.tenant_admin ? 'admin'
       : null,
   );
 
-  // Title reflects the badge so the operator can spot context on the
-  // OS task switcher without expanding the window.
   $effect(() => {
     document.title = badge ? `Weft · ${badge}` : 'Weft';
   });
-
-  async function chooseProject(p: string) {
-    project = p;
-    if (me?.dev) return; // dev mode : no persistent session to update
-    try { await setProject(p); } catch { /* surface elsewhere */ }
-  }
 </script>
 
 <header class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100 px-6">
   <h1 class="text-base font-semibold">{title}</h1>
 
-  <!-- Persona badge — set by which listener served us (admin vs user),
-       refined by the user's admin rights when they're on the user UI. -->
   {#if badge === 'superadmin'}
     <span class="badge badge-error badge-sm uppercase tracking-wide" title="Cluster-wide UI">superadmin</span>
   {:else if badge === 'admin'}
@@ -72,20 +95,51 @@
   {/if}
 
   <div class="ml-auto flex items-center gap-2">
-    <!-- Project / tenant scope -->
+    <!-- Tenant selector (cascades into project). -->
     <div class="dropdown dropdown-end">
       <div tabindex="0" role="button" class="btn btn-sm btn-ghost gap-1">
-        <span class="text-base-content/60">project:</span>
-        <span class="font-medium">{project || '—'}</span>
+        <span class="text-base-content/60">tenant:</span>
+        <span class="font-medium">{tenant || (tenantOptions[0]?.label ?? '—')}</span>
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
           <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
-      <ul class="menu dropdown-content z-10 mt-2 w-44 rounded-box bg-base-100 p-2 shadow">
-        {#each projects as p (p)}
-          <li><button class:menu-active={p === project} onclick={() => chooseProject(p)}>{p}</button></li>
+      <ul class="menu dropdown-content z-10 mt-2 w-52 rounded-box bg-base-100 p-2 shadow">
+        {#each tenantOptions as opt (opt.value)}
+          <li>
+            <button class:menu-active={opt.value === tenant}
+              onclick={() => chooseTenant(opt.value)}>{opt.label}</button>
+          </li>
         {/each}
+        {#if tenantOptions.length === 0}
+          <li class="disabled px-2 py-1 text-xs text-base-content/50">no tenants</li>
+        {/if}
       </ul>
+    </div>
+
+    <!-- Project selector (disabled when tenant is empty). -->
+    <div class="dropdown dropdown-end">
+      <div tabindex="0" role="button"
+        class="btn btn-sm btn-ghost gap-1"
+        class:btn-disabled={!tenant}
+        aria-disabled={!tenant}
+      >
+        <span class="text-base-content/60">project:</span>
+        <span class="font-medium">{project || (tenant ? '(all)' : '—')}</span>
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      {#if tenant}
+        <ul class="menu dropdown-content z-10 mt-2 w-52 rounded-box bg-base-100 p-2 shadow">
+          {#each projectOptions as opt (opt.value)}
+            <li>
+              <button class:menu-active={opt.value === project}
+                onclick={() => chooseProject(opt.value)}>{opt.label}</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </div>
 
     <!-- Theme toggle -->

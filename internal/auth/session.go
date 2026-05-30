@@ -24,11 +24,17 @@ import (
 
 // SessionPayload is the JSON blob baked into the cookie. Stays small ;
 // the gRPC token is the heaviest field.
+//
+// Tenant + Project together form the user's "scope". Both can be empty :
+//   - tenant="" project=""  → cluster-wide view (cluster admin only)
+//   - tenant="acme" project="" → tenant-aggregate view (all projects of acme)
+//   - tenant="acme" project="team-alpha" → project-scoped view
 type SessionPayload struct {
 	Subject      string   `json:"sub"`
 	Email        string   `json:"email,omitempty"`
 	Name         string   `json:"name,omitempty"`
 	Groups       []string `json:"groups,omitempty"`
+	Tenant       string   `json:"tenant,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	AccessToken  string   `json:"at,omitempty"`
 	IDToken      string   `json:"it,omitempty"`
@@ -178,6 +184,7 @@ func payloadToUser(p *SessionPayload) *User {
 		Email:       p.Email,
 		Name:        p.Name,
 		Groups:      p.Groups,
+		Tenant:      p.Tenant,
 		Project:     p.Project,
 		AccessToken: p.AccessToken,
 		IDToken:     p.IDToken,
@@ -192,6 +199,7 @@ func userToPayload(u *User) *SessionPayload {
 		Email:        u.Email,
 		Name:         u.Name,
 		Groups:       u.Groups,
+		Tenant:       u.Tenant,
 		Project:      u.Project,
 		AccessToken:  u.AccessToken,
 		IDToken:      u.IDToken,
