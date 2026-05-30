@@ -17,6 +17,11 @@
   let resourceFilter = $state('');
   // Mutually exclusive quick-filter chips ; null = no quick filter.
   let chip = $state<'' | 'errors' | 'mutations' | 'state'>('');
+  // Filter by the OIDC `sub` that triggered the event. weft-agent
+  // carries this in meta.actor on every mutation-derived event ; the
+  // mock heartbeat synthesises one too so the dropdown isn't empty in
+  // dev. Empty = all actors.
+  let actorFilter = $state('');
 
   // Map each chip to a predicate. Errors = anything that contains
   // `.error` or `.failed` or has an "error" meta key. Mutations =
@@ -54,6 +59,7 @@
       if (kindQ && !e.kind.includes(kindQ.toLowerCase())) return false;
       if (subjectQ && !(e.subject ?? '').toLowerCase().includes(subjectQ.toLowerCase())) return false;
       if (resourceFilter && eventToResource(e.kind) !== resourceFilter) return false;
+      if (actorFilter && (e.meta?.actor ?? '') !== actorFilter) return false;
       return true;
     });
   });
@@ -65,6 +71,17 @@
     for (const e of all) {
       const r = eventToResource(e.kind);
       if (r) s.add(r);
+    }
+    return [...s].sort();
+  });
+
+  // Same idea for the actor dropdown : populated from observed events
+  // so the operator never picks a name with zero hits.
+  let actors = $derived.by<string[]>(() => {
+    const s = new Set<string>();
+    for (const e of all) {
+      const a = e.meta?.actor;
+      if (typeof a === 'string' && a) s.add(a);
     }
     return [...s].sort();
   });
@@ -107,6 +124,10 @@
     <select class="select select-sm select-bordered" bind:value={resourceFilter}>
       <option value="">all resources</option>
       {#each resources as r (r)}<option value={r}>{r}</option>{/each}
+    </select>
+    <select class="select select-sm select-bordered" bind:value={actorFilter} title="Filter by actor (OIDC sub)">
+      <option value="">all actors</option>
+      {#each actors as a (a)}<option value={a}>{a}</option>{/each}
     </select>
     <button class="btn btn-sm btn-ghost" onclick={clearEventFeed} disabled={all.length === 0}>
       Clear

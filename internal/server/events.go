@@ -96,7 +96,9 @@ func streamLive(ctx context.Context, w http.ResponseWriter, flusher http.Flusher
 
 // streamMock emits a short demo heartbeat so the SPA's toast bar
 // proves the wiring works in dev. Cycles through a few event kinds
-// every 6 seconds.
+// every 6 seconds. Each event also carries a rotating mock `actor`
+// (the OIDC `sub` that triggered the action) in meta so the Activity
+// page's "by user" filter has something to bite on.
 func streamMock(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, prefixes []string) {
 	sseComment(w, flusher, "ready · mock · 6s heartbeat")
 	demo := []map[string]any{
@@ -105,6 +107,15 @@ func streamMock(ctx context.Context, w http.ResponseWriter, flusher http.Flusher
 		{"kind": "scheduling-rule.compliant", "subject": "nats-quorum", "project": "platform"},
 		{"kind": "dns.record.upserted", "subject": "web-1.team-alpha.acme.weft.internal", "project": "team-alpha"},
 		{"kind": "lb.backends.changed", "subject": "web-prod", "project": "team-alpha"},
+	}
+	// Mock actors : the agent will carry the real OIDC `sub` in meta on
+	// every mutation-derived event ; the heartbeat synthesises one so
+	// the SPA's filter chips/dropdown have variety even pre-wiring.
+	actors := []string{
+		"alice@acme.example",
+		"bob@acme.example",
+		"carol@platform.example",
+		"system",
 	}
 	t := time.NewTicker(6 * time.Second)
 	defer t.Stop()
@@ -115,12 +126,21 @@ func streamMock(ctx context.Context, w http.ResponseWriter, flusher http.Flusher
 			return
 		case <-t.C:
 			ev := demo[i%len(demo)]
+			actor := actors[i%len(actors)]
 			i++
 			if !kindMatches(prefixes, ev["kind"].(string)) {
 				continue
 			}
-			ev["ts"] = time.Now().UTC().Format(time.RFC3339Nano)
-			sseData(w, flusher, ev)
+			// Fresh copy : the demo map is shared across iterations,
+			// and we don't want a previous tick's meta leaking forward.
+			out := map[string]any{
+				"ts":      time.Now().UTC().Format(time.RFC3339Nano),
+				"kind":    ev["kind"],
+				"subject": ev["subject"],
+				"project": ev["project"],
+				"meta":    map[string]string{"actor": actor},
+			}
+			sseData(w, flusher, out)
 		}
 	}
 }
