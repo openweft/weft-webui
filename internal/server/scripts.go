@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // Script is the wire shape both /api/scripts and /api/resources/scripts
@@ -153,6 +154,107 @@ func (m *memScriptCatalogue) Delete(ctx context.Context, name string) error {
 		}
 	}
 	return nil // idempotent : missing key is not an error
+}
+
+// liveScriptCatalogue wraps wclient.{List,Get,Set,Delete}Script with
+// a transparent fallback to the in-memory seed on Unimplemented.
+// Same shape as liveFlavorCatalogue, with two differences :
+//
+//   - Set / Delete are real writes (vs flavor's read-only catalogue) ;
+//     they go straight to the agent and don't fall back to mem (a
+//     pretend-success on an Unimplemented agent would be a lie that
+//     bites later when the operator's edit silently vanishes).
+//   - Get falls back to the cached List output then to the seed —
+//     same logic as the flavor wrapper so the CreateVMModal picker
+//     stays usable when the agent's slow / older / Unimplemented.
+type liveScriptCatalogue struct {
+	live *wclient.Client
+	mem  *memScriptCatalogue
+
+	mu     sync.Mutex
+	cached []Script
+}
+
+func newLiveScriptCatalogue(live *wclient.Client) *liveScriptCatalogue {
+	return &liveScriptCatalogue{
+		live: live,
+		mem:  newMemScriptCatalogue(),
+	}
+}
+
+func (l *liveScriptCatalogue) List(ctx context.Context) ([]Script, error) {
+	rows, _, err := l.live.ListScripts(ctx, wclient.ListOpts{})
+	if err != nil {
+		if wclient.IsUnimplemented(err) {
+			return l.mem.List(ctx)
+		}
+		return nil, err
+	}
+	out := make([]Script, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, scriptFromRow(r))
+	}
+	l.mu.Lock()
+	l.cached = append(l.cached[:0], out...)
+	l.mu.Unlock()
+	dup := make([]Script, len(out))
+	copy(dup, out)
+	return dup, nil
+}
+
+func (l *liveScriptCatalogue) Get(ctx context.Context, name string) (Script, bool) {
+	row, err := l.live.GetScript(ctx, name)
+	if err == nil {
+		return scriptFromRow(row), true
+	}
+	if wclient.IsUnimplemented(err) {
+		l.mu.Lock()
+		cached := append([]Script(nil), l.cached...)
+		l.mu.Unlock()
+		for _, s := range cached {
+			if s.Name == name {
+				return s, true
+			}
+		}
+		return l.mem.Get(ctx, name)
+	}
+	return Script{}, false
+}
+
+// Set goes straight to the agent ; an Unimplemented response is
+// surfaced as a real error rather than swallowed. A silent
+// in-memory accept would be a lie : the operator would see "saved"
+// in the dashboard, then notice nothing took effect, and the bug
+// hunt is brutal. Better to break loudly.
+func (l *liveScriptCatalogue) Set(ctx context.Context, s Script) error {
+	return l.live.SetScript(ctx, s.Name, s.Description, s.Body)
+}
+
+func (l *liveScriptCatalogue) Delete(ctx context.Context, name string) error {
+	return l.live.DeleteScript(ctx, name)
+}
+
+// scriptFromRow lifts the wclient row-shape map back to the typed
+// Script we expose. Defensive on type assertions — bogus rows just
+// yield zeroed fields rather than panicking the catalogue.
+func scriptFromRow(r map[string]any) Script {
+	s := Script{}
+	if v, ok := r["name"].(string); ok {
+		s.Name = v
+	}
+	if v, ok := r["description"].(string); ok {
+		s.Description = v
+	}
+	if v, ok := r["body"].(string); ok {
+		s.Body = v
+	}
+	if v, ok := r["updated_at"].(string); ok {
+		s.UpdatedAt = v
+	}
+	if v, ok := r["updated_by"].(string); ok {
+		s.UpdatedBy = v
+	}
+	return s
 }
 
 // scriptsCatalogue is the process-wide singleton. Today always the in-

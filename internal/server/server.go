@@ -118,14 +118,18 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	metrics = d.Metrics
 	policyStrict = d.PolicyStrict
 
-	// Flip the flavor catalogue to live-first when the agent client
-	// is wired. The mem seed stays as the fallback path inside
-	// liveFlavorCatalogue, so Unimplemented agents still get the
-	// dev rows.
+	// Flip the flavor + script catalogues to live-first when the
+	// agent client is wired. The mem seed stays as the fallback
+	// path inside each wrapper, so Unimplemented agents still get
+	// the dev rows for reads. Writes (Set/Delete) on scripts go
+	// straight through to the agent — masking a write failure
+	// behind a mem pretend-accept would lie to the dashboard.
 	if live != nil {
 		flavorsCatalogue = newLiveFlavorCatalogue(live)
+		scriptsCatalogue = newLiveScriptCatalogue(live)
 	} else {
 		flavorsCatalogue = newMemFlavorCatalogue()
+		scriptsCatalogue = newMemScriptCatalogue()
 	}
 	mux := http.NewServeMux()
 
