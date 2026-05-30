@@ -98,7 +98,7 @@
       <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
       </svg>
-      Upload image
+      Push artifact
     </button>
   </div>
 </div>
@@ -115,9 +115,9 @@
 
 <dialog class="modal" bind:this={dialog}>
   <div class="modal-box max-w-lg">
-    <h3 class="text-lg font-bold">Upload image</h3>
+    <h3 class="text-lg font-bold">Push OCI artifact</h3>
     <p class="mt-1 text-sm text-base-content/60">
-      Push a container image or a raw, multi-architecture disk image to a registry.
+      Push a container image, a raw multi-arch disk, or any OCI-wrapped artifact (chart, model, blob) to a registry.
     </p>
 
     <form class="mt-4 flex flex-col gap-4" onsubmit={submit}>
