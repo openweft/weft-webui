@@ -15,6 +15,28 @@
   let kindQ = $state('');
   let subjectQ = $state('');
   let resourceFilter = $state('');
+  // Mutually exclusive quick-filter chips ; null = no quick filter.
+  let chip = $state<'' | 'errors' | 'mutations' | 'state'>('');
+
+  // Map each chip to a predicate. Errors = anything that contains
+  // `.error` or `.failed` or has an "error" meta key. Mutations =
+  // events whose verb conveys a write (create, delete, attach,
+  // detach, push, change). State = lifecycle transitions
+  // (vm.state.*, scheduling-rule.compliant/drifting/unschedulable).
+  function chipMatch(e: PlatformEvent, c: typeof chip): boolean {
+    if (c === '') return true;
+    if (c === 'errors') {
+      return e.kind.includes('.error') || e.kind.includes('.failed')
+        || !!(e.meta && e.meta.error);
+    }
+    if (c === 'mutations') {
+      return /\.(created|deleted|attached|detached|pushed|changed|updated|started|stopped|allocated|released|mapped|unmapped|upserted)\b/.test(e.kind);
+    }
+    if (c === 'state') {
+      return e.kind.startsWith('vm.state.') || e.kind.startsWith('scheduling-rule.');
+    }
+    return true;
+  }
 
   let all = $state<PlatformEvent[]>([]);
   let connection = $state<'idle' | 'open' | 'error'>('idle');
@@ -28,6 +50,7 @@
 
   let filtered = $derived.by<PlatformEvent[]>(() => {
     return all.filter((e) => {
+      if (!chipMatch(e, chip)) return false;
       if (kindQ && !e.kind.includes(kindQ.toLowerCase())) return false;
       if (subjectQ && !(e.subject ?? '').toLowerCase().includes(subjectQ.toLowerCase())) return false;
       if (resourceFilter && eventToResource(e.kind) !== resourceFilter) return false;
@@ -89,6 +112,28 @@
       Clear
     </button>
   </div>
+</div>
+
+<!-- Quick-filter chip row : mutually exclusive ; click again to clear. -->
+<div class="mt-3 flex items-center gap-2 text-xs">
+  <span class="text-base-content/50">Quick:</span>
+  {#each [
+    { id: 'state',     label: 'Lifecycle' },
+    { id: 'mutations', label: 'Mutations' },
+    { id: 'errors',    label: 'Errors' },
+  ] as c (c.id)}
+    <button
+      class="rounded-box border px-2 py-0.5 hover:bg-base-200"
+      class:border-primary={chip === c.id}
+      class:bg-primary={chip === c.id}
+      class:text-primary-content={chip === c.id}
+      class:border-base-300={chip !== c.id}
+      onclick={() => (chip = chip === c.id ? '' : c.id as typeof chip)}
+    >{c.label}</button>
+  {/each}
+  {#if chip}
+    <button class="text-base-content/60 hover:text-base-content" onclick={() => (chip = '')}>clear</button>
+  {/if}
 </div>
 
 {#if all.length === 0}

@@ -1,5 +1,8 @@
 <script lang="ts">
   import { getMe, setScope, logout, onAdminUI, type Me, type ScopeEntry } from '../api';
+  import HelpModal from './HelpModal.svelte';
+
+  let helpOpen = $state(false);
 
   let { title }: { title: string } = $props();
 
@@ -154,6 +157,20 @@
       {/if}
     </div>
 
+    <!-- Help / shortcuts -->
+    <button
+      class="btn btn-sm btn-ghost btn-circle"
+      aria-label="Help"
+      title="Help (?)"
+      onclick={() => (helpOpen = true)}
+    >
+      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7v.5" />
+        <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none" />
+      </svg>
+    </button>
+
     <!-- Theme toggle -->
     <button
       class="btn btn-sm btn-ghost btn-circle"
@@ -194,3 +211,5 @@
     </div>
   </div>
 </header>
+
+<HelpModal bind:open={helpOpen} />
