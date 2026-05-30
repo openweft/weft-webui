@@ -150,11 +150,21 @@
   onMount(() => window.addEventListener('keydown', onKey));
   onDestroy(() => { window.removeEventListener('keydown', onKey); unsubEvents?.(); });
 
+  // Resources that own a detail drawer ; for these the palette deep-
+  // links straight into the drawer via ?detail=<row-key>. Everything
+  // else lands on the resource table where the operator can drill.
+  const DRAWER_RESOURCES = new Set(['microvms', 'security-groups', 'loadbalancers']);
+
   function pick(r: Result | undefined) {
     if (!r) return;
-    // Navigate to the resource's table ; the operator can drill from
-    // there. Future : pre-select the row in a drawer when applicable.
-    go(r.resourceId);
+    if (DRAWER_RESOURCES.has(r.resourceId)) {
+      // Prefer uuid (stable) ; fall back to name when the row lacks one
+      // (mock rows often do). ResourcePage matches on either.
+      const key = String(r.row.uuid ?? r.row.name ?? '');
+      go(r.resourceId, key ? { detail: key } : undefined);
+    } else {
+      go(r.resourceId);
+    }
     open = false;
     query = '';
   }
