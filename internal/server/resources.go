@@ -236,23 +236,48 @@ var registry = []Resource{
 		// one below it. Backed by either CoreDNS file plugin (zone
 		// transfers) or its etcd plugin (live writes from weft-network's
 		// reconciler when VMs come up).
+		//
+		// `role` distinguishes the zone's place in the DNS hierarchy :
+		//   primary    weft is authoritative ; can serve + push out
+		//   secondary  weft is a slave ; receives AXFR/IXFR from a master
+		//   forward    weft only forwards queries upstream
+		//
+		// `push_target` + `push_state` describe outbound RFC-2136 NS
+		// updates : weft-network can push the primary zones to an
+		// external BIND so the operator's existing public DNS keeps
+		// the in-cluster names without manual edits. Empty target =
+		// no external push (zone stays internal). push_state is one of
+		// `idle`, `pushing`, `synced @<ts>`, `failed: <reason>`.
 		ID: "dns-zones", Label: "DNS Zones", Section: "Network",
-		Columns: cols("name", "Name", "type", "Type",
+		Columns: cols("name", "Name", "role", "Role",
 			"records", "Records", "ttl_default", "Default TTL",
-			"backend", "Backend", "project", "Project", "status", "Status"),
+			"backend", "Backend", "push_target", "Push target",
+			"push_state", "Push state",
+			"project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "weft.internal", "type", "authoritative",
+			row("name", "weft.internal", "role", "primary",
 				"records", 9, "ttl_default", 60, "backend", "coredns",
+				"push_target", "", "push_state", "",
 				"project", "platform", "status", "active"),
-			row("name", "acme.weft.internal", "type", "authoritative",
+			row("name", "acme.weft.internal", "role", "primary",
 				"records", 5, "ttl_default", 60, "backend", "coredns",
+				"push_target", "ns1.acme.example (bind9, tsig acme-key)",
+				"push_state", "synced @ 2026-05-28 16:42:11",
 				"project", "platform", "status", "active"),
-			row("name", "team-alpha.acme.weft.internal", "type", "authoritative",
+			row("name", "team-alpha.acme.weft.internal", "role", "primary",
 				"records", 4, "ttl_default", 30, "backend", "coredns",
+				"push_target", "", "push_state", "",
 				"project", "team-alpha", "status", "active"),
-			row("name", "research.globex.weft.internal", "type", "authoritative",
+			row("name", "research.globex.weft.internal", "role", "primary",
 				"records", 2, "ttl_default", 30, "backend", "coredns",
+				"push_target", "ns1.globex.example (bind9, tsig globex-key)",
+				"push_state", "failed: SERVFAIL from ns1.globex.example",
 				"project", "research", "status", "active"),
+			// One forward example so the dropdown shows the three roles.
+			row("name", "corp.example", "role", "forward",
+				"records", 0, "ttl_default", 0, "backend", "coredns",
+				"push_target", "", "push_state", "",
+				"project", "platform", "status", "active"),
 		},
 	},
 	{
