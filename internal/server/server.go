@@ -209,28 +209,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/microvms/{name}/status", handleVMStatus)
 	mux.HandleFunc("GET /api/microvms/{name}/timings", handleVMTimings)
 	mux.HandleFunc("GET /api/microvms/{name}/logs", handleVMLogs)
-	// SSH keys : dynamic config concern, pushed at runtime (no
-	// create-time CloudInit assumption). The agent forwards each
-	// mutation to a NATS subject the in-guest weft-vm-agent subscribes
-	// to ; this dashboard surface is the operator-facing CRUD.
-	mux.HandleFunc("GET /api/microvms/{name}/keys", handleListVMKeys)
-	mux.HandleFunc("POST /api/microvms/{name}/keys", handleAddVMKey)            // {name: "..."} — assign by catalogue name
-	mux.HandleFunc("PUT /api/microvms/{name}/keys", handleSetVMKeyAssignments)  // {names: [...]} — replace-set
-	mux.HandleFunc("DELETE /api/microvms/{name}/keys/{key_name}", handleRemoveVMKey)
-	// Properties : host-set application-level annotations on a VM. Some
-	// are flagged guest-readable — the in-guest weft-vm-agent reads
-	// those via NATS. Same Subscriber+ApplyFunc concern pattern.
-	mux.HandleFunc("GET /api/microvms/{name}/properties", handleListVMProperties)
-	mux.HandleFunc("POST /api/microvms/{name}/properties", handleSetVMProperty)
-	mux.HandleFunc("DELETE /api/microvms/{name}/properties/{key}", handleDeleteVMProperty)
-	// UEFI NVRAM : per-VM firmware variables. Keyed by (namespace GUID,
-	// name) at the wire ; hypervisor writes the OVMF VARS file. The
-	// dashboard surfaces this as an opaque hex editor with attribute
-	// flags — operators who know what they're editing already speak
-	// hex ; everyone else stays away.
-	mux.HandleFunc("GET /api/microvms/{name}/uefi-vars", handleListUEFIVars)
-	mux.HandleFunc("POST /api/microvms/{name}/uefi-vars", handleSetUEFIVar)
-	mux.HandleFunc("DELETE /api/microvms/{name}/uefi-vars/{ns}/{varname}", handleDeleteUEFIVar)
+	// (Per-VM SSH-key assignments, properties, UEFI vars all moved
+	// to huma — see api_microvm_metadata.go.)
 	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
 	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)
