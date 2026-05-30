@@ -95,6 +95,18 @@
   {/if}
 
   <div class="ml-auto flex items-center gap-2">
+    <!-- Search hint : ⌘K opens the SearchPalette (registered in App.svelte). -->
+    <button class="hidden items-center gap-2 rounded-box border border-base-300 px-2 py-1 text-xs text-base-content/50 hover:text-base-content sm:flex"
+      onclick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+      title="Search (⌘K)"
+    >
+      <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
+      </svg>
+      <span>Search</span>
+      <kbd class="kbd kbd-xs">⌘K</kbd>
+    </button>
+
     <!-- Tenant selector (cascades into project). -->
     <div class="dropdown dropdown-end">
       <div tabindex="0" role="button" class="btn btn-sm btn-ghost gap-1">
