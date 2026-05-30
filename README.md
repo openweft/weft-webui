@@ -94,9 +94,9 @@ resources stay on their mock until they are migrated one at a time.
 task run
 
 # Live mode against a local daemon
-go run . --weft-socket "$HOME/.vzd/vzd.sock"
+go run . --weft-socket "$HOME/.weft/weft.sock"
 # … or an SSH-tunneled socket (see weft-client)
-go run . --weft-socket "ssh://you@dc-a.example/.vzd/vzd.sock"
+go run . --weft-socket "ssh://you@dc-a.example/.weft/weft.sock"
 ```
 
 **Wired so far** :
@@ -209,7 +209,7 @@ head -c 32 /dev/urandom | xxd -p -c 64
 Minimal prod invocation (user UI only) :
 
 ```sh
-WEBUI_WEFT_SOCKET=/var/run/vzd.sock \
+WEBUI_WEFT_SOCKET=/var/run/weft.sock \
 WEBUI_OIDC_ISSUER=https://dex.example/dex \
 WEBUI_OIDC_CLIENT_ID=weft-webui \
 WEBUI_OIDC_CLIENT_SECRET=… \
@@ -223,7 +223,7 @@ Adding the admin UI on a WireGuard endpoint :
 ```sh
 WEBUI_USER_ADDR=:8080 \
 WEBUI_ADMIN_ADDR=10.0.0.1:8088 \      # WG-only ; not 0.0.0.0
-WEBUI_WEFT_SOCKET=/var/run/vzd.sock \
+WEBUI_WEFT_SOCKET=/var/run/weft.sock \
 …                                       # same OIDC + session vars as above
   ./weft-webui
 ```

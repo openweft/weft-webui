@@ -48,8 +48,8 @@ type Client struct {
 }
 
 // New builds a client that will dial socket on the first RPC. socket follows
-// the weft-client convention : a unix path (e.g. ~/.vzd/vzd.sock — the
-// legacy default weft-client still ships with) or an
+// the weft-client convention : a unix path (e.g. ~/.weft/weft.sock —
+// some older deployments still see the legacy ~/.vzd/vzd.sock) or an
 // ssh:// URL routed through the SSH transport.
 func New(socket string) *Client { return &Client{socket: socket} }
 
