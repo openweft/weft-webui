@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { getRows, type ResourceMeta, type Row } from '../api';
+  import { getRowsPage, type ResourceMeta, type Row } from '../api';
   import { lastEvents, eventToResource } from '../events';
   import { routeParams, go } from '../router';
   import ResourceTable from './ResourceTable.svelte';
@@ -23,17 +23,43 @@
 
   let rows = $state<Row[]>([]);
   let loading = $state(true);
+  let loadingMore = $state(false);
   let error = $state('');
   let query = $state('');
+  // Pagination state. nextToken is the opaque cursor handed back by
+  // the server ; total is the server-side row count (post-scope-filter)
+  // so the header can show "X loaded of Y". One page is 50 rows ;
+  // operators bump it via the "Load more" button at the bottom.
+  let nextToken = $state('');
+  let total = $state(0);
+  const pageSize = 50;
 
   function refresh() {
     const id = meta.id;
     loading = true;
     error = '';
-    getRows(id)
-      .then((r) => (rows = r))
+    nextToken = '';
+    getRowsPage(id, { limit: pageSize })
+      .then((p) => { rows = p.rows; nextToken = p.next; total = p.total; })
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
+  }
+
+  // Append the next slice. The button hides itself once nextToken is
+  // empty (handler also no-ops in that case to be extra defensive).
+  async function loadMore() {
+    if (!nextToken || loadingMore) return;
+    loadingMore = true;
+    try {
+      const p = await getRowsPage(meta.id, { limit: pageSize, pageToken: nextToken });
+      rows = [...rows, ...p.rows];
+      nextToken = p.next;
+      total = p.total;
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loadingMore = false;
+    }
   }
 
   // Auto-refresh on live events that target the currently rendered
@@ -180,7 +206,7 @@
   <div>
     <h2 class="text-2xl font-bold">{meta.label}</h2>
     <p class="text-sm text-base-content/60">
-      {filtered.length} of {rows.length}
+      {filtered.length} of {rows.length}{total > rows.length ? ` (${total} total)` : ''}
       {rows.length === 1 ? 'item' : 'items'} · section {meta.section}
     </p>
   </div>
@@ -220,6 +246,21 @@
       resourceId={meta.id} onChange={refresh}
       onSelect={selectableDrawer.includes(meta.id) ? handleSelect : undefined}
       onAction={handleRowAction} />
+    {#if nextToken}
+      <div class="mt-3 flex items-center justify-center">
+        <button
+          class="btn btn-sm btn-ghost gap-2"
+          disabled={loadingMore}
+          onclick={loadMore}
+        >
+          {#if loadingMore}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Load more
+          <span class="text-xs text-base-content/50">
+            ({rows.length} / {total})
+          </span>
+        </button>
+      </div>
+    {/if}
   {/if}
 </div>
 

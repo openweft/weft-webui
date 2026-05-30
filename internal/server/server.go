@@ -11,10 +11,12 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/telemetry"
@@ -397,15 +399,18 @@ type resourceMeta struct {
 	Count   int      `json:"count"`
 }
 
-// liveServe runs a live-mode list callback and writes the result,
-// surfacing any gRPC error as a 502 with the message.
-func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]any, error)) {
+// liveServe runs a live-mode list callback and writes the result through
+// the {rows, next} envelope (writePage). Any gRPC error becomes a 502 with
+// the message. The mock-pagination at this layer is correct as long as the
+// live source returns the full set ; once weft-agent honours limit+token
+// itself the slice in writePage becomes a no-op pass-through.
+func liveServe(w http.ResponseWriter, r *http.Request, fn func() ([]map[string]any, error)) {
 	rows, err := fn()
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, rows)
+	writePage(w, r, rows)
 }
 
 // rowCount returns the live count for a resource (cluster-wide).
@@ -481,10 +486,10 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	}
 	switch id {
 	case "registry":
-		writeJSON(w, http.StatusOK, registryList())
+		writePage(w, r, registryList())
 		return
 	case "buckets":
-		writeJSON(w, http.StatusOK, bucketSummaries())
+		writePage(w, r, bucketSummaries())
 		return
 	case "tenants":
 		// Try live first ; fall back to the in-memory store when the
@@ -495,7 +500,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if live != nil {
 			rows, err := live.ListTenants(r.Context())
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -507,11 +512,11 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
 			filter = u.Email
 		}
-		writeJSON(w, http.StatusOK, tenantsDB.listTenants(filter))
+		writePage(w, r, tenantsDB.listTenants(filter))
 		return
 	case "groups":
 		// Store-only (weft-agent has no ListGroups yet).
-		writeJSON(w, http.StatusOK, tenantsDB.listGroups())
+		writePage(w, r, tenantsDB.listGroups())
 		return
 	case "scheduling-rules":
 		// Live-first via weft-network ; fall back to the in-memory
@@ -520,7 +525,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if liveNet != nil {
 			rows, err := liveNet.ListSchedulingRules(r.Context(), project)
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -532,7 +537,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
 			filter = project
 		}
-		writeJSON(w, http.StatusOK, schedulingDB.list(filter))
+		writePage(w, r, schedulingDB.list(filter))
 		return
 	case "routers":
 		// Live-first via weft-network ; otherwise fall through to the
@@ -541,7 +546,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if liveNet != nil {
 			rows, err := liveNet.ListRouters(r.Context(), project)
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -554,7 +559,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if liveNet != nil {
 			rows, err := liveNet.ListLoadBalancers(r.Context(), project)
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -567,7 +572,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if liveNet != nil {
 			rows, err := liveNet.ListDNSZones(r.Context(), project)
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -582,7 +587,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if liveNet != nil {
 			rows, err := liveNet.ListDNSRecords(r.Context(), "")
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -614,7 +619,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 					}
 					rows = out
 				}
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -623,14 +628,14 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if project != "" {
-			writeJSON(w, http.StatusOK, sharesDB.list(project))
+			writePage(w, r, sharesDB.list(project))
 			return
 		}
 		if tenant != "" {
-			writeJSON(w, http.StatusOK, sharesDB.listByTenant(tenant))
+			writePage(w, r, sharesDB.listByTenant(tenant))
 			return
 		}
-		writeJSON(w, http.StatusOK, sharesDB.list(""))
+		writePage(w, r, sharesDB.list(""))
 		return
 	case "projects":
 		if live != nil {
@@ -645,7 +650,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			filter = u.Email
 		}
 		tenant, _ := scopeFromRequest(r)
-		writeJSON(w, http.StatusOK, tenantsDB.listProjects(filter, tenant))
+		writePage(w, r, tenantsDB.listProjects(filter, tenant))
 		return
 	case "microvms":
 		if live != nil {
@@ -673,7 +678,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Mock path : memberships column comes from the store.
-		writeJSON(w, http.StatusOK, tenantsDB.listUsers())
+		writePage(w, r, tenantsDB.listUsers())
 		return
 	case "security-groups":
 		if live != nil {
@@ -687,7 +692,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if live != nil {
 			rows, err := live.ListFloatingIPs(r.Context(), projectFromRequest(r))
 			if err == nil {
-				writeJSON(w, http.StatusOK, rows)
+				writePage(w, r, rows)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -700,7 +705,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	if rows == nil {
 		rows = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, applyScopeFilter(rows, r))
+	writePage(w, r, applyScopeFilter(rows, r))
 }
 
 // applyScopeFilter narrows a mock row set by the session's (tenant,
@@ -834,4 +839,47 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writePage emits the {rows, next} envelope every /api/resources/:id and
+// related list endpoints share. ?limit=N (1..1000 ; default 50) caps the
+// page. ?page_token is opaque to the caller — today's value is a base64
+// offset since the mock store is in-memory ; once the gRPC source paginates,
+// this becomes a real keyset cursor without any caller-visible change.
+//
+// rows == nil is normalised to `[]` so the SPA never has to guard against
+// "rows might be missing".
+func writePage(w http.ResponseWriter, r *http.Request, rows []map[string]any) {
+	if rows == nil {
+		rows = []map[string]any{}
+	}
+	limit := 50
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 1000 {
+			limit = n
+		}
+	}
+	offset := 0
+	if t := r.URL.Query().Get("page_token"); t != "" {
+		if b, err := base64.RawURLEncoding.DecodeString(t); err == nil {
+			if n, err := strconv.Atoi(string(b)); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+	}
+	if offset > len(rows) {
+		offset = len(rows)
+	}
+	end := offset + limit
+	next := ""
+	if end < len(rows) {
+		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
+	} else {
+		end = len(rows)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"rows":  rows[offset:end],
+		"next":  next,
+		"total": len(rows),
+	})
 }
