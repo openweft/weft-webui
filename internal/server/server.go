@@ -375,8 +375,22 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, bucketSummaries())
 		return
 	case "tenants":
-		// Store-only (weft-agent has no ListTenants yet). User listener filters
-		// to the caller's tenants ; admin sees all.
+		// Try live first ; fall back to the in-memory store when the
+		// daemon returns Unimplemented (the RPC just landed in proto,
+		// the agent side will catch up). The store keeps the user-UI
+		// membership filter on the fallback path ; live mode already
+		// enforces RBAC via the bearer.
+		if live != nil {
+			rows, err := live.ListTenants(r.Context())
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
+				return
+			}
+		}
 		filter := ""
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
 			filter = u.Email
@@ -397,10 +411,37 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, schedulingDB.list(filter))
 		return
 	case "shares":
-		// Store-only (no CreateShare RPC on weft-agent ; CubeFS volumes
-		// are provisioned out-of-band). Scope-filtered : project → exact
-		// match, tenant-only scope → all projects of the tenant.
+		// Live-first ; fall back to the mock store on Unimplemented.
+		// Scope filtering applies on both paths.
 		tenant, project := scopeFromRequest(r)
+		if live != nil {
+			rows, err := live.ListShares(r.Context(), project)
+			if err == nil {
+				if project == "" && tenant != "" {
+					// Re-filter to the tenant's projects since the live
+					// list returned everything we can see.
+					allowed := map[string]struct{}{}
+					for _, p := range tenantsDB.projectsInTenant(tenant) {
+						allowed[p] = struct{}{}
+					}
+					out := rows[:0]
+					for _, r2 := range rows {
+						if p, ok := r2["project"].(string); ok {
+							if _, in := allowed[p]; in {
+								out = append(out, r2)
+							}
+						}
+					}
+					rows = out
+				}
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
+				return
+			}
+		}
 		if project != "" {
 			writeJSON(w, http.StatusOK, sharesDB.list(project))
 			return
@@ -458,6 +499,21 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		if live != nil {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListSecurityGroups(r.Context(), projectFromRequest(r)) })
 			return
+		}
+	case "floating-ips":
+		// Live-first with Unimplemented fallback to the registry's
+		// inline mock rows (the table still surfaces something useful
+		// while the agent catches up with AllocateFloatingIP).
+		if live != nil {
+			rows, err := live.ListFloatingIPs(r.Context(), projectFromRequest(r))
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
+				return
+			}
 		}
 	}
 	rows := res.Rows
