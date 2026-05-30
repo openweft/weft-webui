@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/openweft/weft-webui/internal/server"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 //go:embed all:web/dist
@@ -24,6 +25,7 @@ var webDist embed.FS
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
+	weftSocket := flag.String("weft-socket", "", "weft daemon socket (e.g. ~/.vzd/vzd.sock or ssh://host) ; empty = mock mode")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -34,9 +36,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	var live *wclient.Client
+	if *weftSocket != "" {
+		live = wclient.New(*weftSocket)
+		logger.Info("weft live mode", "socket", *weftSocket)
+		defer live.Close()
+	} else {
+		logger.Info("mock mode (no --weft-socket)")
+	}
+
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(logger, static),
+		Handler:           server.New(logger, static, live),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

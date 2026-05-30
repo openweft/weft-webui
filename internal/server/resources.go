@@ -50,12 +50,14 @@ var registry = []Resource{
 		},
 	},
 	{
+		// Mirrors the vzd ProjectInfo proto (name/uuid/created) so live and
+		// mock data share one shape ; see internal/wclient.ListProjects.
 		ID: "projects", Label: "Projects", Section: "Identity",
-		Columns: cols("name", "Name", "tenant", "Tenant", "description", "Description", "status", "Status"),
+		Columns: cols("name", "Name", "uuid", "UUID", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "team-alpha", "tenant", "acme", "description", "Frontend squad", "status", "active"),
-			row("name", "team-beta", "tenant", "acme", "description", "Data platform", "status", "active"),
-			row("name", "research", "tenant", "globex", "description", "ML notebooks", "status", "active"),
+			row("name", "team-alpha", "uuid", "1c5d8a9e-7c11-4d2a-9c5e-aab742c0a112", "created", "2026-04-12"),
+			row("name", "team-beta", "uuid", "2d3e9b7c-8e22-4ab3-9b0e-bbe853d1b223", "created", "2026-04-18"),
+			row("name", "research", "uuid", "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", "created", "2026-05-03"),
 		},
 	},
 	{
