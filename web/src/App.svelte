@@ -7,6 +7,7 @@
   import ResourcePage from './lib/components/ResourcePage.svelte';
   import ImagesPage from './lib/components/ImagesPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
+  import SharesPage from './lib/components/SharesPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
 
@@ -63,6 +64,8 @@
         {/key}
       {:else if active === 'buckets'}
         <ObjectStoragePage />
+      {:else if active === 'shares'}
+        <SharesPage />
       {:else if active === 'topology'}
         <NetworkTopology />
       {:else}
