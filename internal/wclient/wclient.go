@@ -1446,7 +1446,17 @@ func (c *Client) DeleteScript(ctx context.Context, name string) (retErr error) {
 
 // ---- VM properties --------------------------------------------------
 
-func (c *Client) ListVMProperties(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+// VMProperty mirrors the proto's per-VM annotation. Same JSON tags
+// the webui's mem-store VMProperty uses so the live + fallback
+// paths produce identical wire shapes.
+type VMProperty struct {
+	Key           string `json:"key"`
+	Value         string `json:"value"`
+	GuestReadable bool   `json:"guest_readable"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+func (c *Client) ListVMProperties(ctx context.Context, vmName, project string, opts ListOpts) (rows []VMProperty, next string, retErr error) {
 	defer c.measured("ListVMProperties", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -1460,13 +1470,11 @@ func (c *Client) ListVMProperties(ctx context.Context, vmName, project string, o
 	if err != nil {
 		return nil, "", err
 	}
-	out := make([]map[string]any, 0, len(resp.GetProperties()))
+	out := make([]VMProperty, 0, len(resp.GetProperties()))
 	for _, p := range resp.GetProperties() {
-		out = append(out, map[string]any{
-			"key":            p.Key,
-			"value":          p.Value,
-			"guest_readable": p.GuestReadable,
-			"updated_at":     p.UpdatedAt,
+		out = append(out, VMProperty{
+			Key: p.Key, Value: p.Value,
+			GuestReadable: p.GuestReadable, UpdatedAt: p.UpdatedAt,
 		})
 	}
 	return out, resp.GetNextPageToken(), nil
@@ -1503,7 +1511,17 @@ func (c *Client) DeleteVMProperty(ctx context.Context, vmName, project, key stri
 
 // ---- UEFI variables ------------------------------------------------
 
-func (c *Client) ListUEFIVars(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+// UEFIVar mirrors the proto's per-VM NVRAM entry. Same JSON tags as
+// the webui's mem-store UEFIVar.
+type UEFIVar struct {
+	Namespace  string   `json:"namespace"`
+	Name       string   `json:"name"`
+	ValueHex   string   `json:"value_hex"`
+	Attributes []string `json:"attributes"`
+	UpdatedAt  string   `json:"updated_at"`
+}
+
+func (c *Client) ListUEFIVars(ctx context.Context, vmName, project string, opts ListOpts) (rows []UEFIVar, next string, retErr error) {
 	defer c.measured("ListUEFIVars", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -1517,14 +1535,11 @@ func (c *Client) ListUEFIVars(ctx context.Context, vmName, project string, opts 
 	if err != nil {
 		return nil, "", err
 	}
-	out := make([]map[string]any, 0, len(resp.GetVars()))
+	out := make([]UEFIVar, 0, len(resp.GetVars()))
 	for _, v := range resp.GetVars() {
-		out = append(out, map[string]any{
-			"namespace":  v.Namespace,
-			"name":       v.Name,
-			"value_hex":  v.ValueHex,
-			"attributes": v.Attributes,
-			"updated_at": v.UpdatedAt,
+		out = append(out, UEFIVar{
+			Namespace: v.Namespace, Name: v.Name, ValueHex: v.ValueHex,
+			Attributes: v.Attributes, UpdatedAt: v.UpdatedAt,
 		})
 	}
 	return out, resp.GetNextPageToken(), nil
@@ -1564,7 +1579,20 @@ func (c *Client) DeleteUEFIVar(ctx context.Context, vmName, project, namespace, 
 
 // ---- VM SSH keys ---------------------------------------------------
 
-func (c *Client) ListVMSSHKeys(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+// VMAgentSSHKey is what weft-agent's per-VM SSH-key registry stores :
+// the OpenSSH line as the operator pasted it, plus the SHA256
+// fingerprint the server computed. Distinct from the webui's
+// catalogue+assignment model (sshkeys.VMSSHKey) — this is the raw
+// per-VM registry without name indirection.
+type VMAgentSSHKey struct {
+	Fingerprint string `json:"fingerprint"`
+	Type        string `json:"type"`
+	PublicKey   string `json:"public_key"`
+	Comment     string `json:"comment"`
+	AddedAt     string `json:"added_at"`
+}
+
+func (c *Client) ListVMSSHKeys(ctx context.Context, vmName, project string, opts ListOpts) (rows []VMAgentSSHKey, next string, retErr error) {
 	defer c.measured("ListVMSSHKeys", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -1578,20 +1606,18 @@ func (c *Client) ListVMSSHKeys(ctx context.Context, vmName, project string, opts
 	if err != nil {
 		return nil, "", err
 	}
-	out := make([]map[string]any, 0, len(resp.GetKeys()))
+	out := make([]VMAgentSSHKey, 0, len(resp.GetKeys()))
 	for _, k := range resp.GetKeys() {
-		out = append(out, map[string]any{
-			"fingerprint": k.Fingerprint,
-			"type":        k.Type,
-			"public_key":  k.PublicKey,
-			"comment":     k.Comment,
-			"added_at":    k.AddedAt,
+		out = append(out, VMAgentSSHKey{
+			Fingerprint: k.Fingerprint, Type: k.Type,
+			PublicKey: k.PublicKey, Comment: k.Comment,
+			AddedAt: k.AddedAt,
 		})
 	}
 	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) AddVMSSHKey(ctx context.Context, vmName, project, publicKey string) (row map[string]any, retErr error) {
+func (c *Client) AddVMSSHKey(ctx context.Context, vmName, project, publicKey string) (key *VMAgentSSHKey, retErr error) {
 	defer c.measured("AddVMSSHKey", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -1609,12 +1635,10 @@ func (c *Client) AddVMSSHKey(ctx context.Context, vmName, project, publicKey str
 	if k == nil {
 		return nil, errors.New("nil key")
 	}
-	return map[string]any{
-		"fingerprint": k.Fingerprint,
-		"type":        k.Type,
-		"public_key":  k.PublicKey,
-		"comment":     k.Comment,
-		"added_at":    k.AddedAt,
+	return &VMAgentSSHKey{
+		Fingerprint: k.Fingerprint, Type: k.Type,
+		PublicKey: k.PublicKey, Comment: k.Comment,
+		AddedAt: k.AddedAt,
 	}, nil
 }
 

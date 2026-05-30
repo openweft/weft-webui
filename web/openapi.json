@@ -4178,6 +4178,16 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Project namespace (defaults to the session project)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace (defaults to the session project)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4476,6 +4486,16 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Project namespace (defaults to the session project)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace (defaults to the session project)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4527,6 +4547,16 @@
               ],
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project namespace (defaults to the session project)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace (defaults to the session project)",
               "type": "string"
             }
           }
@@ -4595,6 +4625,16 @@
               "description": "Property key",
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project namespace",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace",
               "type": "string"
             }
           }
@@ -4877,6 +4917,16 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "description": "Project namespace (defaults to the session project)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace (defaults to the session project)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4926,6 +4976,16 @@
               "description": "VM name",
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project namespace",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace",
               "type": "string"
             }
           }
@@ -5004,6 +5064,16 @@
               "description": "UEFI variable name",
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project namespace",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Project namespace",
               "type": "string"
             }
           }
