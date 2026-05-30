@@ -8,7 +8,9 @@
   // The row already carries `backends` as a comma-joined string ; we
   // split it back into an array on open, snapshot for dirty detection,
   // and let the operator toggle membership from the microVM picker.
+  import { onDestroy } from 'svelte';
   import { setLoadBalancerBackends, getRows, type Row } from '../api';
+  import { openScopedEvents } from '../events';
 
   let {
     row,
@@ -65,6 +67,26 @@
   }
   $effect(() => { uuid; loadCandidates(); });
 
+  // Per-LB event subscription. weft-network emits lb.backends.changed
+  // when its reconciler diffs the xDS state ; we refresh the
+  // candidates list (a microVM may have come up or gone away).
+  // The snapshot stays unchanged so the dirty-tracking still
+  // reflects what THIS operator typed.
+  let scopedClose: (() => void) | null = null;
+  let liveHits = $state(0);
+  $effect(() => {
+    if (!name) return;
+    const { source, close } = openScopedEvents({ kindPrefix: 'lb.', subject: name });
+    source.onmessage = () => {
+      liveHits++;
+      loadCandidates();
+    };
+    scopedClose?.();
+    scopedClose = close;
+    return () => close();
+  });
+  onDestroy(() => scopedClose?.());
+
   function toggle(n: string) {
     backends = backends.includes(n) ? backends.filter((x) => x !== n) : [...backends, n];
   }
@@ -116,7 +138,12 @@
   </header>
 
   <div class="flex-1 overflow-y-auto px-5 py-4">
-    <h3 class="text-sm font-semibold">Backends</h3>
+    <div class="flex items-center gap-2">
+      <h3 class="text-sm font-semibold">Backends</h3>
+      {#if liveHits > 0}
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-success" title="{liveHits} live event(s) since open"></span>
+      {/if}
+    </div>
     <p class="text-xs text-base-content/60">
       microVMs receiving traffic from this LB. The reconciler diffs
       against the live xDS state and pushes only the deltas to Envoy.

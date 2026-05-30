@@ -9,7 +9,9 @@
   // resource filtered by group name when the daemon hasn't
   // implemented it yet (most of the time today). Save is live-only
   // — mock-mode surfaces a 503 inline.
+  import { onDestroy } from 'svelte';
   import { getSecurityGroupRules, setSecurityGroupRules, type SecurityRule, type Row } from '../api';
+  import { openScopedEvents } from '../events';
 
   let {
     row,
@@ -48,6 +50,25 @@
   }
 
   $effect(() => { uuid; refresh(); });
+
+  // Per-SG event subscription : the controller (or operator) might
+  // change the SG's rules from elsewhere ; we listen for any
+  // security-group event on this SG's name and re-fetch the rules so
+  // the editor doesn't show a stale view.
+  let scopedClose: (() => void) | null = null;
+  let liveHits = $state(0);
+  $effect(() => {
+    if (!name) return;
+    const { source, close } = openScopedEvents({ kindPrefix: 'security-group.', subject: name });
+    source.onmessage = () => {
+      liveHits++;
+      refresh();
+    };
+    scopedClose?.();
+    scopedClose = close;
+    return () => close();
+  });
+  onDestroy(() => scopedClose?.());
 
   function addRule()    { rules = [...rules, blankRule()]; }
   function removeRule(i: number) { rules = rules.filter((_, idx) => idx !== i); }
@@ -92,6 +113,9 @@
   <div class="flex-1 overflow-y-auto px-5 py-4">
     <div class="flex items-center gap-2">
       <h3 class="text-sm font-semibold">Rules</h3>
+      {#if liveHits > 0}
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-success" title="{liveHits} live event(s) since open"></span>
+      {/if}
       <button class="ml-auto btn btn-xs btn-ghost" onclick={addRule}>+ rule</button>
     </div>
 
