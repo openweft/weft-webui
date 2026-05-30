@@ -12,6 +12,7 @@ package wclient
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,13 @@ import (
 	vzdv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
 )
+
+func tsDate(unixNs int64) string {
+	if unixNs <= 0 {
+		return ""
+	}
+	return time.Unix(0, unixNs).UTC().Format("2006-01-02")
+}
 
 // Client is a lazily-dialed gRPC client to a local (or SSH-tunneled) weft
 // daemon. Safe for concurrent use — every method acquires the connection on
@@ -66,9 +74,10 @@ func rpcCtx(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, 5*time.Second)
 }
 
-// ListProjects returns the daemon's projects as dashboard rows. The keys
-// match the columns the frontend expects for the "projects" resource :
-// name / uuid / created.
+// Each List* below returns dashboard rows whose keys match the columns the
+// frontend already declares for that resource. Mock rows share the same
+// shape (see internal/server/resources.go), so the table renders either.
+
 func (c *Client) ListProjects(ctx context.Context) ([]map[string]any, error) {
 	rpc, err := c.dial()
 	if err != nil {
@@ -88,7 +97,157 @@ func (c *Client) ListProjects(ctx context.Context) ([]map[string]any, error) {
 		out = append(out, map[string]any{
 			"name":    p.Name,
 			"uuid":    p.Uuid,
-			"created": time.Unix(0, p.CreatedAtUnixNs).UTC().Format("2006-01-02"),
+			"created": tsDate(p.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListVMs(ctx context.Context, project string) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListVMs(cctx, &vzdv1.ListVMsRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetVms()))
+	for _, v := range resp.GetVms() {
+		out = append(out, map[string]any{
+			"name":    v.Name,
+			"image":   v.Image,
+			"status":  vzclient.StateString(v.State),
+			"cpu":     v.Cpu,
+			"mem_mb":  v.MemMb,
+			"disk_gb": v.DiskGb,
+			"ip":      v.Ip,
+			"project": v.Project,
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListNetworks(ctx context.Context, project string) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListNetworks(cctx, &vzdv1.ListNetworksRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetNetworks()))
+	for _, n := range resp.GetNetworks() {
+		out = append(out, map[string]any{
+			"name":    n.Name,
+			"cidr":    n.Cidr,
+			"type":    n.Type,
+			"gateway": n.Gateway,
+			"created": tsDate(n.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListHosts(ctx context.Context, az string) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListHosts(cctx, &vzdv1.ListHostsRequest{Az: az})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetHosts()))
+	for _, h := range resp.GetHosts() {
+		out = append(out, map[string]any{
+			"name":       h.Hostname,
+			"az":         h.Az,
+			"rack":       h.Rack,
+			"arch":       h.Architecture,
+			"hypervisor": h.Hypervisor,
+			"status":     h.State,
+			"last_seen":  tsDate(h.LastSeenAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListVolumes(ctx context.Context, project string) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListVolumes(cctx, &vzdv1.ListVolumesRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetVolumes()))
+	for _, v := range resp.GetVolumes() {
+		out = append(out, map[string]any{
+			"name":        v.Name,
+			"size_gib":    v.SizeGib,
+			"format":      v.Format,
+			"attached_to": v.AttachedToUuid,
+			"project":     v.ProjectUuid,
+			"created":     tsDate(v.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListUsers(ctx context.Context) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListUsers(cctx, &vzdv1.ListUsersRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetUsers()))
+	for _, u := range resp.GetUsers() {
+		out = append(out, map[string]any{
+			"name":      u.DisplayName,
+			"email":     u.Email,
+			"issuer":    u.OidcIssuer,
+			"groups":    strings.Join(u.Groups, ", "),
+			"last_seen": tsDate(u.LastSeenAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) ListSecurityGroups(ctx context.Context, project string) ([]map[string]any, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(ctx)
+	defer cancel()
+	resp, err := rpc.ListSecurityGroups(cctx, &vzdv1.ListSecurityGroupsRequest{Project: project})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetGroups()))
+	for _, g := range resp.GetGroups() {
+		out = append(out, map[string]any{
+			"name":        g.Name,
+			"description": g.Description,
+			"rules":       len(g.Rules),
+			"project":     g.ProjectUuid,
+			"created":     tsDate(g.CreatedAtUnixNs),
 		})
 	}
 	return out, nil

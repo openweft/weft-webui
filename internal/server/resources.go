@@ -61,12 +61,14 @@ var registry = []Resource{
 		},
 	},
 	{
+		// Mirrors UserInfo (display_name → name, email, oidc_issuer → issuer,
+		// groups, last_seen). The ResourceTable bolds the "name" key.
 		ID: "users", Label: "Users", Section: "Identity",
-		Columns: cols("username", "Username", "email", "Email", "tenant", "Tenant", "role", "Role", "enabled", "Enabled"),
+		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer", "groups", "Groups", "last_seen", "Last seen"),
 		Rows: []map[string]any{
-			row("username", "yann", "email", "yann@acme.example", "tenant", "acme", "role", "admin", "enabled", true),
-			row("username", "alice", "email", "alice@acme.example", "tenant", "acme", "role", "member", "enabled", true),
-			row("username", "bob", "email", "bob@globex.example", "tenant", "globex", "role", "member", "enabled", false),
+			row("name", "Yannick", "email", "yann@acme.example", "issuer", "dex", "groups", "admins, developers", "last_seen", "2026-05-27"),
+			row("name", "Alice", "email", "alice@acme.example", "issuer", "dex", "groups", "developers", "last_seen", "2026-05-26"),
+			row("name", "Bob", "email", "bob@globex.example", "issuer", "dex", "groups", "viewers", "last_seen", "2026-05-12"),
 		},
 	},
 	{
@@ -89,12 +91,15 @@ var registry = []Resource{
 		Rows:    nil,
 	},
 	{
+		// Mirrors NetworkInfo (name, cidr, type, gateway, created). The "az"
+		// field stays on mock rows (not as a column) because the topology
+		// view reads it from the registry to label hubs.
 		ID: "networks", Label: "Networks", Section: "Network",
-		Columns: cols("name", "Name", "cidr", "CIDR", "az", "AZ", "type", "Type", "status", "Status"),
+		Columns: cols("name", "Name", "cidr", "CIDR", "type", "Type", "gateway", "Gateway", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "mgmt", "cidr", "10.0.0.0/16", "az", "DC-A", "type", "wireguard", "status", "active"),
-			row("name", "tenant-net-1", "cidr", "10.10.0.0/16", "az", "DC-A", "type", "overlay", "status", "active"),
-			row("name", "tenant-net-2", "cidr", "10.20.0.0/16", "az", "DC-B", "type", "overlay", "status", "active"),
+			row("name", "mgmt", "cidr", "10.0.0.0/16", "type", "wireguard", "gateway", "10.0.0.1", "created", "2026-03-01", "az", "DC-A"),
+			row("name", "tenant-net-1", "cidr", "10.10.0.0/16", "type", "overlay", "gateway", "10.10.0.1", "created", "2026-03-10", "az", "DC-A"),
+			row("name", "tenant-net-2", "cidr", "10.20.0.0/16", "type", "overlay", "gateway", "10.20.0.1", "created", "2026-03-12", "az", "DC-B"),
 		},
 	},
 	{
@@ -107,12 +112,14 @@ var registry = []Resource{
 		},
 	},
 	{
+		// Mirrors SecurityGroupInfo (name, description, rules count, project,
+		// created).
 		ID: "security-groups", Label: "Security Groups", Section: "Network",
-		Columns: cols("name", "Name", "description", "Description", "rules", "Rules", "project", "Project"),
+		Columns: cols("name", "Name", "description", "Description", "rules", "Rules", "project", "Project", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "default", "description", "Default deny-in / allow-out", "rules", 2, "project", "team-alpha"),
-			row("name", "web", "description", "HTTP/HTTPS ingress", "rules", 3, "project", "team-alpha"),
-			row("name", "db", "description", "Postgres from web only", "rules", 1, "project", "team-beta"),
+			row("name", "default", "description", "Default deny-in / allow-out", "rules", 2, "project", "team-alpha", "created", "2026-04-12"),
+			row("name", "web", "description", "HTTP/HTTPS ingress", "rules", 3, "project", "team-alpha", "created", "2026-04-14"),
+			row("name", "db", "description", "Postgres from web only", "rules", 1, "project", "team-beta", "created", "2026-04-20"),
 		},
 	},
 	{
@@ -127,12 +134,14 @@ var registry = []Resource{
 
 	// ---------- Storage ----------
 	{
+		// Mirrors VolumeInfo (name, size_gib, format, attached_to_uuid →
+		// attached_to, project_uuid → project, created).
 		ID: "volumes", Label: "Volumes", Section: "Storage",
-		Columns: cols("name", "Name", "size_gb", "Size (GB)", "backing", "Backing", "attached_to", "Attached to", "status", "Status"),
+		Columns: cols("name", "Name", "size_gib", "Size (GiB)", "format", "Format", "attached_to", "Attached to", "project", "Project", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "pg-data", "size_gb", 200, "backing", "block (passthrough)", "attached_to", "db-1", "status", "in-use"),
-			row("name", "cubefs-d0", "size_gb", 500, "backing", "file", "attached_to", "cubefs-data-0", "status", "in-use"),
-			row("name", "scratch-1", "size_gb", 50, "backing", "file", "attached_to", "", "status", "available"),
+			row("name", "pg-data", "size_gib", 200, "format", "raw", "attached_to", "db-1", "project", "team-alpha", "created", "2026-04-14"),
+			row("name", "cubefs-d0", "size_gib", 500, "format", "raw", "attached_to", "cubefs-data-0", "project", "team-beta", "created", "2026-04-02"),
+			row("name", "scratch-1", "size_gib", 50, "format", "qcow2", "attached_to", "", "project", "team-alpha", "created", "2026-05-01"),
 		},
 	},
 	{
@@ -162,12 +171,15 @@ var registry = []Resource{
 
 	// ---------- Compute ----------
 	{
+		// Mirrors VMInfo (name, image, state → status, cpu, mem_mb, disk_gb,
+		// ip, project). flavor/host/network stay on mock rows (not as columns)
+		// so the topology view still finds the network attachment.
 		ID: "microvms", Label: "microVMs", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
+		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
 		Rows: []map[string]any{
-			row("name", "web-1", "image", "alpine:3.21", "flavor", "small", "host", "dc-a-r1-h2", "network", "tenant-net-1", "project", "team-alpha", "status", "running"),
-			row("name", "nb-1", "image", "jupyter:latest", "flavor", "small", "host", "dc-c-r2-h1", "network", "tenant-net-2", "project", "research", "status", "running"),
-			row("name", "ci-job-7f3", "image", "buildkit:latest", "flavor", "medium", "host", "dc-b-r1-h3", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
+			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
+			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
+			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
 		},
 	},
 	{
@@ -191,12 +203,16 @@ var registry = []Resource{
 
 	// ---------- Admin ----------
 	{
+		// Mirrors HostInfo (hostname → name, az, rack, architecture → arch,
+		// hypervisor, state → status, last_seen). cpu/ram aren't on the
+		// HostInfo proto — they live with the host's runtime stats and
+		// would come from a separate RPC ; dropped from this view.
 		ID: "hosts", Label: "Hosts", Section: "Admin",
-		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "arch", "Arch", "cpu", "CPU", "ram_gb", "RAM (GB)", "microvms", "microVMs", "status", "Status"),
+		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "arch", "Arch", "hypervisor", "Hypervisor", "status", "Status", "last_seen", "Last seen"),
 		Rows: []map[string]any{
-			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "cpu", 64, "ram_gb", 512, "microvms", 18, "status", "up"),
-			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "cpu", 64, "ram_gb", 512, "microvms", 22, "status", "up"),
-			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "cpu", 96, "ram_gb", 768, "microvms", 11, "status", "draining"),
+			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "hypervisor", "apple-vz", "status", "active", "last_seen", "2026-05-27"),
+			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "hypervisor", "qemu-kvm", "status", "active", "last_seen", "2026-05-27"),
+			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "hypervisor", "qemu-kvm", "status", "draining", "last_seen", "2026-05-26"),
 		},
 	},
 }

@@ -73,6 +73,17 @@ type resourceMeta struct {
 	Count   int      `json:"count"`
 }
 
+// liveServe runs a live-mode list callback and writes the result, surfacing
+// any gRPC error as a 502 with the message (rather than silent fallback).
+func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]any, error)) {
+	rows, err := fn()
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
 // rowCount returns the live count for a resource. The "images" type is backed
 // by the mutable images store (uploads), everything else by static rows.
 func rowCount(res *Resource) int {
@@ -115,12 +126,37 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	case "projects":
 		if live != nil {
-			rows, err := live.ListProjects(r.Context())
-			if err != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusOK, rows)
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListProjects(r.Context()) })
+			return
+		}
+	case "microvms":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListVMs(r.Context(), "") })
+			return
+		}
+	case "networks":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListNetworks(r.Context(), "") })
+			return
+		}
+	case "hosts":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListHosts(r.Context(), "") })
+			return
+		}
+	case "volumes":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListVolumes(r.Context(), "") })
+			return
+		}
+	case "users":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListUsers(r.Context()) })
+			return
+		}
+	case "security-groups":
+		if live != nil {
+			liveServe(w, r, func() ([]map[string]any, error) { return live.ListSecurityGroups(r.Context(), "") })
 			return
 		}
 	}
