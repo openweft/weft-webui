@@ -32,6 +32,14 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
+// MountAPIForCodegen is the exported alias the dump-openapi tool
+// uses to introspect the spec without instantiating the rest of the
+// server (Deps, OIDC, gRPC client, …). Production code stays on the
+// package-private mountAPI via buildHandler.
+func MountAPIForCodegen(mux *http.ServeMux, scope Scope) huma.API {
+	return mountAPI(mux, scope)
+}
+
 // mountAPI wires the typed REST surface onto mux. The persona +
 // scope drive operation visibility :
 //

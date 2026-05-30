@@ -12,8 +12,15 @@ tasks:
     cmds:
       - npm install
 
+  gen-api:
+    desc: Dump the OpenAPI spec + regenerate the TypeScript client (run after Go server changes)
+    cmds:
+      - go run ./tools/dump-openapi -o web/openapi.json -scope admin
+      - cd web && npm run gen:api
+
   build-web:
     desc: Build the SvelteJS SPA into web/dist (embedded by the Go binary)
+    deps: [gen-api]
     dir: web
     cmds:
       - npm run build
@@ -59,7 +66,8 @@ tasks:
       - npm run dev
 
   check:
-    desc: Vet Go + type-check Svelte
+    desc: Vet Go + type-check Svelte (regenerates the typed client first)
+    deps: [gen-api]
     cmds:
       - go vet ./...
       - cd web && npm run check
