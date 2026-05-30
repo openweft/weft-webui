@@ -72,10 +72,37 @@ Append one `Resource` to the registry in
 `Columns`, and rows. The sidebar entry, overview card, and table appear
 automatically.
 
+## Live mode
+
+By default the server returns **mock data** for every resource. Point it at a
+running `weft` daemon with `--weft-socket` and any resource that has been
+wired calls the real gRPC API via [`weft-client`](../weft-client). Unwired
+resources stay on their mock until they are migrated one at a time.
+
+```sh
+# Mock mode — default
+task run
+
+# Live mode against a local daemon
+go run . --weft-socket "$HOME/.vzd/vzd.sock"
+# … or an SSH-tunneled socket (see weft-client)
+go run . --weft-socket "ssh://you@dc-a.example/.vzd/vzd.sock"
+```
+
+**Wired so far** :
+
+| Resource    | Status | Backing RPC                              |
+| ----------- | ------ | ---------------------------------------- |
+| Projects    | live   | `VzdService.ListProjects`                |
+| everything else | mock | -                                    |
+
+When a live RPC fails (daemon unreachable, permission denied, …) the handler
+returns **502 Bad Gateway** with the underlying error message — easier to
+debug than silently falling back to mock.
+
 ## Status / next steps
 
-Early scaffold. The handlers serve **mock data** today; wiring them to the real
-control plane means replacing the handler bodies with calls through
-`weft-client` / `weft-proto` — the routes and JSON shapes stay the same.
 Still TODO: auth (OIDC via dex), create/edit/delete actions (the row menu is
-stubbed), per-project scoping, and detail drawers.
+stubbed), per-project scoping, detail drawers, and progressively wiring the
+remaining resources (microVMs, Hosts, Networks, Volumes, Users, …) to
+`VzdService`.
