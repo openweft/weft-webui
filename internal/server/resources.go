@@ -141,6 +141,17 @@ var registry = []Resource{
 		// Rows nil — served via scriptRows() from the catalogue.
 	},
 	{
+		// SSH keys catalogue — operator-managed named keys (manual
+		// entry or imported from GitHub / GitLab / Forgejo). VMs
+		// reference them by name from the drawer. Same model +
+		// migration path as flavors / scripts.
+		ID: "ssh-keys", Label: "SSH Keys", Section: "Compute", Scope: ScopeAdmin,
+		Columns: cols("name", "Name", "description", "Description",
+			"fingerprint", "Fingerprint", "source", "Source",
+			"source_account", "Account", "updated_at", "Updated", "updated_by", "By"),
+		// Rows nil — served via sshKeyRows() from the catalogue.
+	},
+	{
 		// Scheduling rules — declarative constraints the weft scheduler
 		// honours when picking hosts for the matched workloads. Placed
 		// above microVMs because the rule is conceptually upstream : it
