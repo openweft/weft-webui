@@ -117,6 +117,16 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	liveNet = d.LiveNet
 	metrics = d.Metrics
 	policyStrict = d.PolicyStrict
+
+	// Flip the flavor catalogue to live-first when the agent client
+	// is wired. The mem seed stays as the fallback path inside
+	// liveFlavorCatalogue, so Unimplemented agents still get the
+	// dev rows.
+	if live != nil {
+		flavorsCatalogue = newLiveFlavorCatalogue(live)
+	} else {
+		flavorsCatalogue = newMemFlavorCatalogue()
+	}
 	mux := http.NewServeMux()
 
 	// --- Public routes (no auth) ---

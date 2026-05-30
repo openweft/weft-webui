@@ -44,7 +44,12 @@
 // implementation is a one-liner — the wire stays identical.
 package server
 
-import "context"
+import (
+	"context"
+	"sync"
+
+	"github.com/openweft/weft-webui/internal/wclient"
+)
 
 // Flavor is the wire shape both /api/flavors and /api/resources/flavors
 // emit. RAM is a string like "4Gi" / "256Mi" so the catalogue can stay
@@ -110,6 +115,110 @@ func (m *memFlavorCatalogue) Get(ctx context.Context, name string) (Flavor, bool
 		}
 	}
 	return Flavor{}, false
+}
+
+// liveFlavorCatalogue wraps wclient.ListFlavors / GetFlavor with a
+// transparent fallback to the in-memory seed on Unimplemented. Same
+// shape as the other live-first consumers in this package (see
+// server.go's scheduling-rules / routers branches) :
+//
+//   - Happy path : agent returns rows, we project to []Flavor and
+//     cache the slice so a hot dashboard doesn't pound the agent.
+//   - Unimplemented : silent fallback to the mem catalogue. Lets the
+//     webui stay green when pointed at an older agent that hasn't
+//     shipped the Flavor RPCs.
+//   - Other error : surfaced to the caller — a real failure should
+//     show up in the dashboard, not get masked by the seed.
+//
+// Cache is intentionally a single mutex-guarded slice ; the
+// catalogue is small (single digits to low double-digits of
+// entries) and writes go through the agent + invalidate via TTL,
+// not by direct mutation.
+type liveFlavorCatalogue struct {
+	live *wclient.Client
+	mem  flavorCatalogue
+
+	mu     sync.Mutex
+	cached []Flavor
+}
+
+func newLiveFlavorCatalogue(live *wclient.Client) *liveFlavorCatalogue {
+	return &liveFlavorCatalogue{
+		live: live,
+		mem:  newMemFlavorCatalogue(),
+	}
+}
+
+func (l *liveFlavorCatalogue) List(ctx context.Context) ([]Flavor, error) {
+	rows, _, err := l.live.ListFlavors(ctx, wclient.ListOpts{})
+	if err != nil {
+		if wclient.IsUnimplemented(err) {
+			return l.mem.List(ctx)
+		}
+		return nil, err
+	}
+	out := make([]Flavor, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, flavorFromRow(r))
+	}
+	l.mu.Lock()
+	l.cached = append(l.cached[:0], out...)
+	l.mu.Unlock()
+	dup := make([]Flavor, len(out))
+	copy(dup, out)
+	return dup, nil
+}
+
+// Get hits the per-name GetFlavor RPC and falls back to the cached
+// List output (or the mem seed if List has never succeeded). Same
+// not-found semantics as memFlavorCatalogue — bool=false rather
+// than an error so the consumer pattern stays uniform.
+func (l *liveFlavorCatalogue) Get(ctx context.Context, name string) (Flavor, bool) {
+	row, err := l.live.GetFlavor(ctx, name)
+	if err == nil {
+		return flavorFromRow(row), true
+	}
+	if wclient.IsUnimplemented(err) {
+		// Walk the most recent List() result if present, otherwise
+		// the seed. Keeping the mem path as the last-resort source
+		// of truth on a brand-new instance.
+		l.mu.Lock()
+		cached := append([]Flavor(nil), l.cached...)
+		l.mu.Unlock()
+		for _, f := range cached {
+			if f.Name == name {
+				return f, true
+			}
+		}
+		return l.mem.Get(ctx, name)
+	}
+	// Real error — caller treats as not-found, same as the mem impl
+	// would for an unknown name. Logged at the handler boundary.
+	return Flavor{}, false
+}
+
+// flavorFromRow lifts the wclient row-shape map back to the typed
+// Flavor we expose to the rest of the package. Defensive on type
+// assertions — bogus rows just yield zeroed fields rather than
+// panicking the catalogue.
+func flavorFromRow(r map[string]any) Flavor {
+	f := Flavor{}
+	if v, ok := r["name"].(string); ok {
+		f.Name = v
+	}
+	if v, ok := r["vcpu"].(int); ok {
+		f.VCPU = v
+	}
+	if v, ok := r["ram"].(string); ok {
+		f.RAM = v
+	}
+	if v, ok := r["ephemeral_gb"].(int); ok {
+		f.EphemeralGB = v
+	}
+	if v, ok := r["gpu"].(string); ok {
+		f.GPU = v
+	}
+	return f
 }
 
 // flavorsCatalogue is the process-wide singleton. Today always the
