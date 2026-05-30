@@ -1,15 +1,14 @@
+// shares_storage.go — in-memory store for the POSIX (RWX) shares
+// browser. The HTTP handlers moved to api_storage.go (huma) ; this
+// file keeps the mock seed.
 package server
 
-import (
-	"net/http"
-	"strings"
-	"sync"
-)
+import "sync"
 
-// Shares — the POSIX (RWX) face of CubeFS. Same browsing model as buckets,
-// but a share is a filesystem mounted by many microVMs at once. Seeded with
-// mock trees ; the share names match the "shares" registry rows.
-
+// shareFiles seeds a few demonstrative shares so the browser has
+// something to render on first open. Share names match the "shares"
+// registry rows. Same shape as the bucket store ; the only difference
+// is the access model (RWX vs S3) — that's not visible at the wire.
 var (
 	sharesMu   sync.Mutex
 	shareFiles = map[string][]s3object{
@@ -32,57 +31,3 @@ var (
 		},
 	}
 )
-
-func handleListShareObjects(w http.ResponseWriter, r *http.Request) {
-	prefix := r.URL.Query().Get("prefix")
-	sharesMu.Lock()
-	defer sharesMu.Unlock()
-	objs, ok := shareFiles[r.PathValue("name")]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such share"})
-		return
-	}
-	folders, entries := listEntries(objs, prefix)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"share": r.PathValue("name"), "prefix": prefix, "folders": folders, "objects": entries,
-	})
-}
-
-func handleGetShareObject(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Query().Get("key")
-	sharesMu.Lock()
-	defer sharesMu.Unlock()
-	objs, ok := shareFiles[r.PathValue("name")]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such share"})
-		return
-	}
-	if d, ok := objectDetail(objs, key); ok {
-		writeJSON(w, http.StatusOK, d)
-		return
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
-}
-
-func handleUploadShareObject(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		badUpload(w, "invalid multipart form")
-		return
-	}
-	prefix := strings.TrimSpace(r.FormValue("prefix"))
-	name := r.PathValue("name")
-	sharesMu.Lock()
-	defer sharesMu.Unlock()
-	objs, ok := shareFiles[name]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such share"})
-		return
-	}
-	if r.MultipartForm == nil || len(r.MultipartForm.File["file"]) == 0 {
-		badUpload(w, "no files")
-		return
-	}
-	uploaded := readUploads(r.MultipartForm.File["file"], prefix)
-	shareFiles[name] = append(objs, uploaded...)
-	writeJSON(w, http.StatusCreated, map[string]any{"share": name, "added": len(uploaded)})
-}

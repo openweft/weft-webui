@@ -2,15 +2,11 @@ package server
 
 import (
 	"context"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/openweft/weft-webui/internal/auth"
 )
@@ -192,16 +188,8 @@ func resourceMatch(rule, key string) bool {
 	return rule == key
 }
 
-// requirePolicy is the request-side wrapper : evaluate, on deny write
-// a 403 + reason and return false so the caller exits the handler.
-func requirePolicy(w http.ResponseWriter, r *http.Request, bucket, action, key string) bool {
-	d := evaluatePolicy(r.Context(), bucket, action, key)
-	if d.allow {
-		return true
-	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": d.reason})
-	return false
-}
+// (requirePolicy moved to api_storage.go as requirePolicyCtx ; this
+// file keeps just the policy data + evaluator.)
 
 func seedBuckets() []*bucket {
 	return []*bucket{
@@ -309,110 +297,7 @@ func bucketSummaries() []map[string]any {
 	return out
 }
 
-// ---- handlers ----
-
-func handleCreateBucket(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name string `json:"name"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		badUpload(w, "invalid body")
-		return
-	}
-	name := strings.TrimSpace(body.Name)
-	if !bucketName.MatchString(name) {
-		badUpload(w, "bucket name must be 3–63 chars, lowercase letters/digits/hyphens")
-		return
-	}
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	if findBucket(name) != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "bucket already exists"})
-		return
-	}
-	buckets = append(buckets, &bucket{Name: name, Created: time.Now().UTC().Format("2006-01-02")})
-	writeJSON(w, http.StatusCreated, map[string]any{"name": name})
-}
-
-func handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	for i, b := range buckets {
-		if b.Name == name {
-			buckets = append(buckets[:i], buckets[i+1:]...)
-			// Cascade : drop any attached policy so a re-created bucket
-			// with the same name starts clean (no surprise inherited rules).
-			delete(policies, name)
-			writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-}
-
-// handleGetBucketPolicy — empty {Statements:[]} when no policy is set,
-// 404 when the bucket itself doesn't exist. Same Version constant the
-// PUT path emits so a get-then-put round-trips identically.
-func handleGetBucketPolicy(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	if findBucket(name) == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	if p, ok := policies[name]; ok && p != nil {
-		writeJSON(w, http.StatusOK, p)
-		return
-	}
-	writeJSON(w, http.StatusOK, BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}})
-}
-
-// handleSetBucketPolicy replaces the bucket's policy atomically. An
-// empty statement list is treated as "remove the policy" so the SPA
-// can clear back to the default-allow state without a separate verb.
-func handleSetBucketPolicy(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var body BucketPolicy
-	if err := decodeJSON(r, &body); err != nil {
-		badUpload(w, "invalid body")
-		return
-	}
-	// Validate against the closed-set vocabulary before mutating. One
-	// bad statement rejects the whole submission ; partial saves would
-	// leave the editor and server out of sync.
-	for i, s := range body.Statements {
-		if !validPolicyEffects[s.Effect] {
-			badUpload(w, "statement "+itoaSafe(i)+": invalid effect "+s.Effect)
-			return
-		}
-		if !validPolicyActions[s.Action] {
-			badUpload(w, "statement "+itoaSafe(i)+": invalid action "+s.Action)
-			return
-		}
-		if strings.TrimSpace(s.Principal) == "" || strings.TrimSpace(s.Resource) == "" {
-			badUpload(w, "statement "+itoaSafe(i)+": principal and resource are required")
-			return
-		}
-	}
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	if findBucket(name) == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	if len(body.Statements) == 0 {
-		delete(policies, name)
-		writeJSON(w, http.StatusOK, BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}})
-		return
-	}
-	if body.Version == "" {
-		body.Version = "2012-10-17"
-	}
-	policies[name] = &body
-	writeJSON(w, http.StatusOK, body)
-}
+// (Bucket / object handlers moved to huma — see api_storage.go.)
 
 // itoaSafe — local strconv-free int→string for tiny indices in error
 // messages. Matches the same style network.go uses for itoa().
@@ -426,110 +311,6 @@ func itoaSafe(n int) string {
 		n /= 10
 	}
 	return string(b)
-}
-
-// handleListObjects returns the folders (common prefixes) and objects directly
-// under ?prefix= inside a bucket. Policy gate : s3:ListBucket on the
-// bucket itself (no key — the resource match is bucket-level).
-func handleListObjects(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !requirePolicy(w, r, name, "s3:ListBucket", "") {
-		return
-	}
-	prefix := r.URL.Query().Get("prefix")
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	b := findBucket(name)
-	if b == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	folders, objects := listEntries(b.Objects, prefix)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"bucket": b.Name, "prefix": prefix, "folders": folders, "objects": objects,
-	})
-}
-
-// handleGetObject returns one object's metadata + a preview for text
-// content. Policy gate : s3:GetObject on the requested key.
-func handleGetObject(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	key := r.URL.Query().Get("key")
-	if !requirePolicy(w, r, name, "s3:GetObject", key) {
-		return
-	}
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	b := findBucket(name)
-	if b == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	if d, ok := objectDetail(b.Objects, key); ok {
-		writeJSON(w, http.StatusOK, d)
-		return
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
-}
-
-// handleDeleteObject removes one object from the bucket by key. Policy
-// gate : s3:DeleteObject on the requested key — same shape as
-// handleGetObject. 404 if the bucket OR the key doesn't exist.
-func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		badUpload(w, "missing ?key")
-		return
-	}
-	if !requirePolicy(w, r, name, "s3:DeleteObject", key) {
-		return
-	}
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	b := findBucket(name)
-	if b == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	for i, o := range b.Objects {
-		if o.Key == key {
-			b.Objects = append(b.Objects[:i], b.Objects[i+1:]...)
-			writeJSON(w, http.StatusOK, map[string]any{"deleted": key})
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
-}
-
-// handleUploadObject stores uploaded files under ?prefix in the bucket.
-// Policy gate : s3:PutObject on the destination prefix (the upload
-// places files under <prefix>/<filename>, so the prefix is what the
-// rule has to match).
-func handleUploadObject(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		badUpload(w, "invalid multipart form")
-		return
-	}
-	prefix := strings.TrimSpace(r.FormValue("prefix"))
-	if !requirePolicy(w, r, name, "s3:PutObject", prefix) {
-		return
-	}
-	bucketsMu.Lock()
-	defer bucketsMu.Unlock()
-	b := findBucket(name)
-	if b == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
-		return
-	}
-	if r.MultipartForm == nil || len(r.MultipartForm.File["file"]) == 0 {
-		badUpload(w, "no files")
-		return
-	}
-	uploaded := readUploads(r.MultipartForm.File["file"], prefix)
-	b.Objects = append(b.Objects, uploaded...)
-	writeJSON(w, http.StatusCreated, map[string]any{"bucket": b.Name, "added": len(uploaded)})
 }
 
 // ---- shared browsing helpers (used by buckets + shares) ----
@@ -589,26 +370,6 @@ func objectDetail(objs []s3object, key string) (map[string]any, bool) {
 	return nil, false
 }
 
-// readUploads turns multipart files into objects under prefix, reading small
-// text files for inline preview.
-func readUploads(files []*multipart.FileHeader, prefix string) []s3object {
-	out := make([]s3object, 0, len(files))
-	for _, fh := range files {
-		key := prefix + fh.Filename
-		ct := guessType(key)
-		content := ""
-		if previewable(ct) && fh.Size <= 256<<10 {
-			if f, err := fh.Open(); err == nil {
-				if data, err := io.ReadAll(io.LimitReader(f, 256<<10)); err == nil {
-					content = string(data)
-				}
-				_ = f.Close()
-			}
-		}
-		out = append(out, s3object{
-			Key: key, Size: fh.Size, Modified: time.Now().UTC().Format("2006-01-02"),
-			ContentType: ct, Content: content,
-		})
-	}
-	return out
-}
+// (readUploads moved to api_storage.go as readUploadsHuma, which
+// takes huma.FormFile rather than *multipart.FileHeader. Same body
+// semantics — 256 KiB preview cap for text/* content.)

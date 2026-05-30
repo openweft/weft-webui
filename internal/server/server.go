@@ -185,34 +185,16 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// See api_microvms.go (create/start/stop/delete/status/timings/
 	// logs) and api_microvm_metadata.go (properties / UEFI vars /
 	// sshkey assignments).
-	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
-	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
-	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)
-	mux.HandleFunc("POST /api/volumes/{uuid}/detach", handleDetachVolume)
-	// (Networks, SGs, floating-IPs, routers, LBs, DNS, scheduling
-	// rules all moved to huma — see api_networking.go.)
+	// Volumes / Networks / SGs / Floating-IPs / Routers / LBs / DNS /
+	// Scheduling-rules — all moved to huma (api_storage.go +
+	// api_networking.go).
 
-	// Shares (mock store ; tenant-admin gated inside the handler).
-	mux.HandleFunc("POST /api/shares", handleCreateShare)
-	mux.HandleFunc("DELETE /api/shares/{name}", handleDeleteShare)
+	// (Shares lifecycle moved to huma — see api_storage.go.)
 
 	// (Flavors, scripts, ssh-keys catalogues moved to huma — see
 	// api_flavors.go / api_scripts.go / api_sshkeys.go.)
 
-	// Object storage (CubeFS S3)
-	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
-	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
-	mux.HandleFunc("GET /api/buckets/{name}/objects", handleListObjects)
-	mux.HandleFunc("POST /api/buckets/{name}/objects", handleUploadObject)
-	mux.HandleFunc("GET /api/buckets/{name}/object", handleGetObject)
-	mux.HandleFunc("DELETE /api/buckets/{name}/object", handleDeleteObject)
-	mux.HandleFunc("GET /api/buckets/{name}/policy", handleGetBucketPolicy)
-	mux.HandleFunc("PUT /api/buckets/{name}/policy", handleSetBucketPolicy)
-
-	// Shares (CubeFS POSIX filesystems)
-	mux.HandleFunc("GET /api/shares/{name}/objects", handleListShareObjects)
-	mux.HandleFunc("POST /api/shares/{name}/objects", handleUploadShareObject)
-	mux.HandleFunc("GET /api/shares/{name}/object", handleGetShareObject)
+	// (Object storage + share storage moved to huma — see api_storage.go.)
 
 	// Network topology + quotas. Topology exposes host-placement info
 	// for every node so it's admin-only ; the user listener returns
