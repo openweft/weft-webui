@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // APIVMProperty is the typed wire shape for per-VM annotations.
@@ -77,7 +78,21 @@ func mountVMPropertyAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/properties",
 		Summary:     "List per-VM application-level properties",
 		Tags:        []string{"microvms", "properties"},
-	}, func(_ context.Context, in *vmNameInput) (*listVMPropertiesOutput, error) {
+	}, func(ctx context.Context, in *vmNameInput) (*listVMPropertiesOutput, error) {
+		if live != nil {
+			rows, _, err := live.ListVMProperties(ctx, in.Name, in.Project, wclient.ListOpts{Limit: 1000})
+			if err == nil {
+				out := &listVMPropertiesOutput{}
+				out.Body = make([]APIVMProperty, 0, len(rows))
+				for _, p := range rows {
+					out.Body = append(out.Body, APIVMProperty(p))
+				}
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		vmPropsMu.Lock()
 		defer vmPropsMu.Unlock()
 		props := vmProps[in.Name]
@@ -95,10 +110,22 @@ func mountVMPropertyAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/properties",
 		Summary:     "Create or replace a per-VM property (upsert)",
 		Tags:        []string{"microvms", "properties"},
-	}, func(_ context.Context, in *setVMPropertyInput) (*setVMPropertyOutput, error) {
+	}, func(ctx context.Context, in *setVMPropertyInput) (*setVMPropertyOutput, error) {
 		key := strings.TrimSpace(in.Body.Key)
 		if key == "" {
 			return nil, huma.Error400BadRequest("key is required")
+		}
+		if live != nil {
+			err := live.SetVMProperty(ctx, in.Name, in.Project, key, in.Body.Value, in.Body.GuestReadable)
+			if err == nil {
+				return &setVMPropertyOutput{Body: APIVMProperty{
+					Key: key, Value: in.Body.Value, GuestReadable: in.Body.GuestReadable,
+					UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
 		}
 		entry := VMProperty{
 			Key: key, Value: in.Body.Value, GuestReadable: in.Body.GuestReadable,
@@ -124,7 +151,18 @@ func mountVMPropertyAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/properties/{key}",
 		Summary:     "Delete a per-VM property",
 		Tags:        []string{"microvms", "properties"},
-	}, func(_ context.Context, in *deleteVMPropertyInput) (*removedOutput, error) {
+	}, func(ctx context.Context, in *deleteVMPropertyInput) (*removedOutput, error) {
+		if live != nil {
+			err := live.DeleteVMProperty(ctx, in.Name, in.Project, in.Key)
+			if err == nil {
+				out := &removedOutput{}
+				out.Body.Removed = in.Key
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		vmPropsMu.Lock()
 		defer vmPropsMu.Unlock()
 		props := vmProps[in.Name]
@@ -149,7 +187,21 @@ func mountUEFIVarAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/uefi-vars",
 		Summary:     "List the VM's UEFI NVRAM variables",
 		Tags:        []string{"microvms", "uefi"},
-	}, func(_ context.Context, in *vmNameInput) (*listUEFIVarsOutput, error) {
+	}, func(ctx context.Context, in *vmNameInput) (*listUEFIVarsOutput, error) {
+		if live != nil {
+			rows, _, err := live.ListUEFIVars(ctx, in.Name, in.Project, wclient.ListOpts{Limit: 1000})
+			if err == nil {
+				out := &listUEFIVarsOutput{}
+				out.Body = make([]APIUEFIVar, 0, len(rows))
+				for _, v := range rows {
+					out.Body = append(out.Body, APIUEFIVar(v))
+				}
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		uefiVarsMu.Lock()
 		defer uefiVarsMu.Unlock()
 		vars := uefiVars[in.Name]
@@ -168,7 +220,7 @@ func mountUEFIVarAPI(api huma.API) {
 		Summary:     "Create or replace a UEFI variable (upsert on (namespace, name))",
 		Description: "Empty namespace defaults to the EFI Global Variable GUID so the common case (BootOrder, SecureBoot, …) doesn't require typing the GUID. value_hex has whitespace stripped before validation.",
 		Tags:        []string{"microvms", "uefi"},
-	}, func(_ context.Context, in *setUEFIVarInput) (*setUEFIVarOutput, error) {
+	}, func(ctx context.Context, in *setUEFIVarInput) (*setUEFIVarOutput, error) {
 		name := strings.TrimSpace(in.Body.Name)
 		if name == "" {
 			return nil, huma.Error400BadRequest("name is required")
@@ -181,10 +233,23 @@ func mountUEFIVarAPI(api huma.API) {
 		if !validHex(valueHex) {
 			return nil, huma.Error400BadRequest("value_hex must be a (possibly empty) sequence of hex pairs")
 		}
+		attrs := append([]string(nil), in.Body.Attributes...)
+		now := time.Now().UTC().Format(time.RFC3339)
+		if live != nil {
+			err := live.SetUEFIVar(ctx, in.Name, in.Project, ns, name, valueHex, attrs)
+			if err == nil {
+				return &setUEFIVarOutput{Body: APIUEFIVar{
+					Namespace: ns, Name: name, ValueHex: valueHex,
+					Attributes: attrs, UpdatedAt: now,
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		entry := UEFIVar{
 			Namespace: ns, Name: name, ValueHex: valueHex,
-			Attributes: append([]string(nil), in.Body.Attributes...),
-			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Attributes: attrs, UpdatedAt: now,
 		}
 		uefiVarsMu.Lock()
 		defer uefiVarsMu.Unlock()
@@ -206,7 +271,18 @@ func mountUEFIVarAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/uefi-vars/{ns}/{varname}",
 		Summary:     "Delete a UEFI variable",
 		Tags:        []string{"microvms", "uefi"},
-	}, func(_ context.Context, in *deleteUEFIVarInput) (*removedOutput, error) {
+	}, func(ctx context.Context, in *deleteUEFIVarInput) (*removedOutput, error) {
+		if live != nil {
+			err := live.DeleteUEFIVar(ctx, in.Name, in.Project, in.Ns, in.Varname)
+			if err == nil {
+				out := &removedOutput{}
+				out.Body.Removed = in.Varname
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		uefiVarsMu.Lock()
 		defer uefiVarsMu.Unlock()
 		vars := uefiVars[in.Name]
@@ -359,7 +435,8 @@ func mountVMSSHKeyAssignAPI(api huma.API) {
 // ---- shared input / output shapes ---------------------------------
 
 type vmNameInput struct {
-	Name string `path:"name" doc:"VM name" example:"web-1" minLength:"1" maxLength:"128"`
+	Name    string `path:"name" doc:"VM name" example:"web-1" minLength:"1" maxLength:"128"`
+	Project string `query:"project" doc:"Project namespace (defaults to the session project)"`
 }
 
 type listVMPropertiesOutput struct {
@@ -367,8 +444,9 @@ type listVMPropertiesOutput struct {
 }
 
 type setVMPropertyInput struct {
-	Name string `path:"name" doc:"VM name" example:"web-1" minLength:"1" maxLength:"128"`
-	Body APIVMProperty
+	Name    string `path:"name" doc:"VM name" example:"web-1" minLength:"1" maxLength:"128"`
+	Project string `query:"project" doc:"Project namespace (defaults to the session project)"`
+	Body    APIVMProperty
 }
 
 type setVMPropertyOutput struct {
@@ -376,8 +454,9 @@ type setVMPropertyOutput struct {
 }
 
 type deleteVMPropertyInput struct {
-	Name string `path:"name" doc:"VM name" minLength:"1" maxLength:"128"`
-	Key  string `path:"key" doc:"Property key" minLength:"1" maxLength:"128"`
+	Name    string `path:"name" doc:"VM name" minLength:"1" maxLength:"128"`
+	Key     string `path:"key" doc:"Property key" minLength:"1" maxLength:"128"`
+	Project string `query:"project" doc:"Project namespace"`
 }
 
 type listUEFIVarsOutput struct {
@@ -385,8 +464,9 @@ type listUEFIVarsOutput struct {
 }
 
 type setUEFIVarInput struct {
-	Name string `path:"name" doc:"VM name" minLength:"1" maxLength:"128"`
-	Body APIUEFIVar
+	Name    string `path:"name" doc:"VM name" minLength:"1" maxLength:"128"`
+	Project string `query:"project" doc:"Project namespace"`
+	Body    APIUEFIVar
 }
 
 type setUEFIVarOutput struct {
@@ -397,6 +477,7 @@ type deleteUEFIVarInput struct {
 	Name    string `path:"name" doc:"VM name" minLength:"1" maxLength:"128"`
 	Ns      string `path:"ns" doc:"EFI vendor GUID"`
 	Varname string `path:"varname" doc:"UEFI variable name" minLength:"1" maxLength:"128"`
+	Project string `query:"project" doc:"Project namespace"`
 }
 
 type listVMSSHKeysOutput struct {

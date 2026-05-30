@@ -3257,7 +3257,10 @@ export interface operations {
     };
     "list-vm-keys": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace (defaults to the session project) */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3432,7 +3435,10 @@ export interface operations {
     };
     "list-vm-properties": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace (defaults to the session project) */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3464,7 +3470,10 @@ export interface operations {
     };
     "set-vm-property": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace (defaults to the session project) */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3500,7 +3509,10 @@ export interface operations {
     };
     "delete-vm-property": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3674,7 +3686,10 @@ export interface operations {
     };
     "list-uefi-vars": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace (defaults to the session project) */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3706,7 +3721,10 @@ export interface operations {
     };
     "set-uefi-var": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
@@ -3742,7 +3760,10 @@ export interface operations {
     };
     "delete-uefi-var": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project namespace */
+                project?: string;
+            };
             header?: never;
             path: {
                 /** @description VM name */
