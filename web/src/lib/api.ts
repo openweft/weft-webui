@@ -411,6 +411,19 @@ export const createSchedulingRule = (b: CreateSchedulingRuleBody) =>
 export const deleteSchedulingRule = (name: string) =>
   deleteJSON(`/scheduling-rules/${encodeURIComponent(name)}`);
 
+// ---- Shares (tenant-admin gated) ----
+
+export interface CreateShareBody {
+  Name: string;
+  Project?: string; // defaults to the session's selected project
+  Backend?: string; // empty → "cubefs"
+  SizeGB: number;
+  ReadOnly?: boolean;
+}
+export const createShare = (b: CreateShareBody) => postJSON<Row>('/shares', b);
+export const deleteShare = (name: string) =>
+  deleteJSON(`/shares/${encodeURIComponent(name)}`);
+
 // ---- microVM inspect (status / timings / logs) ----
 
 export interface VMStatus {

@@ -1,24 +1,62 @@
 <script lang="ts">
-  import { getRows, type Row } from '../api';
+  import { getRows, getMe, deleteShare, type Me, type Row } from '../api';
   import FileBrowser from './FileBrowser.svelte';
+  import CreateShareModal from './CreateShareModal.svelte';
 
   let shares = $state<Row[]>([]);
   let selected = $state<string>('');
+  let me = $state<Me | null>(null);
 
-  $effect(() => {
+  // The "+ New share" affordance is gated client-side : visible only
+  // to tenant admins (cluster admins included). The server enforces
+  // the same check ; the gate just avoids surfacing a button that
+  // would 403 anyway.
+  let canCreate = $derived(!!me && (me.cluster_admin || me.tenant_admin));
+
+  function refresh() {
     getRows('shares').then((rows) => {
       shares = rows;
-      if (!selected && rows.length) selected = String(rows[0].name);
+      if (rows.length && !rows.find((r) => r.name === selected)) {
+        selected = String(rows[0].name);
+      } else if (rows.length === 0) {
+        selected = '';
+      }
     });
-  });
+  }
+  $effect(refresh);
+  $effect(() => { getMe().then((u) => (me = u)).catch(() => { /* api.ts handled it */ }); });
 
   let current = $derived(shares.find((s) => String(s.name) === selected));
+
+  let createOpen = $state(false);
+  let deleteError = $state('');
+
+  async function delSelected() {
+    if (!current) return;
+    if (!confirm(`Delete share ${current.name} ? CubeFS volume must be unmounted from every microVM first.`)) return;
+    deleteError = '';
+    try {
+      await deleteShare(String(current.name));
+      refresh();
+    } catch (e) { deleteError = String(e); }
+  }
 </script>
 
-<div>
-  <h2 class="text-2xl font-bold">Shares</h2>
-  <p class="text-sm text-base-content/60">POSIX filesystems (RWX) mounted across workloads</p>
+<div class="flex items-center gap-3">
+  <div>
+    <h2 class="text-2xl font-bold">Shares</h2>
+    <p class="text-sm text-base-content/60">POSIX filesystems (RWX) mounted across workloads</p>
+  </div>
+  {#if canCreate}
+    <button class="ml-auto btn btn-sm btn-primary gap-1" onclick={() => (createOpen = true)}>
+      <span class="text-base leading-none">+</span> New share
+    </button>
+  {/if}
 </div>
+
+{#if deleteError}
+  <div class="mt-2 alert alert-error text-sm">{deleteError}</div>
+{/if}
 
 <div class="mt-4 flex gap-4">
   <aside class="w-60 shrink-0">
@@ -51,9 +89,18 @@
       {#if current}
         <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
           <span class="badge badge-sm badge-ghost">{current.backend}</span>
+          <span class="badge badge-sm badge-ghost">project {current.project ?? '—'}</span>
           <span>{current.size_gb} GB</span>
+          {#if current.readonly}<span class="badge badge-sm badge-warning">RO</span>{/if}
           <span>· {current.mounts} mounts</span>
-          <span class="badge badge-sm badge-success">{current.status}</span>
+          <span class="badge badge-sm" class:badge-success={current.status === 'active'}
+            class:badge-warning={current.status === 'provisioning'}
+            class:badge-error={current.status === 'failed'}>{current.status}</span>
+          {#if canCreate}
+            <button class="ml-auto btn btn-xs btn-ghost text-error" onclick={delSelected}>
+              Delete
+            </button>
+          {/if}
         </div>
       {/if}
       {#key selected}
@@ -62,3 +109,5 @@
     {/if}
   </section>
 </div>
+
+<CreateShareModal bind:open={createOpen} onCreated={refresh} />

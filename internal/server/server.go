@@ -163,6 +163,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)
 	mux.HandleFunc("DELETE /api/scheduling-rules/{name}", handleDeleteSchedulingRule)
 
+	// Shares (mock store ; tenant-admin gated inside the handler).
+	mux.HandleFunc("POST /api/shares", handleCreateShare)
+	mux.HandleFunc("DELETE /api/shares/{name}", handleDeleteShare)
+
 	// Flavors catalogue — exposed on BOTH listeners so the user UI's
 	// CreateVMModal can offer the flavor picker even when the user UI
 	// hides the read-only sidebar entry. Same data the admin's
@@ -389,6 +393,21 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			_, filter = scopeFromRequest(r)
 		}
 		writeJSON(w, http.StatusOK, schedulingDB.list(filter))
+		return
+	case "shares":
+		// Store-only (no CreateShare RPC on weft-agent ; CubeFS volumes
+		// are provisioned out-of-band). Scope-filtered : project → exact
+		// match, tenant-only scope → all projects of the tenant.
+		tenant, project := scopeFromRequest(r)
+		if project != "" {
+			writeJSON(w, http.StatusOK, sharesDB.list(project))
+			return
+		}
+		if tenant != "" {
+			writeJSON(w, http.StatusOK, sharesDB.listByTenant(tenant))
+			return
+		}
+		writeJSON(w, http.StatusOK, sharesDB.list(""))
 		return
 	case "projects":
 		if live != nil {
