@@ -34,6 +34,9 @@ func New(logger *slog.Logger, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/buckets/{name}/objects", handleUploadObject)
 	mux.HandleFunc("GET /api/buckets/{name}/object", handleGetObject)
 
+	// --- Network topology (mesh map) ---
+	mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
+
 	// --- SPA (everything else) ---
 	mux.Handle("/", spaHandler(static))
 
@@ -61,6 +64,8 @@ func rowCount(res *Resource) int {
 		return imagesCount()
 	case "buckets":
 		return bucketsCount()
+	case "topology":
+		return len(resourceByID["networks"].Rows)
 	}
 	return len(res.Rows)
 }
