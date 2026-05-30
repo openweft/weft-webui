@@ -198,6 +198,8 @@ func RouteLabel(method, path string) string {
 		return "POST /api/registry/upload"
 	case path == "/api/buckets":
 		return method + " /api/buckets"
+	case path == "/api/tenants":
+		return method + " /api/tenants"
 	case path == "/api/auth/login":
 		return "GET /api/auth/login"
 	case path == "/api/auth/callback":
@@ -211,6 +213,16 @@ func RouteLabel(method, path string) string {
 	switch {
 	case prefix(path, "/api/resources/"):
 		return "GET /api/resources/:id"
+	case prefix(path, "/api/tenants/") && suffix(path, "/admins"):
+		return "POST /api/tenants/:name/admins"
+	case prefix(path, "/api/tenants/") && suffix(path, "/projects"):
+		return "POST /api/tenants/:name/projects"
+	case prefix(path, "/api/tenants/") && suffix(path, "/members"):
+		return "POST /api/tenants/:name/members"
+	case prefix(path, "/api/tenants/"):
+		return method + " /api/tenants/:name"
+	case prefix(path, "/api/projects/") && suffix(path, "/roles"):
+		return "POST /api/projects/:name/roles"
 	case prefix(path, "/api/buckets/") && suffix(path, "/objects"):
 		return method + " /api/buckets/:name/objects"
 	case prefix(path, "/api/buckets/") && suffix(path, "/object"):

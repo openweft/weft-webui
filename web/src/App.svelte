@@ -6,6 +6,7 @@
   import Topbar from './lib/components/Topbar.svelte';
   import ResourcePage from './lib/components/ResourcePage.svelte';
   import RegistryPage from './lib/components/RegistryPage.svelte';
+  import TenantsPage from './lib/components/TenantsPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import SharesPage from './lib/components/SharesPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
@@ -61,6 +62,10 @@
       {:else if active === 'registry'}
         {#key active}
           <RegistryPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'tenants'}
+        {#key active}
+          <TenantsPage meta={byId.get(active)!} />
         {/key}
       {:else if active === 'buckets'}
         <ObjectStoragePage />

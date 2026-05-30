@@ -1,0 +1,649 @@
+// tenants.go — in-memory model for tenants + their projects, members
+// and per-project role assignments.
+//
+// This is the source-of-truth for the mock identity layer. When vzd
+// grows the matching RPCs (CreateTenant, AddTenantMember, GrantRole, …)
+// the same shapes will go on the wire ; until then the dashboard
+// mutates this store and the rows for Tenants / Projects / Users /
+// Groups are derived from it on each call.
+//
+// Authorization model (mirrored client-side for affordance gating, but
+// enforced here for the API) :
+//
+//   - "cluster admin"  — group "admin" in the user's claims. Can create
+//                        tenants and add users to a tenant's admin group.
+//   - "tenant admin"   — listed in the tenant's `admins` set. Can add
+//                        projects, add members, grant roles within
+//                        THAT tenant. Delegated administration.
+//   - regular member   — read-only on their tenants.
+//
+// Concurrency : one mutex guards the whole store. Read paths take a
+// snapshot under the lock and release it before serialising, so the
+// hot path stays O(N) without holding the lock during JSON encoding.
+package server
+
+import (
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/openweft/weft-webui/internal/auth"
+)
+
+// Tenant is one identity boundary. Projects live in exactly one tenant,
+// users can be members of several with different group sets per tenant.
+type Tenant struct {
+	Name    string
+	Domain  string
+	Status  string
+	Admins  map[string]struct{} // user emails in the tenant-admin group
+	Members map[string][]string // email → groups within this tenant
+	// Projects in this tenant. Order is preserved (creation order).
+	Projects []string
+	// Groups defined within this tenant. Beyond "admins" each tenant
+	// can carve its own (developers, viewers, …). "admins" is implicit.
+	Groups map[string]string // group name → description
+}
+
+// projectInfo is the per-project record kept alongside tenants for
+// quick lookup and to carry role assignments (user→role).
+type projectInfo struct {
+	Name    string
+	UUID    string
+	Created string
+	Tenant  string
+	Roles   map[string]string // email → role ("owner" | "editor" | "viewer")
+}
+
+type tenantStore struct {
+	mu       sync.RWMutex
+	tenants  map[string]*Tenant       // name → tenant
+	projects map[string]*projectInfo  // name → project
+	users    map[string]*userIdentity // email → user
+}
+
+type userIdentity struct {
+	Email       string
+	Name        string
+	Issuer      string
+	LastSeen    string
+	// Memberships are derived from tenants[*].Members on every read so
+	// the source of truth stays the tenant struct.
+}
+
+// tenantsDB is the package-global store. Seeded in init() with the
+// same fixtures the registry used to hold inline.
+var tenantsDB *tenantStore
+
+func init() {
+	tenantsDB = newTenantStore()
+	tenantsDB.seed()
+}
+
+func newTenantStore() *tenantStore {
+	return &tenantStore{
+		tenants:  make(map[string]*Tenant),
+		projects: make(map[string]*projectInfo),
+		users:    make(map[string]*userIdentity),
+	}
+}
+
+func (s *tenantStore) seed() {
+	// Tenants.
+	for _, t := range []*Tenant{
+		{Name: "acme", Domain: "acme.example", Status: "active"},
+		{Name: "globex", Domain: "globex.example", Status: "active"},
+		{Name: "initech", Domain: "initech.example", Status: "disabled"},
+	} {
+		t.Admins = map[string]struct{}{}
+		t.Members = map[string][]string{}
+		t.Groups = map[string]string{
+			"admins":     "Tenant operators",
+			"developers": "Read/write on tenant projects",
+			"viewers":    "Read-only",
+		}
+		s.tenants[t.Name] = t
+	}
+
+	// Users.
+	users := []*userIdentity{
+		{Email: "yann@acme.example", Name: "Yannick", Issuer: "dex", LastSeen: "2026-05-27"},
+		{Email: "alice@acme.example", Name: "Alice", Issuer: "dex", LastSeen: "2026-05-26"},
+		{Email: "bob@globex.example", Name: "Bob", Issuer: "dex", LastSeen: "2026-05-12"},
+		{Email: "dev@weft.local", Name: "dev", Issuer: "local", LastSeen: "2026-05-28"},
+	}
+	for _, u := range users {
+		s.users[u.Email] = u
+	}
+
+	// Memberships : Yannick admins acme + developers globex ;
+	// Alice developers in acme ; Bob viewers in globex ;
+	// the dev user admins every tenant so the dev UI exercises every action.
+	s.tenants["acme"].Members["yann@acme.example"] = []string{"admins", "developers"}
+	s.tenants["acme"].Admins["yann@acme.example"] = struct{}{}
+	s.tenants["acme"].Members["alice@acme.example"] = []string{"developers"}
+	s.tenants["globex"].Members["yann@acme.example"] = []string{"developers"}
+	s.tenants["globex"].Members["bob@globex.example"] = []string{"viewers"}
+	for name := range s.tenants {
+		s.tenants[name].Members["dev@weft.local"] = []string{"admins"}
+		s.tenants[name].Admins["dev@weft.local"] = struct{}{}
+	}
+
+	// Projects.
+	projects := []*projectInfo{
+		{Name: "team-alpha", UUID: "1c5d8a9e-7c11-4d2a-9c5e-aab742c0a112", Created: "2026-04-12", Tenant: "acme"},
+		{Name: "team-beta", UUID: "2d3e9b7c-8e22-4ab3-9b0e-bbe853d1b223", Created: "2026-04-18", Tenant: "acme"},
+		{Name: "research", UUID: "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", Created: "2026-05-03", Tenant: "globex"},
+	}
+	for _, p := range projects {
+		p.Roles = map[string]string{}
+		s.projects[p.Name] = p
+		s.tenants[p.Tenant].Projects = append(s.tenants[p.Tenant].Projects, p.Name)
+	}
+	s.projects["team-alpha"].Roles["yann@acme.example"] = "owner"
+	s.projects["team-alpha"].Roles["alice@acme.example"] = "editor"
+}
+
+// ---- Read-only views (used by the resource rows handlers) ----
+
+// listTenants returns rows for the tenants resource. When forEmail is
+// non-empty the result is filtered to the tenants that user is a member
+// of — the user listener uses this so a user never sees tenants they
+// don't belong to.
+func (s *tenantStore) listTenants(forEmail string) []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]map[string]any, 0, len(s.tenants))
+	for _, t := range sortedTenants(s.tenants) {
+		if forEmail != "" {
+			if _, ok := t.Members[forEmail]; !ok {
+				continue
+			}
+		}
+		out = append(out, map[string]any{
+			"name":     t.Name,
+			"domain":   t.Domain,
+			"projects": len(t.Projects),
+			"members":  len(t.Members),
+			"admins":   len(t.Admins),
+			"status":   t.Status,
+		})
+	}
+	return out
+}
+
+// listProjects mirrors the registry shape (name/uuid/created) and adds
+// the tenant column. forEmail filters to projects whose tenant the
+// user belongs to.
+func (s *tenantStore) listProjects(forEmail string) []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]map[string]any, 0, len(s.projects))
+	for _, p := range sortedProjects(s.projects) {
+		if forEmail != "" {
+			t := s.tenants[p.Tenant]
+			if t == nil {
+				continue
+			}
+			if _, ok := t.Members[forEmail]; !ok {
+				continue
+			}
+		}
+		out = append(out, map[string]any{
+			"name":    p.Name,
+			"tenant":  p.Tenant,
+			"uuid":    p.UUID,
+			"created": p.Created,
+		})
+	}
+	return out
+}
+
+// listUsers returns the cluster-wide user table. memberships is
+// rendered as "tenant:group1,group2 / tenant2:..." so the existing
+// table layout stays compact.
+func (s *tenantStore) listUsers() []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]map[string]any, 0, len(s.users))
+	for _, u := range sortedUsers(s.users) {
+		out = append(out, map[string]any{
+			"name":        u.Name,
+			"email":       u.Email,
+			"issuer":      u.Issuer,
+			"memberships": s.formatMemberships(u.Email),
+			"last_seen":   u.LastSeen,
+		})
+	}
+	return out
+}
+
+// formatMemberships renders the per-tenant group list. Called under
+// the read lock by the caller.
+func (s *tenantStore) formatMemberships(email string) string {
+	var parts []string
+	for _, t := range sortedTenants(s.tenants) {
+		if g, ok := t.Members[email]; ok {
+			parts = append(parts, t.Name+":"+strings.Join(g, ","))
+		}
+	}
+	return strings.Join(parts, " / ")
+}
+
+// listGroups : groups are defined per-tenant. We surface them as
+// (tenant, group) pairs so the cluster-admin view shows the full set.
+func (s *tenantStore) listGroups() []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]map[string]any, 0)
+	for _, t := range sortedTenants(s.tenants) {
+		// Count members per group.
+		counts := map[string]int{}
+		for _, groups := range t.Members {
+			for _, g := range groups {
+				counts[g]++
+			}
+		}
+		for _, name := range sortedKeys(t.Groups) {
+			out = append(out, map[string]any{
+				"name":        name,
+				"tenant":      t.Name,
+				"description": t.Groups[name],
+				"members":     counts[name],
+			})
+		}
+	}
+	return out
+}
+
+// tenantDetail is the structure returned by GET /api/tenants/{name} —
+// everything the tenant-detail UI needs to render in one call.
+func (s *tenantStore) tenantDetail(name string) (map[string]any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[name]
+	if !ok {
+		return nil, false
+	}
+	type member struct {
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
+		Groups []string `json:"groups"`
+		Admin  bool     `json:"admin"`
+	}
+	type project struct {
+		Name    string            `json:"name"`
+		UUID    string            `json:"uuid"`
+		Created string            `json:"created"`
+		Roles   map[string]string `json:"roles"`
+	}
+	members := make([]member, 0, len(t.Members))
+	for _, email := range sortedKeys(t.Members) {
+		_, isAdmin := t.Admins[email]
+		nm := email
+		if u, ok := s.users[email]; ok && u.Name != "" {
+			nm = u.Name
+		}
+		members = append(members, member{
+			Email: email, Name: nm,
+			Groups: t.Members[email], Admin: isAdmin,
+		})
+	}
+	projs := make([]project, 0, len(t.Projects))
+	for _, pn := range t.Projects {
+		p := s.projects[pn]
+		if p == nil {
+			continue
+		}
+		// Copy roles so callers can't mutate the store.
+		r := make(map[string]string, len(p.Roles))
+		for k, v := range p.Roles {
+			r[k] = v
+		}
+		projs = append(projs, project{Name: p.Name, UUID: p.UUID, Created: p.Created, Roles: r})
+	}
+	groups := make([]map[string]any, 0, len(t.Groups))
+	for _, g := range sortedKeys(t.Groups) {
+		groups = append(groups, map[string]any{"name": g, "description": t.Groups[g]})
+	}
+	return map[string]any{
+		"name":     t.Name,
+		"domain":   t.Domain,
+		"status":   t.Status,
+		"projects": projs,
+		"members":  members,
+		"groups":   groups,
+	}, true
+}
+
+// ---- Mutations ----
+
+func (s *tenantStore) createTenant(name, domain string) error {
+	name, domain = strings.TrimSpace(name), strings.TrimSpace(domain)
+	if name == "" {
+		return errBadReq("name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tenants[name]; exists {
+		return errConflict("tenant already exists")
+	}
+	s.tenants[name] = &Tenant{
+		Name: name, Domain: domain, Status: "active",
+		Admins:  map[string]struct{}{},
+		Members: map[string][]string{},
+		Groups: map[string]string{
+			"admins":     "Tenant operators",
+			"developers": "Read/write on tenant projects",
+			"viewers":    "Read-only",
+		},
+	}
+	return nil
+}
+
+// addTenantAdmin promotes a user (creating a stub user record if
+// needed) into the tenant's admin group.
+func (s *tenantStore) addTenantAdmin(tenant, email string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return errBadReq("email is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return errNotFound("tenant")
+	}
+	if _, ok := s.users[email]; !ok {
+		s.users[email] = &userIdentity{Email: email, Name: email, Issuer: "dex", LastSeen: ""}
+	}
+	t.Admins[email] = struct{}{}
+	// Ensure the email is also a member, with the admins group.
+	t.Members[email] = ensureContains(t.Members[email], "admins")
+	return nil
+}
+
+func (s *tenantStore) addProject(tenant, projectName string) (*projectInfo, error) {
+	projectName = strings.TrimSpace(projectName)
+	if projectName == "" {
+		return nil, errBadReq("project name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return nil, errNotFound("tenant")
+	}
+	if _, exists := s.projects[projectName]; exists {
+		return nil, errConflict("project already exists")
+	}
+	p := &projectInfo{
+		Name: projectName,
+		UUID: pseudoUUID(projectName),
+		Created: today(),
+		Tenant:  tenant,
+		Roles:   map[string]string{},
+	}
+	s.projects[projectName] = p
+	t.Projects = append(t.Projects, projectName)
+	return p, nil
+}
+
+func (s *tenantStore) addMember(tenant, email string, groups []string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return errBadReq("email is required")
+	}
+	if len(groups) == 0 {
+		groups = []string{"viewers"}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return errNotFound("tenant")
+	}
+	for _, g := range groups {
+		if _, ok := t.Groups[g]; !ok {
+			return errBadReq("unknown group: " + g)
+		}
+	}
+	if _, ok := s.users[email]; !ok {
+		s.users[email] = &userIdentity{Email: email, Name: email, Issuer: "dex"}
+	}
+	t.Members[email] = uniqStrings(groups)
+	if contains(groups, "admins") {
+		t.Admins[email] = struct{}{}
+	}
+	return nil
+}
+
+// grantRole assigns one role to one user on one project. Role values
+// are free-form here ; the server will validate against vzd's enum once
+// wired.
+func (s *tenantStore) grantRole(projectName, email, role string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	role = strings.TrimSpace(role)
+	if email == "" || role == "" {
+		return errBadReq("email and role are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.projects[projectName]
+	if !ok {
+		return errNotFound("project")
+	}
+	t := s.tenants[p.Tenant]
+	if t == nil {
+		return errNotFound("tenant")
+	}
+	if _, ok := t.Members[email]; !ok {
+		return errBadReq("user is not a member of the project's tenant")
+	}
+	p.Roles[email] = role
+	return nil
+}
+
+// ---- Authorisation helpers ----
+
+// isClusterAdmin reads the OIDC groups claim. The mock dev user gets
+// {"admin", "dev"} so dev-mode unlocks everything.
+func isClusterAdmin(u *auth.User) bool {
+	if u == nil {
+		return false
+	}
+	for _, g := range u.Groups {
+		if g == "admin" || g == "admins" {
+			return true
+		}
+	}
+	return false
+}
+
+// isMember reports whether u is in the tenant's member set (any group).
+// Cluster admins pass implicitly so they can read every tenant detail.
+func (s *tenantStore) isMember(u *auth.User, tenant string) bool {
+	if u == nil {
+		return false
+	}
+	if isClusterAdmin(u) {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return false
+	}
+	_, ok = t.Members[u.Email]
+	return ok
+}
+
+// projectTenant returns the tenant a project belongs to.
+func (s *tenantStore) projectTenant(name string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.projects[name]
+	if !ok {
+		return "", false
+	}
+	return p.Tenant, true
+}
+
+// isTenantAdmin returns true when u is in the tenant's admin set, OR
+// is a cluster admin (cluster admins can do anything a tenant admin can).
+func (s *tenantStore) isTenantAdmin(u *auth.User, tenant string) bool {
+	if u == nil {
+		return false
+	}
+	if isClusterAdmin(u) {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return false
+	}
+	_, ok = t.Admins[u.Email]
+	return ok
+}
+
+// ---- HTTP shape errors ----
+
+type httpErr struct {
+	code int
+	msg  string
+}
+
+func (e *httpErr) Error() string { return e.msg }
+func errBadReq(m string) error   { return &httpErr{http.StatusBadRequest, m} }
+func errNotFound(m string) error { return &httpErr{http.StatusNotFound, m + " not found"} }
+func errConflict(m string) error { return &httpErr{http.StatusConflict, m} }
+func errForbidden(m string) error { return &httpErr{http.StatusForbidden, m} }
+
+func writeErr(w http.ResponseWriter, err error) {
+	if he, ok := err.(*httpErr); ok {
+		writeJSON(w, he.code, map[string]string{"error": he.msg})
+		return
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+
+// ---- small helpers ----
+
+func sortedTenants(m map[string]*Tenant) []*Tenant {
+	out := make([]*Tenant, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func sortedProjects(m map[string]*projectInfo) []*projectInfo {
+	out := make([]*projectInfo, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func sortedUsers(m map[string]*userIdentity) []*userIdentity {
+	out := make([]*userIdentity, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	return out
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func ensureContains(s []string, v string) []string {
+	for _, x := range s {
+		if x == v {
+			return s
+		}
+	}
+	return append(s, v)
+}
+
+func uniqStrings(in []string) []string {
+	seen := map[string]struct{}{}
+	out := in[:0]
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// pseudoUUID returns a deterministic UUID-shaped string derived from
+// seed. Mock store only — vzd assigns the real ones. Two FNV-64 hashes
+// with different offsets fill the 32 hex nibbles, matched against the
+// 8-4-4-4-12 layout so the value looks like a real UUID in the UI.
+func pseudoUUID(seed string) string {
+	const fnvPrime = uint64(1099511628211)
+	hash := func(off uint64) uint64 {
+		h := off
+		for _, c := range seed {
+			h ^= uint64(c)
+			h *= fnvPrime
+		}
+		return h
+	}
+	hi := hash(1469598103934665603) // FNV offset basis
+	lo := hash(0xCBF29CE484222325 ^ 0x9E3779B97F4A7C15)
+
+	const hex = "0123456789abcdef"
+	out := make([]byte, 36)
+	// Layout : 8-4-4-4-12 hex nibbles + 4 hyphens = 36 bytes.
+	hyphen := map[int]bool{8: true, 13: true, 18: true, 23: true}
+	idx := 0
+	emit := func(nibble byte) {
+		for hyphen[idx] {
+			out[idx] = '-'
+			idx++
+		}
+		out[idx] = hex[nibble&0xF]
+		idx++
+	}
+	for s := 0; s < 64; s += 4 {
+		emit(byte(hi >> uint(60-s)))
+	}
+	for s := 0; s < 64; s += 4 {
+		emit(byte(lo >> uint(60-s)))
+	}
+	return string(out)
+}
+
+func today() string {
+	// Stable in dev (deterministic mock) ; production hits ProjectInfo.created.
+	return "2026-05-28"
+}

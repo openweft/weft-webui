@@ -1,0 +1,179 @@
+// tenant_handlers.go — HTTP handlers for the tenant mutations.
+//
+// Authorisation policy (mirrored in the SPA for affordance gating) :
+//
+//   - cluster admin    creates tenants and elects tenant admins
+//   - tenant admin     within their tenants : add projects, add
+//                      members, grant per-project roles
+//   - everyone else    read-only
+//
+// Each handler resolves the user via auth.UserFromContext (the auth
+// middleware injects it) then defers to tenantsDB. Errors thread back
+// through writeErr so the SPA gets a stable {error: string} shape.
+package server
+
+import (
+	"net/http"
+
+	"github.com/openweft/weft-webui/internal/auth"
+)
+
+// --- Cluster admin only ----------------------------------------------
+
+// handleCreateTenant : POST /api/tenants  {name, domain}
+func handleCreateTenant(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
+	if !isClusterAdmin(u) {
+		writeErr(w, errForbidden("cluster admin required"))
+		return
+	}
+	var body struct {
+		Name, Domain string
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.createTenant(body.Name, body.Domain); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"name": body.Name})
+}
+
+// handleAddTenantAdmin : POST /api/tenants/{name}/admins  {email}
+func handleAddTenantAdmin(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
+	if !isClusterAdmin(u) {
+		writeErr(w, errForbidden("cluster admin required"))
+		return
+	}
+	var body struct{ Email string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.addTenantAdmin(r.PathValue("name"), body.Email); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"email": body.Email})
+}
+
+// --- Tenant admin (delegated) ----------------------------------------
+
+// handleAddTenantProject : POST /api/tenants/{name}/projects  {name}
+func handleAddTenantProject(w http.ResponseWriter, r *http.Request) {
+	tenant := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	var body struct{ Name string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	p, err := tenantsDB.addProject(tenant, body.Name)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"name": p.Name, "uuid": p.UUID, "tenant": p.Tenant, "created": p.Created,
+	})
+}
+
+// handleAddTenantMember : POST /api/tenants/{name}/members  {email, groups[]}
+func handleAddTenantMember(w http.ResponseWriter, r *http.Request) {
+	tenant := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	var body struct {
+		Email  string
+		Groups []string
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.addMember(tenant, body.Email, body.Groups); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"email": body.Email, "groups": body.Groups})
+}
+
+// handleGrantProjectRole : POST /api/projects/{name}/roles  {email, role}
+func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
+	projectName := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+
+	// The handler doesn't know the tenant until it looks up the
+	// project ; do the lookup, then run the auth check on the
+	// resolved tenant.
+	tenant, ok := tenantsDB.projectTenant(projectName)
+	if !ok {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	var body struct{ Email, Role string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.grantRole(projectName, body.Email, body.Role); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"email": body.Email, "role": body.Role})
+}
+
+// --- Detail (read) ---------------------------------------------------
+
+// handleTenantDetail : GET /api/tenants/{name}
+//
+// Returns the full tenant view (projects + members + groups + roles)
+// in one call so the SPA's drill-down doesn't need to chain requests.
+// A user who isn't a member gets 404 (not 403 — same don't-acknowledge
+// principle as the admin-only resources).
+func handleTenantDetail(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+
+	detail, ok := tenantsDB.tenantDetail(name)
+	if !ok {
+		writeErr(w, errNotFound("tenant"))
+		return
+	}
+	if !isClusterAdmin(u) {
+		// Filter : member-or-404.
+		if !tenantsDB.isMember(u, name) {
+			writeErr(w, errNotFound("tenant"))
+			return
+		}
+	}
+	// Annotate the response with the caller's effective role so the
+	// SPA knows which affordances to render. Saves a round-trip.
+	detail["caller"] = map[string]any{
+		"email":         emailOf(u),
+		"cluster_admin": isClusterAdmin(u),
+		"tenant_admin":  tenantsDB.isTenantAdmin(u, name),
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func emailOf(u *auth.User) string {
+	if u == nil {
+		return ""
+	}
+	return u.Email
+}

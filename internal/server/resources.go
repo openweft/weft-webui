@@ -69,45 +69,41 @@ func row(pairs ...any) map[string]any {
 // registry is ordered; sections are rendered in first-seen order.
 var registry = []Resource{
 	// ---------- Identity ----------
+	//
+	// Identity resources (tenants/projects/users/groups) are driven by
+	// tenantsDB (tenants.go) so relationships stay consistent. Rows here
+	// are nil — handlers in server.go call into the store on each
+	// request. Tenants is dual-scope : the user UI filters to the
+	// caller's memberships, the admin UI surfaces all of them.
 	{
-		ID: "tenants", Label: "Tenants", Section: "Identity", Scope: ScopeAdmin,
-		Columns: cols("name", "Name", "domain", "Domain", "projects", "Projects", "status", "Status"),
-		Rows: []map[string]any{
-			row("name", "acme", "domain", "acme.example", "projects", 4, "status", "active"),
-			row("name", "globex", "domain", "globex.example", "projects", 2, "status", "active"),
-			row("name", "initech", "domain", "initech.example", "projects", 1, "status", "disabled"),
-		},
+		ID: "tenants", Label: "Tenants", Section: "Identity", Scope: ScopeBoth,
+		Columns: cols("name", "Name", "domain", "Domain",
+			"projects", "Projects", "members", "Members", "admins", "Admins",
+			"status", "Status"),
 	},
 	{
-		// Mirrors the vzd ProjectInfo proto (name/uuid/created) so live and
-		// mock data share one shape ; see internal/wclient.ListProjects.
+		// Mirrors the vzd ProjectInfo proto (name/uuid/created) so live
+		// and mock data share one shape ; see internal/wclient.ListProjects.
+		// The tenant column is the webui's addition — vzd carries the
+		// tenant UUID on the project proto.
 		ID: "projects", Label: "Projects", Section: "Identity",
-		Columns: cols("name", "Name", "uuid", "UUID", "created", "Created"),
-		Rows: []map[string]any{
-			row("name", "team-alpha", "uuid", "1c5d8a9e-7c11-4d2a-9c5e-aab742c0a112", "created", "2026-04-12"),
-			row("name", "team-beta", "uuid", "2d3e9b7c-8e22-4ab3-9b0e-bbe853d1b223", "created", "2026-04-18"),
-			row("name", "research", "uuid", "3f6abcd2-9f33-4ec4-8a1f-ccf964e2c334", "created", "2026-05-03"),
-		},
+		Columns: cols("name", "Name", "tenant", "Tenant", "uuid", "UUID", "created", "Created"),
 	},
 	{
-		// Mirrors UserInfo (display_name → name, email, oidc_issuer → issuer,
-		// groups, last_seen). The ResourceTable bolds the "name" key.
+		// Memberships column packs the per-tenant group list as
+		// `tenant:group1,group2 / tenant2:groupN` — the existing table
+		// layout stays compact, and a future detail drawer can show the
+		// structured form.
 		ID: "users", Label: "Users", Section: "Identity", Scope: ScopeAdmin,
-		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer", "groups", "Groups", "last_seen", "Last seen"),
-		Rows: []map[string]any{
-			row("name", "Yannick", "email", "yann@acme.example", "issuer", "dex", "groups", "admins, developers", "last_seen", "2026-05-27"),
-			row("name", "Alice", "email", "alice@acme.example", "issuer", "dex", "groups", "developers", "last_seen", "2026-05-26"),
-			row("name", "Bob", "email", "bob@globex.example", "issuer", "dex", "groups", "viewers", "last_seen", "2026-05-12"),
-		},
+		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer",
+			"memberships", "Memberships", "last_seen", "Last seen"),
 	},
 	{
+		// Groups are tenant-scoped : the same name (`developers`) is a
+		// different group in different tenants. Surface the tenant.
 		ID: "groups", Label: "Groups", Section: "Identity", Scope: ScopeAdmin,
-		Columns: cols("name", "Name", "description", "Description", "members", "Members"),
-		Rows: []map[string]any{
-			row("name", "admins", "description", "Platform operators", "members", 3),
-			row("name", "developers", "description", "Read/write on team projects", "members", 12),
-			row("name", "viewers", "description", "Read-only", "members", 27),
-		},
+		Columns: cols("name", "Name", "tenant", "Tenant",
+			"description", "Description", "members", "Members"),
 	},
 
 	// ---------- Network ----------
