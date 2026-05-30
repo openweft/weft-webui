@@ -80,6 +80,13 @@ export type APITenantQuotaView = components['schemas']['TenantQuotaView'];
 export type APIProjectQuotaView = components['schemas']['ProjectQuotaView'];
 export type APIQuotas = components['schemas']['Quotas'];
 
+// Storage browser — bucket + share share the same shapes.
+export type APIObjectEntry   = components['schemas']['ObjectEntry'];
+export type APIObjectListing = components['schemas']['ObjectListing'];
+export type APIObjectDetail  = components['schemas']['ObjectDetail'];
+export type APIBucketPolicy  = components['schemas']['BucketPolicy'];
+export type APIPolicyStatement = components['schemas']['PolicyStatement'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };

@@ -2070,6 +2070,44 @@ export interface components {
             email: string;
             groups: string[] | null;
         };
+        ObjectDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ObjectDetail.json
+             */
+            readonly $schema?: string;
+            content: string;
+            contentType: string;
+            key: string;
+            modified: string;
+            previewable: boolean;
+            /** Format: int64 */
+            size: number;
+            sizeHuman: string;
+        };
+        ObjectEntry: {
+            contentType: string;
+            key: string;
+            modified: string;
+            name: string;
+            /** Format: int64 */
+            size: number;
+            sizeHuman: string;
+        };
+        ObjectListing: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ObjectListing.json
+             */
+            readonly $schema?: string;
+            bucket?: string;
+            folders: string[] | null;
+            objects: components["schemas"]["ObjectEntry"][] | null;
+            prefix: string;
+            share?: string;
+        };
         OkBody: {
             /**
              * Format: uri
@@ -2080,8 +2118,10 @@ export interface components {
             ok: boolean;
         };
         PolicyStatement: {
-            action: string;
-            effect: string;
+            /** @enum {string} */
+            action: "s3:GetObject" | "s3:PutObject" | "s3:DeleteObject" | "s3:ListBucket";
+            /** @enum {string} */
+            effect: "Allow" | "Deny";
             principal: string;
             resource: string;
         };
@@ -2475,7 +2515,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ObjectDetail"];
                 };
             };
             /** @description Error */
@@ -2545,7 +2585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ObjectListing"];
                 };
             };
             /** @description Error */
@@ -2616,7 +2656,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BucketPolicy"];
                 };
             };
             /** @description Error */
@@ -2652,7 +2692,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BucketPolicy"];
                 };
             };
             /** @description Error */
@@ -4583,7 +4623,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ObjectDetail"];
                 };
             };
             /** @description Error */
@@ -4618,7 +4658,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ObjectListing"];
                 };
             };
             /** @description Error */

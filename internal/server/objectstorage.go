@@ -55,9 +55,9 @@ type BucketPolicy struct {
 // is restricted to the four verbs that have first-class affordances in
 // the FileBrowser : GetObject, PutObject, DeleteObject, ListBucket.
 type PolicyStatement struct {
-	Effect    string `json:"effect"`    // "Allow" | "Deny"
+	Effect    string `json:"effect" enum:"Allow,Deny"`
 	Principal string `json:"principal"` // OIDC sub OR "*"
-	Action    string `json:"action"`    // "s3:GetObject" | "s3:PutObject" | "s3:DeleteObject" | "s3:ListBucket"
+	Action    string `json:"action" enum:"s3:GetObject,s3:PutObject,s3:DeleteObject,s3:ListBucket"`
 	Resource  string `json:"resource"`  // "*" | "prefix/*" | exact key
 }
 
@@ -315,7 +315,10 @@ func itoaSafe(n int) string {
 
 // ---- shared browsing helpers (used by buckets + shares) ----
 
-type objEntry struct {
+// ObjectEntry is one row in an ObjectListing — a file directly under
+// the listed prefix. The folders[] siblings carry just the path
+// segment (foo/) ; they're rendered as nav items in the SPA.
+type ObjectEntry struct {
 	Name        string `json:"name"`
 	Key         string `json:"key"`
 	Size        int64  `json:"size"`
@@ -324,12 +327,37 @@ type objEntry struct {
 	ContentType string `json:"contentType"`
 }
 
+// ObjectListing is what /api/buckets/{name}/objects and the
+// equivalent shares endpoint return. Bucket carries the bucket
+// name on the buckets path ; the shares path leaves it empty since
+// the Share name lives in the URL.
+type ObjectListing struct {
+	Bucket  string        `json:"bucket,omitempty"`
+	Share   string        `json:"share,omitempty"`
+	Prefix  string        `json:"prefix"`
+	Folders []string      `json:"folders"`
+	Objects []ObjectEntry `json:"objects"`
+}
+
+// ObjectDetail is one object's metadata + a (capped) preview for
+// previewable content. Previewable is true when ContentType begins
+// with text/ or matches the small allowlist in previewable().
+type ObjectDetail struct {
+	Key         string `json:"key"`
+	Size        int64  `json:"size"`
+	SizeHuman   string `json:"sizeHuman"`
+	Modified    string `json:"modified"`
+	ContentType string `json:"contentType"`
+	Previewable bool   `json:"previewable"`
+	Content     string `json:"content"`
+}
+
 // listEntries splits the objects under prefix into folders (common prefixes
 // one level down) and the files directly at that level.
-func listEntries(objs []s3object, prefix string) ([]string, []objEntry) {
+func listEntries(objs []s3object, prefix string) ([]string, []ObjectEntry) {
 	seen := map[string]bool{}
 	folders := []string{}
-	entries := []objEntry{}
+	entries := []ObjectEntry{}
 	for _, o := range objs {
 		if !strings.HasPrefix(o.Key, prefix) {
 			continue
@@ -346,7 +374,7 @@ func listEntries(objs []s3object, prefix string) ([]string, []objEntry) {
 			}
 			continue
 		}
-		entries = append(entries, objEntry{
+		entries = append(entries, ObjectEntry{
 			Name: rest, Key: o.Key, Size: o.Size, SizeHuman: humanSize(o.Size),
 			Modified: o.Modified, ContentType: o.ContentType,
 		})
@@ -357,13 +385,13 @@ func listEntries(objs []s3object, prefix string) ([]string, []objEntry) {
 }
 
 // objectDetail returns one object's metadata + a text preview, if present.
-func objectDetail(objs []s3object, key string) (map[string]any, bool) {
+func objectDetail(objs []s3object, key string) (*ObjectDetail, bool) {
 	for _, o := range objs {
 		if o.Key == key {
-			return map[string]any{
-				"key": o.Key, "size": o.Size, "sizeHuman": humanSize(o.Size),
-				"modified": o.Modified, "contentType": o.ContentType,
-				"previewable": previewable(o.ContentType), "content": o.Content,
+			return &ObjectDetail{
+				Key: o.Key, Size: o.Size, SizeHuman: humanSize(o.Size),
+				Modified: o.Modified, ContentType: o.ContentType,
+				Previewable: previewable(o.ContentType), Content: o.Content,
 			}, true
 		}
 	}
