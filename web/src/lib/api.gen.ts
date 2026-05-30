@@ -1882,6 +1882,33 @@ export interface components {
             target_kind: "vm" | "lb";
             target_name: string;
         };
+        MeBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MeBody.json
+             */
+            readonly $schema?: string;
+            cluster_admin: boolean;
+            /** @description True when running in dev mode (synthetic session) */
+            dev: boolean;
+            email: string;
+            /** @description OIDC group claims */
+            groups: string[] | null;
+            /** @description 1–2 char avatar label */
+            initials: string;
+            name: string;
+            /** @description Currently scoped project */
+            project: string;
+            /** @description Tenants reachable by the user, each with its projects */
+            scopes: components["schemas"]["ScopeEntry"][] | null;
+            /** @description OIDC subject */
+            sub: string;
+            /** @description Currently scoped tenant (empty = all) */
+            tenant: string;
+            /** @description True when the user is admin of at least one tenant */
+            tenant_admin: boolean;
+        };
         OkBody: {
             /**
              * Format: uri
@@ -1906,6 +1933,16 @@ export interface components {
             source_kind: "none" | "git" | "oci";
             source_ref?: string;
             source_url: string;
+        };
+        Quota: {
+            icon: string;
+            id: string;
+            label: string;
+            /** Format: int64 */
+            limit: number;
+            unit: string;
+            /** Format: int64 */
+            used: number;
         };
         Quotas: {
             /**
@@ -1956,6 +1993,12 @@ export interface components {
             label: string;
             section: string;
         };
+        ScopeEntry: {
+            domain: string;
+            name: string;
+            projects: string[] | null;
+            status: string;
+        };
         SecurityRule: {
             direction: string;
             /** Format: int32 */
@@ -1981,6 +2024,33 @@ export interface components {
             count: number;
             id: string;
             label: string;
+        };
+        TopoNetwork: {
+            az: string;
+            cidr: string;
+            id: string;
+            name: string;
+            type: string;
+        };
+        TopoNode: {
+            host: string;
+            id: string;
+            /** @enum {string} */
+            kind: "microvm" | "instance" | "infra";
+            name: string;
+            network: string;
+            project: string;
+            status: string;
+        };
+        TopologyBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TopologyBody.json
+             */
+            readonly $schema?: string;
+            networks: components["schemas"]["TopoNetwork"][] | null;
+            nodes: components["schemas"]["TopoNode"][] | null;
         };
         VmStateBody: {
             /**
@@ -2744,7 +2814,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MeBody"];
                 };
             };
             /** @description Error */
@@ -3363,7 +3433,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TopologyBody"];
                 };
             };
             /** @description Error */
@@ -3563,7 +3633,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Quota"][] | null;
                 };
             };
             /** @description Error */

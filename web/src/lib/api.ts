@@ -18,7 +18,12 @@
 // `components['schemas']['…']` is a follow-up that doesn't change
 // call sites.
 
-import { client, type APIFlavor, type APIScript, type APISSHKey } from './client';
+import {
+  client,
+  type APIFlavor, type APIScript, type APISSHKey,
+  type MeBody, type APIQuota, type APIScopeEntry,
+  type APITopoNetwork, type APITopoNode, type APITopologyBody,
+} from './client';
 
 // Re-export the typed aliases for callers that want them.
 export type { APIFlavor, APIScript, APISSHKey };
@@ -143,15 +148,15 @@ export const getSummary = async (): Promise<{ id: string; label: string; count: 
 
 // ---- /api/quotas overview -----------------------------------------
 
-export interface Quota {
-  id: string; label: string; icon: string;
-  used: number; limit: number; unit: string;
-}
+// Quota is the typed body of /api/quotas — sourced from api.gen.ts.
+// Legacy callers can keep using the local-name `Quota` ; it's now an
+// alias over the generated shape.
+export type Quota = APIQuota;
 
 export const getQuotas = async (): Promise<Quota[]> => {
   const { data, error } = await client.GET('/api/quotas');
   if (error) throwErr(error);
-  return data as unknown as Quota[];
+  return data ?? [];
 };
 
 // ---- /api/registry/upload (multipart) -----------------------------
@@ -288,38 +293,39 @@ export async function setBucketPolicy(name: string, p: BucketPolicy): Promise<Bu
 
 // ---- Network topology ---------------------------------------------
 
-export interface TopoNetwork {
-  id: string; name: string; cidr: string; az: string; type: string;
-}
-export interface TopoNode {
-  id: string; name: string; kind: 'microvm' | 'instance' | 'infra';
-  network: string; status: string; project: string; host: string;
-}
+// TopoNetwork / TopoNode / topology body shape now come from the
+// generated client. Legacy aliases preserved for existing callers.
+export type TopoNetwork = APITopoNetwork;
+export type TopoNode = APITopoNode;
 
 export const getTopology = async (): Promise<{ networks: TopoNetwork[]; nodes: TopoNode[] }> => {
   const { data, error } = await client.GET('/api/network-topology');
   if (error) throwErr(error);
-  return data as unknown as { networks: TopoNetwork[]; nodes: TopoNode[] };
+  return {
+    networks: data.networks ?? [],
+    nodes: data.nodes ?? [],
+  };
 };
 
 // ---- Session (me / setScope / logout) -----------------------------
 
-export interface ScopeEntry {
-  name: string; domain: string; status: string; projects: string[];
-}
-
-export interface Me {
-  sub: string; email: string; name: string;
-  groups: string[]; tenant: string; project: string;
-  initials: string; dev: boolean;
-  cluster_admin: boolean; tenant_admin: boolean;
-  scopes: ScopeEntry[];
-}
+// Me + ScopeEntry come from the generated client. The legacy names
+// stay as aliases so the dozen consumer components don't have to be
+// touched. We override the nullable-array fields with non-null
+// versions because `getMe()` coerces nulls away at the boundary.
+export type ScopeEntry = Omit<APIScopeEntry, 'projects'> & { projects: string[] };
+export type Me = Omit<MeBody, 'scopes'> & { scopes: ScopeEntry[] };
 
 export const getMe = async (): Promise<Me> => {
   const { data, error } = await client.GET('/api/me');
   if (error) throwErr(error);
-  return data as unknown as Me;
+  // openapi-typescript types nullable arrays as `T[] | null` because
+  // OpenAPI doesn't forbid null serialisation. The Go side always
+  // emits `[]`, but normalise anyway so callers don't have to.
+  return {
+    ...data,
+    scopes: (data.scopes ?? []).map((s) => ({ ...s, projects: s.projects ?? [] })),
+  };
 };
 
 // onAdminUI : "did this listener register the admin-only resources?"

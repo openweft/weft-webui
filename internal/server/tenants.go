@@ -748,15 +748,25 @@ func remainingMap(cap, used Quotas) map[string]map[string]int {
 	return out
 }
 
+// ScopeEntry is one tenant the caller can scope into, with the list
+// of projects under it. Drives the cascading topbar selector :
+// tenant → project. Exported because the typed /api/me Body
+// references it.
+type ScopeEntry struct {
+	Name     string   `json:"name"`
+	Domain   string   `json:"domain"`
+	Status   string   `json:"status"`
+	Projects []string `json:"projects"`
+}
+
 // userScopes returns the tenants a user is a member of, each with the
-// list of projects in that tenant. Drives the cascading topbar
-// selector in the SPA : tenant → project. Cluster admins get every
-// tenant ; everyone else only their memberships.
-func (s *tenantStore) userScopes(u *auth.User) []map[string]any {
+// list of projects in that tenant. Cluster admins get every tenant ;
+// everyone else only their memberships.
+func (s *tenantStore) userScopes(u *auth.User) []ScopeEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	all := isClusterAdmin(u)
-	out := make([]map[string]any, 0)
+	out := make([]ScopeEntry, 0)
 	for _, t := range sortedTenants(s.tenants) {
 		if !all {
 			if u == nil {
@@ -766,15 +776,15 @@ func (s *tenantStore) userScopes(u *auth.User) []map[string]any {
 				continue
 			}
 		}
-		// Copy project names ; ListUserTenants is called on every page
+		// Copy project names ; userScopes is called on every page
 		// load so avoid aliasing the store's slice.
 		projs := make([]string, len(t.Projects))
 		copy(projs, t.Projects)
-		out = append(out, map[string]any{
-			"name":     t.Name,
-			"domain":   t.Domain,
-			"status":   t.Status,
-			"projects": projs,
+		out = append(out, ScopeEntry{
+			Name:     t.Name,
+			Domain:   t.Domain,
+			Status:   t.Status,
+			Projects: projs,
 		})
 	}
 	return out
