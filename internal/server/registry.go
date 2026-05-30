@@ -2,8 +2,6 @@ package server
 
 import (
 	"fmt"
-	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -52,65 +50,8 @@ func registryAdd(r map[string]any) {
 	registryArtifacts = append([]map[string]any{r}, registryArtifacts...)
 }
 
-// handleRegistryUpload accepts any OCI artifact (container image, raw
-// multi-arch disk, chart, model blob). It does not (yet) push to a real
-// registry — it records the artifact so the UI round-trips.
-func handleRegistryUpload(w http.ResponseWriter, r *http.Request) {
-	// Cap the in-memory parse buffer ; large files spill to temp files.
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form: " + err.Error()})
-		return
-	}
-
-	typ := strings.TrimSpace(r.FormValue("type"))
-	repo := strings.TrimSpace(r.FormValue("repository"))
-	tag := strings.TrimSpace(r.FormValue("tag"))
-	registry := strings.TrimSpace(r.FormValue("registry"))
-	arches := r.Form["arch"]
-
-	switch {
-	case typ != "container" && typ != "raw":
-		badUpload(w, "type must be 'container' or 'raw'")
-		return
-	case repo == "":
-		badUpload(w, "repository is required")
-		return
-	case tag == "":
-		badUpload(w, "tag is required")
-		return
-	case len(arches) == 0:
-		badUpload(w, "select at least one architecture")
-		return
-	}
-	if registry == "" {
-		registry = "zot.dc-a"
-	}
-
-	var total int64
-	if r.MultipartForm != nil {
-		for _, fhs := range r.MultipartForm.File {
-			for _, fh := range fhs {
-				total += fh.Size
-			}
-		}
-	}
-
-	newRow := row(
-		"repository", repo,
-		"tag", tag,
-		"type", typ,
-		"arch", strings.Join(arches, ", "),
-		"registry", registry,
-		"size", humanSize(total),
-		"pushed", "just now",
-	)
-	registryAdd(newRow)
-	writeJSON(w, http.StatusCreated, newRow)
-}
-
-func badUpload(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
-}
+// (handleRegistryUpload moved to huma — see api_misc.go. The badUpload
+// helper is gone too ; huma errors replace the ad-hoc 400 envelope.)
 
 func humanSize(n int64) string {
 	if n <= 0 {

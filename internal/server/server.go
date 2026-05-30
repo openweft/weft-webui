@@ -133,17 +133,14 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	}
 	mux := http.NewServeMux()
 
-	// --- Public routes (no auth) ---
-	mux.HandleFunc("GET /api/healthz", handleHealthz)
-	mux.HandleFunc("GET /api/readyz", handleReadyz)
-
 	// Typed REST API : huma-generated handlers + OpenAPI 3.1 at
 	// /api/openapi + interactive docs at /api/docs. Mounted on the
 	// same mux so the existing middleware chain (security, logging,
 	// metrics, request-id, panic recovery, auth) wraps it unchanged.
 	// One huma.API per listener — scope drives which operations get
 	// registered, so the user listener never even acknowledges
-	// admin-only endpoints (404 instead of 403).
+	// admin-only endpoints (404 instead of 403). /api/healthz +
+	// /api/readyz live inside the huma surface too — see api_misc.go.
 	mountAPI(mux, scope)
 
 	// --- Auth routes (no auth) ---
@@ -168,12 +165,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/events", handleEvents)
 	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
-	// Resource catalogue + rows : filtered by scope so the user-facing
-	// listener never even acknowledges that hosts/users/tenants exist.
-	mux.HandleFunc("GET /api/resources", scopedResources(scope))
-	mux.HandleFunc("GET /api/resources/{id}", scopedResourceRows(scope))
-	mux.HandleFunc("GET /api/summary", scopedSummary(scope))
-	mux.HandleFunc("POST /api/registry/upload", handleRegistryUpload)
+	// (/api/resources, /api/resources/{id}, /api/summary,
+	// /api/registry/upload moved to huma — see api_misc.go.)
 
 	// (Tenants, projects, quotas, /api/me all moved to huma — see
 	// api_tenants.go. Cluster-admin / tenant-admin gating preserved
@@ -235,56 +228,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 }
 
 // scopedResources returns only the registry entries visible to scope.
-func scopedResources(scope Scope) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		out := make([]resourceMeta, 0, len(registry))
-		for i := range registry {
-			res := &registry[i]
-			if !resolveScope(res.Scope).Has(scope) {
-				continue
-			}
-			out = append(out, resourceMeta{
-				ID: res.ID, Label: res.Label, Section: res.Section,
-				Columns: res.Columns, Count: rowCount(res),
-			})
-		}
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-
-// scopedResourceRows refuses to serve admin-only resources from the
-// user listener (404, not 403 — don't acknowledge their existence).
-func scopedResourceRows(scope Scope) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		res, ok := resourceByID[id]
-		if !ok || !resolveScope(res.Scope).Has(scope) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown resource"})
-			return
-		}
-		handleResourceRows(w, r)
-	}
-}
-
-func scopedSummary(scope Scope) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		type item struct {
-			ID    string `json:"id"`
-			Label string `json:"label"`
-			Count int    `json:"count"`
-		}
-		tenant, project := scopeFromRequest(r)
-		out := make([]item, 0, len(registry))
-		for i := range registry {
-			res := &registry[i]
-			if !resolveScope(res.Scope).Has(scope) {
-				continue
-			}
-			out = append(out, item{ID: res.ID, Label: res.Label, Count: scopedRowCount(res, tenant, project)})
-		}
-		writeJSON(w, http.StatusOK, out)
-	}
-}
+// (scopedResources / scopedResourceRows / scopedSummary moved to
+// huma — see api_misc.go.)
 
 // scopedRowCount returns the count of rows visible under the session
 // scope (tenant + project). When both are empty the cluster-wide count
@@ -347,21 +292,7 @@ func scopedRowCount(res *Resource, tenant, project string) int {
 	return n
 }
 
-func handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// handleReadyz returns 200 only if the daemon-backed dependencies are
-// reachable. In mock mode we always say ready. In live mode we'd ping
-// the gRPC client — for now treat "client configured" as ready ; a
-// dedicated Ping RPC can replace this trivially.
-func handleReadyz(w http.ResponseWriter, _ *http.Request) {
-	if live == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": "mock"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": "live"})
-}
+// (handleHealthz / handleReadyz moved to huma — see api_misc.go.)
 
 // resourceMeta is the registry entry minus the row data.
 type resourceMeta struct {
