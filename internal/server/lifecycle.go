@@ -264,19 +264,21 @@ func parseRAMtoMB(s string) uint64 {
 // at every layer. No agent→network gRPC dependency in the hot path.
 //
 // Wire status of the optional fields, today :
-//   - scheduling_rule : captured ; ignored by the wclient call
-//     (proto extension pending). The forward semantic — DECIDED — is
-//     "nominal binding wins over selector". When the field arrives
-//     on the VMRecord, weft-network's reconcile loop binds this VM
-//     to the named rule regardless of its labels ; the rule's
-//     selector then only catches VMs that were created without an
-//     explicit binding (discovery path). Pattern : k8s PVC
-//     volumeName-vs-selector. Editing a rule's selector therefore
-//     never dislodges nominally-bound VMs — the property that makes
-//     selectors safe to edit in production.
-//   - network         : captured ; ignored by the wclient call
-//     (proto extension pending). Same nominal-wins-over-discovery
-//     story when the field rides the wire.
+//   - scheduling_rule : threaded to weft-agent via wclient
+//     (CreateVMRequest.scheduling_rule, weft-proto commit abb5e34).
+//     Nominal binding wins over selector when the field is set ; the
+//     selector then only catches VMs without an explicit binding
+//     (discovery path). Pattern : k8s PVC volumeName-vs-selector.
+//     Editing a rule's selector therefore never dislodges nominally-
+//     bound VMs — the property that makes selectors safe to edit in
+//     production. The reconcile loop on weft-network's side applies
+//     the binding when it sees the new VM (pull model, no
+//     agent→network call in the hot path).
+//   - network         : threaded to weft-agent via wclient
+//     (CreateVMRequest.network). Same pull/reconcile semantic —
+//     weft-network's reconcile loop performs the AttachVM ; the
+//     dashboard shows network=X immediately with status=attaching
+//     until the network.attached event lands.
 //   - ingress         : best-effort orchestration post-create using
 //     existing endpoints — MapFloatingIP for kind=floating_ip,
 //     SetLoadBalancerBackends for kind=loadbalancer. This is the
@@ -330,6 +332,11 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	if cerr := live.CreateVM(r.Context(), wclient.CreateVMOpts{
 		Name: body.Name, Image: body.Image, Project: project,
 		CPU: spec.CPU, MemMB: spec.MemMB, DiskGB: spec.DiskGB,
+		// Pull/reconcile labels : weft-agent persists, weft-network
+		// reconcile loop binds the rule + attaches the network. No
+		// agent→network call in the hot path.
+		SchedulingRule: body.SchedulingRule,
+		Network:        body.Network,
 	}); cerr != nil {
 		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
 		return
