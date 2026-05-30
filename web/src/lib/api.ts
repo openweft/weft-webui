@@ -448,6 +448,21 @@ export const deleteVM = (name: string) => deleteJSON(`/microvms/${encodeURICompo
 // drawer's "SSH keys" tab — not a create-time field.
 export type VMIngressKind = 'none' | 'floating_ip' | 'loadbalancer';
 
+// First-boot provisioning : pull a payload (git repo or OCI artifact),
+// run a sh script against it. Materialised on the VM as reserved
+// "weft.boot/*" properties so the in-guest weft-vm-agent (which already
+// subscribes to the Properties surface) just reads them on its first
+// boot, performs the pull / extract, and executes the script through
+// mvdan.cc/sh/v3 — POSIX sh in Go, no /bin/sh dependency.
+export type VMProvisioningSourceKind = 'none' | 'git' | 'oci';
+
+export interface VMProvisioning {
+  source_kind: VMProvisioningSourceKind;
+  source_url: string;   // git URL or OCI reference (registry/repo:tag)
+  source_ref: string;   // branch / tag / commit SHA / OCI digest ; empty = default
+  script: string;       // sh script, executed in the payload's CWD post-pull
+}
+
 export interface CreateVMBody {
   Name: string;
   Image: string;
@@ -457,6 +472,7 @@ export interface CreateVMBody {
   IngressKind?: VMIngressKind;
   IngressFloatingIP?: string;   // FIP uuid when Kind=floating_ip ; empty = allocate
   IngressLoadBalancer?: string; // LB uuid when Kind=loadbalancer ; required in that mode
+  Provisioning?: VMProvisioning;
 }
 export const createVM = (b: CreateVMBody) => postJSON<{ name: string; project: string }>('/microvms', b);
 
