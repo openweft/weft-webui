@@ -579,21 +579,21 @@ func mountNetworkTopologyAPI(api huma.API) {
 		Summary:     "Mesh graph of overlay networks + attached workloads (admin)",
 		Description: "Admin-only — exposes host placement for every node. Mounted on the admin listener only ; the user listener returns 404 so a stale SPA build never accidentally reveals which host runs a VM.",
 		Tags:        []string{"network-topology"},
-	}, func(_ context.Context, _ *struct{}) (*passthroughOutput, error) {
-		nets := make([]map[string]any, 0)
+	}, func(_ context.Context, _ *struct{}) (*topologyOutput, error) {
+		nets := make([]TopoNetwork, 0)
 		for _, m := range resourceByID["networks"].Rows {
-			nets = append(nets, map[string]any{
-				"id": sval(m, "name"), "name": sval(m, "name"),
-				"cidr": sval(m, "cidr"), "az": sval(m, "az"), "type": sval(m, "type"),
+			nets = append(nets, TopoNetwork{
+				ID: sval(m, "name"), Name: sval(m, "name"),
+				CIDR: sval(m, "cidr"), AZ: sval(m, "az"), Type: sval(m, "type"),
 			})
 		}
-		nodes := make([]map[string]any, 0)
+		nodes := make([]TopoNode, 0)
 		addRows := func(resID, kind string) {
 			for _, m := range resourceByID[resID].Rows {
-				nodes = append(nodes, map[string]any{
-					"id": sval(m, "name"), "name": sval(m, "name"), "kind": kind,
-					"network": sval(m, "network"), "status": sval(m, "status"),
-					"project": sval(m, "project"), "host": sval(m, "host"),
+				nodes = append(nodes, TopoNode{
+					ID: sval(m, "name"), Name: sval(m, "name"), Kind: kind,
+					Network: sval(m, "network"), Status: sval(m, "status"),
+					Project: sval(m, "project"), Host: sval(m, "host"),
 				})
 			}
 		}
@@ -604,13 +604,43 @@ func mountNetworkTopologyAPI(api huma.API) {
 			"weft-network", "envoy-dca", "envoy-dcb", "envoy-dcc",
 			"otel-collector", "victoriametrics", "perses",
 		} {
-			nodes = append(nodes, map[string]any{
-				"id": name, "name": name, "kind": "infra",
-				"network": "mgmt", "status": "running", "project": "platform", "host": "—",
+			nodes = append(nodes, TopoNode{
+				ID: name, Name: name, Kind: "infra",
+				Network: "mgmt", Status: "running", Project: "platform", Host: "—",
 			})
 		}
-		return &passthroughOutput{Body: map[string]any{"networks": nets, "nodes": nodes}}, nil
+		return &topologyOutput{Body: TopologyBody{Networks: nets, Nodes: nodes}}, nil
 	})
+}
+
+// TopoNetwork is one overlay network in the mesh map.
+type TopoNetwork struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	CIDR string `json:"cidr"`
+	AZ   string `json:"az"`
+	Type string `json:"type"`
+}
+
+// TopoNode is one workload or infra microVM in the mesh map.
+type TopoNode struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind" enum:"microvm,instance,infra"`
+	Network string `json:"network"`
+	Status  string `json:"status"`
+	Project string `json:"project"`
+	Host    string `json:"host"`
+}
+
+// TopologyBody is what /api/network-topology returns.
+type TopologyBody struct {
+	Networks []TopoNetwork `json:"networks"`
+	Nodes    []TopoNode    `json:"nodes"`
+}
+
+type topologyOutput struct {
+	Body TopologyBody
 }
 
 // hideHTTPErr converts the legacy *httpErr type from tenants.go into

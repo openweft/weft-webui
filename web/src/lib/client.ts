@@ -51,6 +51,16 @@ export type APIVMProperty = components['schemas']['APIVMProperty'];
 export type APIUEFIVar = components['schemas']['APIUEFIVar'];
 export type APIVMSSHKey = components['schemas']['APIVMSSHKey'];
 
+// Narrowed bodies (former passthrough). Renamed at re-export so the
+// existing api.ts call sites can keep their Me / Quota / Topology
+// type aliases.
+export type MeBody = components['schemas']['MeBody'];
+export type APIQuota = components['schemas']['Quota'];
+export type APIScopeEntry = components['schemas']['ScopeEntry'];
+export type APITopoNetwork = components['schemas']['TopoNetwork'];
+export type APITopoNode = components['schemas']['TopoNode'];
+export type APITopologyBody = components['schemas']['TopologyBody'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };

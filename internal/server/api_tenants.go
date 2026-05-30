@@ -338,7 +338,7 @@ func mountQuotasAPI(api huma.API) {
 		Summary:     "Scope-aware quota overview",
 		Description: "When the session carries a tenant scope, returns the tenant's quotas mapped to the 12 cluster-overview dimensions. Otherwise falls back to the static cluster-wide demo numbers.",
 		Tags:        []string{"quotas"},
-	}, func(ctx context.Context, in *quotasInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *quotasInput) (*quotasOutput, error) {
 		tenant := in.Tenant
 		if tenant == "" {
 			if u := auth.UserFromContext(ctx); u != nil {
@@ -356,11 +356,17 @@ func mountQuotasAPI(api huma.API) {
 						Used: d.Get(alloc), Limit: d.Get(cap),
 					})
 				}
-				return &passthroughOutput{Body: out}, nil
+				return &quotasOutput{Body: out}, nil
 			}
 		}
-		return &passthroughOutput{Body: quotas}, nil
+		return &quotasOutput{Body: quotas}, nil
 	})
+}
+
+// quotasOutput is the typed body for /api/quotas — Quota is defined
+// in quotas.go (the cluster-wide overview row).
+type quotasOutput struct {
+	Body []Quota
 }
 
 // ---- /api/me -----------------------------------------------------
@@ -373,25 +379,45 @@ func mountMeAPI(api huma.API) {
 		Summary:     "Current session : user + role flags + reachable scopes",
 		Description: "Returns 401 with a login URL when there's no session so the SPA's api.ts can trigger the OIDC redirect uniformly.",
 		Tags:        []string{"session"},
-	}, func(ctx context.Context, _ *struct{}) (*passthroughOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if u == nil {
 			return nil, huma.NewError(http.StatusUnauthorized, "no session", &meLoginHint{Login: "/api/auth/login"})
 		}
-		return &passthroughOutput{Body: map[string]any{
-			"sub":           u.Subject,
-			"email":         u.Email,
-			"name":          u.Name,
-			"groups":        u.Groups,
-			"tenant":        u.Tenant,
-			"project":       u.Project,
-			"initials":      u.Initials(),
-			"dev":           u.DevMode,
-			"cluster_admin": isClusterAdmin(u),
-			"tenant_admin":  tenantsDB.isAnyTenantAdmin(u.Email),
-			"scopes":        tenantsDB.userScopes(u),
+		return &meOutput{Body: MeBody{
+			Sub:          u.Subject,
+			Email:        u.Email,
+			Name:         u.Name,
+			Groups:       u.Groups,
+			Tenant:       u.Tenant,
+			Project:      u.Project,
+			Initials:     u.Initials(),
+			Dev:          u.DevMode,
+			ClusterAdmin: isClusterAdmin(u),
+			TenantAdmin:  tenantsDB.isAnyTenantAdmin(u.Email),
+			Scopes:       tenantsDB.userScopes(u),
 		}}, nil
 	})
+}
+
+// MeBody is the typed shape of /api/me. Exported so the openapi-
+// typescript codegen surfaces it as a real schema instead of `unknown`.
+type MeBody struct {
+	Sub          string       `json:"sub" doc:"OIDC subject"`
+	Email        string       `json:"email"`
+	Name         string       `json:"name"`
+	Groups       []string     `json:"groups" doc:"OIDC group claims"`
+	Tenant       string       `json:"tenant" doc:"Currently scoped tenant (empty = all)"`
+	Project      string       `json:"project" doc:"Currently scoped project"`
+	Initials     string       `json:"initials" doc:"1–2 char avatar label"`
+	Dev          bool         `json:"dev" doc:"True when running in dev mode (synthetic session)"`
+	ClusterAdmin bool         `json:"cluster_admin"`
+	TenantAdmin  bool         `json:"tenant_admin" doc:"True when the user is admin of at least one tenant"`
+	Scopes       []ScopeEntry `json:"scopes" doc:"Tenants reachable by the user, each with its projects"`
+}
+
+type meOutput struct {
+	Body MeBody
 }
 
 // meLoginHint surfaces the login URL on the 401 response so the SPA

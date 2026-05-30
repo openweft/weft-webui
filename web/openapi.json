@@ -1394,6 +1394,87 @@
         ],
         "type": "object"
       },
+      "MeBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MeBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cluster_admin": {
+            "type": "boolean"
+          },
+          "dev": {
+            "description": "True when running in dev mode (synthetic session)",
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "groups": {
+            "description": "OIDC group claims",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "initials": {
+            "description": "1–2 char avatar label",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "description": "Currently scoped project",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Tenants reachable by the user, each with its projects",
+            "items": {
+              "$ref": "#/components/schemas/ScopeEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sub": {
+            "description": "OIDC subject",
+            "type": "string"
+          },
+          "tenant": {
+            "description": "Currently scoped tenant (empty = all)",
+            "type": "string"
+          },
+          "tenant_admin": {
+            "description": "True when the user is admin of at least one tenant",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sub",
+          "email",
+          "name",
+          "groups",
+          "tenant",
+          "project",
+          "initials",
+          "dev",
+          "cluster_admin",
+          "tenant_admin",
+          "scopes"
+        ],
+        "type": "object"
+      },
       "OkBody": {
         "additionalProperties": false,
         "properties": {
@@ -1464,6 +1545,40 @@
         "required": [
           "source_kind",
           "source_url"
+        ],
+        "type": "object"
+      },
+      "Quota": {
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "used": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "icon",
+          "used",
+          "limit",
+          "unit"
         ],
         "type": "object"
       },
@@ -1600,6 +1715,36 @@
         ],
         "type": "object"
       },
+      "ScopeEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "domain",
+          "status",
+          "projects"
+        ],
+        "type": "object"
+      },
       "SecurityRule": {
         "additionalProperties": false,
         "properties": {
@@ -1680,6 +1825,112 @@
           "id",
           "label",
           "count"
+        ],
+        "type": "object"
+      },
+      "TopoNetwork": {
+        "additionalProperties": false,
+        "properties": {
+          "az": {
+            "type": "string"
+          },
+          "cidr": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "cidr",
+          "az",
+          "type"
+        ],
+        "type": "object"
+      },
+      "TopoNode": {
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "microvm",
+              "instance",
+              "infra"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "network",
+          "status",
+          "project",
+          "host"
+        ],
+        "type": "object"
+      },
+      "TopologyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TopologyBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/TopoNetwork"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TopoNode"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "networks",
+          "nodes"
         ],
         "type": "object"
       },
@@ -2733,7 +2984,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MeBody"
+                }
               }
             },
             "description": "OK"
@@ -3732,7 +3985,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TopologyBody"
+                }
               }
             },
             "description": "OK"
@@ -4010,7 +4265,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Quota"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
               }
             },
             "description": "OK"
