@@ -171,6 +171,13 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/microvms/{name}/status", handleVMStatus)
 	mux.HandleFunc("GET /api/microvms/{name}/timings", handleVMTimings)
 	mux.HandleFunc("GET /api/microvms/{name}/logs", handleVMLogs)
+	// SSH keys : dynamic config concern, pushed at runtime (no
+	// create-time CloudInit assumption). The agent forwards each
+	// mutation to a NATS subject the in-guest weft-vm-agent subscribes
+	// to ; this dashboard surface is the operator-facing CRUD.
+	mux.HandleFunc("GET /api/microvms/{name}/keys", handleListVMKeys)
+	mux.HandleFunc("POST /api/microvms/{name}/keys", handleAddVMKey)
+	mux.HandleFunc("DELETE /api/microvms/{name}/keys/{fp}", handleRemoveVMKey)
 	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
 	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)

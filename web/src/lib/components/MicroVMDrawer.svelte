@@ -15,7 +15,8 @@
     getVMStatus, getVMTimings, getVMLogs, getRows,
     startVM, stopVM, deleteVM,
     attachVolume, detachVolume,
-    type VMStatus, type VMTimingEvent, type VMLogs, type Row,
+    listVMKeys, addVMKey, removeVMKey,
+    type VMStatus, type VMTimingEvent, type VMLogs, type Row, type VMSSHKey,
   } from '../api';
   import { openScopedEvents } from '../events';
 
@@ -34,7 +35,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'volumes' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'volumes' | 'keys' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -64,6 +65,17 @@
   let actionErr = $state('');
   let actionBusy = $state(false);
 
+  // SSH keys tab : pushed at runtime (not baked into create-time
+  // SSHPub), the guest's weft-vm-agent applies via NATS — same
+  // Subscriber+ApplyFunc pattern as the mesh / mounts concerns. The
+  // dashboard surface is plain CRUD over the names.
+  let keys = $state<VMSSHKey[] | null>(null);
+  let keysErr = $state('');
+  let keysBusy = $state(false);
+  let newKey = $state('');
+  let addKeyBusy = $state(false);
+  let addKeyErr = $state('');
+
   async function loadStatus() {
     statusBusy = true; statusErr = '';
     try { status = await getVMStatus(name); }
@@ -87,6 +99,30 @@
     try { volumes = await getRows('volumes'); }
     catch (e) { volumesErr = String(e); }
     finally { volumesBusy = false; }
+  }
+  async function loadKeys() {
+    keysBusy = true; keysErr = '';
+    try { keys = await listVMKeys(name); }
+    catch (e) { keysErr = String(e); }
+    finally { keysBusy = false; }
+  }
+  async function submitKey() {
+    const v = newKey.trim();
+    if (!v) return;
+    addKeyBusy = true; addKeyErr = '';
+    try {
+      await addVMKey(name, v);
+      newKey = '';
+      await loadKeys();
+    } catch (e) { addKeyErr = String(e); }
+    finally { addKeyBusy = false; }
+  }
+  async function delKey(fp: string) {
+    if (!confirm(`Remove key ${fp.slice(0, 25)}… ? It stops authorising next session ; existing connections aren't dropped.`)) return;
+    try {
+      await removeVMKey(name, fp);
+      await loadKeys();
+    } catch (e) { keysErr = String(e); }
   }
 
   onMount(loadStatus);
@@ -117,15 +153,16 @@
   });
   onDestroy(() => scopedClose?.());
 
-  // Lazy-load timings / logs / volumes the first time their tab is shown.
+  // Lazy-load timings / logs / volumes / keys the first time their tab is shown.
   $effect(() => {
     if (tab === 'timings' && !timings && !timingsErr) loadTimings();
     if (tab === 'logs' && !logs && !logsErr) loadLogs();
     if (tab === 'volumes' && !volumes && !volumesErr) loadVolumes();
+    if (tab === 'keys' && !keys && !keysErr) loadKeys();
   });
 
   async function refreshAll() {
-    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs(), loadVolumes()]);
+    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs(), loadVolumes(), loadKeys()]);
   }
 
   // Volume sets : attached to this VM, vs available (detached) in
@@ -260,6 +297,10 @@
       Volumes
       {#if attached.length > 0}<span class="ml-1 badge badge-xs">{attached.length}</span>{/if}
     </button>
+    <button role="tab" class="tab" class:tab-active={tab === 'keys'} onclick={() => (tab = 'keys')}>
+      SSH keys
+      {#if keys && keys.length > 0}<span class="ml-1 badge badge-xs">{keys.length}</span>{/if}
+    </button>
     <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>
       Timings
       {#if liveEvents > 0}
@@ -354,6 +395,67 @@
           </div>
         </div>
       {/if}
+
+    {:else if tab === 'keys'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">SSH keys</h3>
+        <span class="text-xs text-base-content/50">
+          pushed at runtime · no cloud-init dependency
+        </span>
+        <button class="ml-auto btn btn-xs btn-ghost" disabled={keysBusy} onclick={loadKeys}>
+          {#if keysBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
+        </button>
+      </div>
+      {#if keysErr}
+        <div class="mt-2 alert alert-error text-sm">{keysErr}</div>
+      {:else if !keys}
+        <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+      {:else if keys.length === 0}
+        <p class="mt-3 text-sm text-base-content/50">No keys authorised. Paste a public key below.</p>
+      {:else}
+        <ul class="mt-2 divide-y divide-base-300">
+          {#each keys as k (k.fingerprint)}
+            <li class="flex items-center gap-3 py-2 text-sm">
+              <div class="min-w-0 grow">
+                <div class="truncate font-mono text-xs">{k.fingerprint}</div>
+                <div class="text-xs text-base-content/60">
+                  <span class="badge badge-xs badge-ghost">{k.type}</span>
+                  {k.comment || '—'}
+                  <span class="ml-2 text-base-content/40">added {k.added_at.slice(0, 10)}</span>
+                </div>
+              </div>
+              <button class="btn btn-xs btn-ghost text-error" onclick={() => delKey(k.fingerprint)}>
+                Remove
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <div class="mt-4">
+        <label class="form-control">
+          <span class="label-text mb-1 text-xs">Add public key</span>
+          <textarea
+            class="textarea textarea-sm textarea-bordered font-mono text-xs"
+            rows="3"
+            placeholder={'ssh-ed25519 AAAA… user@host'}
+            bind:value={newKey}
+          ></textarea>
+          <span class="mt-1 text-xs text-base-content/50">
+            One line, ssh-keygen format. Fingerprint is computed server-side ; same key added twice is a no-op.
+          </span>
+        </label>
+        {#if addKeyErr}<div class="mt-2 alert alert-error py-2 text-xs">{addKeyErr}</div>{/if}
+        <div class="mt-2 text-right">
+          <button class="btn btn-xs btn-primary gap-1"
+            disabled={addKeyBusy || !newKey.trim()}
+            onclick={submitKey}
+          >
+            {#if addKeyBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+            Add key
+          </button>
+        </div>
+      </div>
 
     {:else if tab === 'timings'}
       <div class="flex items-center gap-2">

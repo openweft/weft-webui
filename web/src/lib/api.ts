@@ -630,6 +630,30 @@ export const getVMTimings = (name: string) => getJSON<VMTimingEvent[]>(`/microvm
 export const getVMLogs    = (name: string, tail = 65536) =>
   getJSON<VMLogs>(`/microvms/${encodeURIComponent(name)}/logs?tail=${tail}`);
 
+// ---- Per-VM SSH keys ----
+//
+// Runtime-pushable, not baked into a create-time SSHPub blob — the
+// guest's weft-vm-agent subscribes to a NATS subject and re-writes
+// authorized_keys idempotently when this surface adds/removes one.
+// Same Subscriber+ApplyFunc pattern as the mesh / mounts concerns.
+
+export interface VMSSHKey {
+  fingerprint: string;  // "SHA256:<b64>" — stable identity for DELETE
+  type: string;         // "ssh-ed25519" | "ssh-rsa" | …
+  public_key: string;   // full "<type> <b64> [comment]" line
+  comment: string;
+  added_at: string;
+}
+
+export const listVMKeys = (name: string) =>
+  getJSON<VMSSHKey[]>(`/microvms/${encodeURIComponent(name)}/keys`);
+
+export const addVMKey = (name: string, publicKey: string) =>
+  postJSON<VMSSHKey>(`/microvms/${encodeURIComponent(name)}/keys`, { public_key: publicKey });
+
+export const removeVMKey = (name: string, fingerprint: string) =>
+  deleteJSON(`/microvms/${encodeURIComponent(name)}/keys/${encodeURIComponent(fingerprint)}`);
+
 // Quota dimension metadata for UI labels + units. Order matters : it
 // drives the visual layout. Mirrors internal/server/tenants.go.
 export interface QuotaDimMeta {
