@@ -9,7 +9,8 @@
   // operators know it's coming + understand the manual flow today.
   import {
     listSSHKeyCatalogue, getSSHKeyCatalogue, setSSHKeyCatalogue, deleteSSHKeyCatalogue,
-    getMe, type SSHKeyEntry, type Me,
+    importSSHKeys, getMe,
+    type SSHKeyEntry, type Me, type ImportSSHKeysResult,
   } from '../api';
 
   let keys = $state<SSHKeyEntry[]>([]);
@@ -28,6 +29,46 @@
   let canEdit = $derived(!!me && (me.cluster_admin || me.tenant_admin));
 
   let creating = $state(false);
+
+  // Import modal state
+  let importOpen = $state(false);
+  let importProvider = $state<'github' | 'gitlab' | 'forgejo'>('github');
+  let importAccount = $state('');
+  let importForgejoBase = $state('');
+  let importBusy = $state(false);
+  let importErr = $state('');
+  let importResult = $state<ImportSSHKeysResult | null>(null);
+
+  async function runImport() {
+    if (!importAccount.trim()) { importErr = 'account is required'; return; }
+    if (importProvider === 'forgejo' && !importForgejoBase.trim()) {
+      importErr = 'forgejo instance base URL is required (e.g. https://codeberg.org)';
+      return;
+    }
+    importBusy = true; importErr = ''; importResult = null;
+    try {
+      const res = await importSSHKeys({
+        provider: importProvider,
+        account: importAccount.trim(),
+        forgejo_base: importProvider === 'forgejo' ? importForgejoBase.trim() : undefined,
+      });
+      importResult = res;
+      const ks = await listSSHKeyCatalogue();
+      keys = ks;
+    } catch (e) {
+      importErr = String(e);
+    } finally {
+      importBusy = false;
+    }
+  }
+  function resetImport() {
+    importProvider = 'github'; importAccount = ''; importForgejoBase = '';
+    importErr = ''; importResult = null;
+  }
+  function closeImport() {
+    importOpen = false;
+    resetImport();
+  }
 
   function refresh(keepName = selected) {
     listBusy = true;
@@ -130,11 +171,86 @@
     </p>
   </div>
   {#if canEdit}
-    <button class="ml-auto btn btn-sm btn-primary gap-1" onclick={startNew}>
-      <span class="text-base leading-none">+</span> New key
-    </button>
+    <div class="ml-auto flex items-center gap-2">
+      <button class="btn btn-sm btn-ghost gap-1" onclick={() => (importOpen = true)}>
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7">
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Import
+      </button>
+      <button class="btn btn-sm btn-primary gap-1" onclick={startNew}>
+        <span class="text-base leading-none">+</span> New key
+      </button>
+    </div>
   {/if}
 </div>
+
+<!-- Import modal : fetches <provider>/<account>.keys server-side. -->
+{#if importOpen}
+  <dialog class="modal modal-open">
+    <div class="modal-box max-w-lg">
+      <h3 class="text-lg font-bold">Import SSH keys</h3>
+      <p class="text-sm text-base-content/60">
+        Fetches the public <code>.keys</code> file from the chosen
+        forge account. Duplicates (same fingerprint) are skipped ;
+        new entries are named
+        <code>&lt;provider&gt;:&lt;account&gt;/&lt;index&gt;</code> so a
+        future refresh flow can find + replace them.
+      </p>
+
+      <label class="form-control mt-4">
+        <span class="label-text text-xs">Provider</span>
+        <select class="select select-sm select-bordered" bind:value={importProvider}>
+          <option value="github">GitHub — github.com/&lt;account&gt;.keys</option>
+          <option value="gitlab">GitLab — gitlab.com/&lt;account&gt;.keys</option>
+          <option value="forgejo">Forgejo / Gitea — &lt;base&gt;/&lt;account&gt;.keys</option>
+        </select>
+      </label>
+
+      <label class="form-control mt-3">
+        <span class="label-text text-xs">Account</span>
+        <input class="input input-sm input-bordered font-mono" placeholder="alice"
+          bind:value={importAccount} />
+      </label>
+
+      {#if importProvider === 'forgejo'}
+        <label class="form-control mt-3">
+          <span class="label-text text-xs">Forgejo / Gitea base URL</span>
+          <input class="input input-sm input-bordered font-mono"
+            placeholder="https://codeberg.org"
+            bind:value={importForgejoBase} />
+        </label>
+      {/if}
+
+      {#if importErr}
+        <div class="mt-3 alert alert-error py-2 text-sm">{importErr}</div>
+      {/if}
+      {#if importResult}
+        <div class="mt-3 alert alert-success py-2 text-sm">
+          Added {importResult.added} ·
+          Skipped {importResult.skipped_existing} (duplicate fingerprint) ·
+          Total seen {importResult.total_seen}
+          {#if importResult.names.length > 0}
+            <div class="mt-1 font-mono text-xs">
+              {importResult.names.join(', ')}
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <div class="modal-action">
+        <button class="btn btn-sm btn-ghost" onclick={closeImport}>Close</button>
+        <button class="btn btn-sm btn-primary"
+          disabled={importBusy || !importAccount.trim()}
+          onclick={runImport}>
+          {#if importBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Fetch + import
+        </button>
+      </div>
+    </div>
+    <button class="modal-backdrop" aria-label="close" onclick={closeImport}></button>
+  </dialog>
+{/if}
 
 {#if listErr}
   <div class="mt-2 alert alert-error text-sm">{listErr}</div>
