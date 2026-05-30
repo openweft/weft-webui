@@ -108,13 +108,30 @@ var registry = []Resource{
 
 	// ---------- Compute ----------
 	{
-		ID: "flavors", Label: "Flavors", Section: "Compute",
-		Columns: cols("name", "Name", "vcpu", "vCPU", "ram", "RAM", "ephemeral_gb", "Ephemeral (GB)"),
+		// Flavor = compute envelope. Empty `gpu` means "no GPU required" ;
+		// a non-empty value pins the matching microVM to a host that
+		// physically carries the matching model (see the `gpu` column
+		// on Hosts). The scheduler honours the match like any other
+		// placement constraint — a flavor that requests `1×A100-40G`
+		// won't land on a host with `0×` or `2×L4-24G`.
+		//
+		// Scope = Admin : only the superadmin defines flavors (they're
+		// cluster-wide artefacts). The user UI still needs the catalogue
+		// inside CreateVMModal — it gets that via the parallel
+		// /api/flavors endpoint (handleListFlavors) which is exposed on
+		// both listeners. Hiding the sidebar entry on the user UI
+		// declutters Compute without breaking the create flow.
+		ID: "flavors", Label: "Flavors", Section: "Compute", Scope: ScopeAdmin,
+		Columns: cols("name", "Name", "vcpu", "vCPU", "ram", "RAM",
+			"ephemeral_gb", "Ephemeral (GB)", "gpu", "GPU"),
 		Rows: []map[string]any{
-			row("name", "small", "vcpu", 2, "ram", "4Gi", "ephemeral_gb", 8),
-			row("name", "medium", "vcpu", 4, "ram", "8Gi", "ephemeral_gb", 16),
-			row("name", "large", "vcpu", 8, "ram", "32Gi", "ephemeral_gb", 32),
-			row("name", "xlarge", "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64),
+			row("name", "small",       "vcpu", 2,  "ram", "4Gi",  "ephemeral_gb", 8,   "gpu", ""),
+			row("name", "medium",      "vcpu", 4,  "ram", "8Gi",  "ephemeral_gb", 16,  "gpu", ""),
+			row("name", "large",       "vcpu", 8,  "ram", "32Gi", "ephemeral_gb", 32,  "gpu", ""),
+			row("name", "xlarge",      "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64,  "gpu", ""),
+			row("name", "gpu-small",   "vcpu", 4,  "ram", "16Gi", "ephemeral_gb", 32,  "gpu", "1×L4-24G"),
+			row("name", "gpu-medium",  "vcpu", 8,  "ram", "64Gi", "ephemeral_gb", 64,  "gpu", "1×A100-40G"),
+			row("name", "gpu-large",   "vcpu", 32, "ram", "256Gi", "ephemeral_gb", 256, "gpu", "4×H100-80G"),
 		},
 	},
 	{
@@ -152,8 +169,12 @@ var registry = []Resource{
 		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
 		Rows: []map[string]any{
 			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
-			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
+			// nb-1 uses gpu-small : the scheduler placed it on dc-c-r2-h1
+			// because that's the host carrying an A100-40G in its pool.
+			row("name", "nb-1", "image", "jupyter:cuda12", "status", "running", "cpu", 4, "mem_mb", 16384, "disk_gb", 32, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "gpu-small"),
 			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
+			// model-train-1 demands gpu-large → pinned to the H100 pool.
+			row("name", "model-train-1", "image", "pytorch:2.4-cuda12", "status", "running", "cpu", 32, "mem_mb", 262144, "disk_gb", 256, "ip", "10.20.0.30", "project", "research", "host", "dc-c-r3-h2", "network", "tenant-net-2", "flavor", "gpu-large"),
 		},
 	},
 	{
@@ -406,12 +427,29 @@ var registry = []Resource{
 		// hypervisor, state → status, last_seen). cpu/ram aren't on the
 		// HostInfo proto — they live with the host's runtime stats and
 		// would come from a separate RPC ; dropped from this view.
+		//
+		// `gpu` advertises the host's physical GPU complement using the
+		// same notation the Flavor table uses. Empty means no GPU. The
+		// scheduler matches Flavor.gpu against Hosts.gpu — a host with
+		// "2×A100-40G" can land any number of microVMs requesting an
+		// "A100-40G" until the count is exhausted.
 		ID: "hosts", Label: "Hosts", Section: "Admin", Scope: ScopeAdmin,
-		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "arch", "Arch", "hypervisor", "Hypervisor", "status", "Status", "last_seen", "Last seen"),
+		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack",
+			"arch", "Arch", "hypervisor", "Hypervisor", "gpu", "GPU",
+			"status", "Status", "last_seen", "Last seen"),
 		Rows: []map[string]any{
-			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "hypervisor", "apple-vz", "status", "active", "last_seen", "2026-05-27"),
-			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "hypervisor", "qemu-kvm", "status", "active", "last_seen", "2026-05-27"),
-			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "hypervisor", "qemu-kvm", "status", "draining", "last_seen", "2026-05-26"),
+			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "hypervisor", "apple-vz",
+				"gpu", "",
+				"status", "active", "last_seen", "2026-05-27"),
+			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "hypervisor", "qemu-kvm",
+				"gpu", "",
+				"status", "active", "last_seen", "2026-05-27"),
+			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "hypervisor", "qemu-kvm",
+				"gpu", "2×A100-40G",
+				"status", "draining", "last_seen", "2026-05-26"),
+			row("name", "dc-c-r3-h2", "az", "DC-C", "rack", "R3", "arch", "amd64", "hypervisor", "qemu-kvm",
+				"gpu", "4×H100-80G",
+				"status", "active", "last_seen", "2026-05-28"),
 		},
 	},
 }

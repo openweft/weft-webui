@@ -186,6 +186,8 @@ func RouteLabel(method, path string) string {
 		return "GET /api/resources"
 	case path == "/api/summary":
 		return "GET /api/summary"
+	case path == "/api/flavors":
+		return "GET /api/flavors"
 	case path == "/api/me":
 		return "GET /api/me"
 	case path == "/api/quotas":
