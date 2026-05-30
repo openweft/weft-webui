@@ -248,6 +248,16 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// /api/resources/flavors returns.
 	mux.HandleFunc("GET /api/flavors", handleListFlavors)
 
+	// Provisioning scripts catalogue. Read endpoints on both ports
+	// (CreateVMModal needs them on the user UI) ; write endpoints only
+	// on the admin port (mounted below). Mirror of the flavors split.
+	mux.HandleFunc("GET /api/scripts", handleListScripts)
+	mux.HandleFunc("GET /api/scripts/{name}", handleGetScript)
+	if scope == ScopeAdmin {
+		mux.HandleFunc("POST /api/scripts", handleSetScript)
+		mux.HandleFunc("DELETE /api/scripts/{name}", handleDeleteScript)
+	}
+
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
 	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
@@ -462,6 +472,9 @@ func rowCount(res *Resource) int {
 	case "flavors":
 		fl, _ := flavorsCatalogue.List(context.Background())
 		return len(fl)
+	case "scripts":
+		ss, _ := scriptsCatalogue.List(context.Background())
+		return len(ss)
 	case "buckets":
 		return bucketsCount()
 	case "topology":
@@ -533,6 +546,11 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// Same source as /api/flavors — see flavors.go for the etcd
 		// migration plan that makes this branch a thin proxy.
 		writePage(w, r, flavorRows(r.Context()))
+		return
+	case "scripts":
+		// Same indirection as flavors. See scripts.go for the etcd
+		// migration plan.
+		writePage(w, r, scriptRows(r.Context()))
 		return
 	case "buckets":
 		writePage(w, r, bucketSummaries())

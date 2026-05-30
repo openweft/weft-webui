@@ -131,6 +131,16 @@ var registry = []Resource{
 		// through flavorRows() / flavorsCatalogue.Get().
 	},
 	{
+		// Provisioning scripts — named, reusable sh bodies pickable
+		// from CreateVMModal. Same model + same migration path as
+		// flavors (in-memory catalogue today, etcd-backed when the
+		// proto extension lands ; see internal/server/scripts.go).
+		ID: "scripts", Label: "Scripts", Section: "Compute", Scope: ScopeAdmin,
+		Columns: cols("name", "Name", "description", "Description",
+			"lines", "Lines", "updated_at", "Updated", "updated_by", "By"),
+		// Rows nil — served via scriptRows() from the catalogue.
+	},
+	{
 		// Scheduling rules — declarative constraints the weft scheduler
 		// honours when picking hosts for the matched workloads. Placed
 		// above microVMs because the rule is conceptually upstream : it

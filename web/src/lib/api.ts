@@ -38,6 +38,30 @@ async function getJSON<T>(path: string): Promise<T> {
 
 export const getResources = () => getJSON<ResourceMeta[]>('/resources');
 
+// ---- Provisioning scripts catalogue ----
+//
+// Named, reusable sh bodies pickable in CreateVMModal. Source-of-
+// truth lives in weft-agent's etcd-backed store (planned, [[openweft
+// _etcd_embedded]]) ; for now it's an in-memory mock served by the
+// webui. Same shape as the flavors catalogue : List on both ports,
+// write-side admin-gated.
+
+export interface Script {
+  name: string;
+  description: string;
+  body: string;        // sh source
+  updated_at: string;
+  updated_by: string;
+}
+
+export const listScripts = () => getJSON<Script[]>('/scripts');
+export const getScript   = (name: string) =>
+  getJSON<Script>(`/scripts/${encodeURIComponent(name)}`);
+export const setScript   = (s: { name: string; description: string; body: string }) =>
+  postJSON<Script>('/scripts', s);
+export const deleteScript = (name: string) =>
+  deleteJSON(`/scripts/${encodeURIComponent(name)}`);
+
 // /api/resources/:id now returns a {rows, next, total} envelope. Most
 // callers don't care about the cursor (modals, search palette, drawers
 // that snapshot once) — `getRows` keeps the array-only contract by
