@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getMe, setProject, logout, isAdminUI, type Me } from '../api';
+  import { getMe, setProject, logout, type Me } from '../api';
 
   let { title }: { title: string } = $props();
 
@@ -17,7 +17,6 @@
   // to a placeholder while the request is in flight so the header
   // doesn't jump.
   let me = $state<Me | null>(null);
-  let admin = $state(false);
   let project = $state('');
   const projects = ['team-alpha', 'team-beta', 'research']; // until ListProjects exposes scoped lists
 
@@ -28,11 +27,14 @@
         project = u.project || projects[0];
       })
       .catch(() => { /* api.ts already triggered the login redirect */ });
-    isAdminUI().then((v) => { admin = v; });
   });
 
+  // The title reflects the badge so the operator can spot context on
+  // the OS task switcher without expanding the window.
   $effect(() => {
-    document.title = admin ? 'Weft Admin' : 'Weft';
+    if (me?.cluster_admin) document.title = 'Weft · superadmin';
+    else if (me?.tenant_admin) document.title = 'Weft · admin';
+    else document.title = 'Weft';
   });
 
   async function chooseProject(p: string) {
@@ -45,11 +47,15 @@
 <header class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100 px-6">
   <h1 class="text-base font-semibold">{title}</h1>
 
-  {#if admin}
-    <span class="badge badge-error badge-sm uppercase tracking-wide">admin</span>
+  <!-- Role badge — cluster-admin wins over tenant-admin so a
+       cluster operator always sees the broader role they hold. -->
+  {#if me?.cluster_admin}
+    <span class="badge badge-error badge-sm uppercase tracking-wide" title="Cluster-wide operator">superadmin</span>
+  {:else if me?.tenant_admin}
+    <span class="badge badge-warning badge-sm uppercase tracking-wide" title="Tenant administrator">admin</span>
   {/if}
   {#if me?.dev}
-    <span class="badge badge-warning badge-sm">dev</span>
+    <span class="badge badge-info badge-sm">dev</span>
   {/if}
 
   <div class="ml-auto flex items-center gap-2">
