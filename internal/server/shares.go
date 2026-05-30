@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 type Share struct {
@@ -194,6 +195,25 @@ func handleCreateShare(w http.ResponseWriter, r *http.Request) {
 	if !tenantsDB.isTenantAdmin(u, tenant) {
 		writeErr(w, errForbidden("tenant admin required"))
 		return
+	}
+	// Live-first : ask weft-agent to register the share. Falls back
+	// to the mock store on Unimplemented so the dashboard stays
+	// useful while the daemon catches up with CreateShare.
+	if live != nil {
+		uuid, err := live.CreateShare(r.Context(), body.Project, body.Name, body.SizeGB, body.ReadOnly, body.Backend)
+		if err == nil {
+			userAction(r, "share.create")
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"name": body.Name, "project": body.Project,
+				"uuid": uuid, "size_gb": body.SizeGB,
+				"readonly": body.ReadOnly, "status": "provisioning",
+			})
+			return
+		}
+		if !wclient.IsUnimplemented(err) {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+			return
+		}
 	}
 	sh := &Share{
 		Name: body.Name, Project: body.Project, Backend: body.Backend,

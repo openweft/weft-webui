@@ -16,11 +16,16 @@ import (
 	"net/http"
 
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // --- Cluster admin only ----------------------------------------------
 
 // handleCreateTenant : POST /api/tenants  {name, domain}
+//
+// Live-first : ask weft-agent. Falls back to the mock store on
+// Unimplemented so the affordance keeps working while the daemon
+// catches up with CreateTenant.
 func handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFromContext(r.Context())
 	if !isClusterAdmin(u) {
@@ -33,6 +38,17 @@ func handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
+	}
+	if live != nil {
+		uuid, err := live.CreateTenant(r.Context(), body.Name, body.Domain)
+		if err == nil {
+			writeJSON(w, http.StatusCreated, map[string]string{"name": body.Name, "uuid": uuid})
+			return
+		}
+		if !wclient.IsUnimplemented(err) {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+			return
+		}
 	}
 	if err := tenantsDB.createTenant(body.Name, body.Domain); err != nil {
 		writeErr(w, err)
