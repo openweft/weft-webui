@@ -23,6 +23,8 @@ import {
   type APIFlavor, type APIScript, type APISSHKey,
   type MeBody, type APIQuota, type APIScopeEntry,
   type APITopoNetwork, type APITopoNode, type APITopologyBody,
+  type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult,
+  type APISecurityRule,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -717,12 +719,10 @@ export const deleteShare = async (name: string): Promise<void> => {
 
 // ---- Security groups ----------------------------------------------
 
-export interface SecurityRule {
-  direction: 'ingress' | 'egress';
-  protocol: 'tcp' | 'udp' | 'icmp' | 'any';
-  port_min: number; port_max: number;
-  remote_cidr: string; remote_group_uuid: string;
-}
+// Sourced from api.gen.ts — direction + protocol carry their narrow
+// enum types now that the Go struct has 'enum:' tags.
+export type SecurityRule = APISecurityRule;
+
 export interface CreateSecurityGroupBody {
   name: string;
   description?: string;
@@ -743,7 +743,7 @@ export const deleteSecurityGroup = async (uuid: string): Promise<void> => {
 export const getSecurityGroupRules = async (uuid: string): Promise<SecurityRule[]> => {
   const { data, error } = await client.GET('/api/security-groups/{uuid}/rules', { params: { path: { uuid } } });
   if (error) throwErr(error);
-  return (data ?? []) as unknown as SecurityRule[];
+  return data ?? [];
 };
 
 export const setSecurityGroupRules = async (uuid: string, rules: SecurityRule[]) => {
@@ -786,25 +786,23 @@ export const unmapFloatingIP = async (uuid: string): Promise<void> => {
 
 // ---- VM inspect (status / timings / logs) -------------------------
 
-export interface VMStatus {
-  name: string; image: string; status: string;
-  os: string; cpu: number; mem_mb: number; disk_gb: number; ip: string;
-}
-export interface VMTimingEvent {
-  name: string; ts: string; meta: Record<string, string>;
-}
-export interface VMLogs { contents: string; total_bytes: number }
+// Types now come from api.gen.ts (wclient defines the canonical Go
+// shapes ; huma surfaces them in the OpenAPI). Legacy names kept as
+// aliases so existing component imports don't break.
+export type VMStatus = APIVMInfo;
+export type VMTimingEvent = APIVMTimingEvent;
+export type VMLogs = APIVMLogsResult;
 
 export const getVMStatus = async (name: string): Promise<VMStatus> => {
   const { data, error } = await client.GET('/api/microvms/{name}/status', { params: { path: { name } } });
   if (error) throwErr(error);
-  return data as unknown as VMStatus;
+  return data;
 };
 
 export const getVMTimings = async (name: string): Promise<VMTimingEvent[]> => {
   const { data, error } = await client.GET('/api/microvms/{name}/timings', { params: { path: { name } } });
   if (error) throwErr(error);
-  return (data ?? []) as unknown as VMTimingEvent[];
+  return data ?? [];
 };
 
 export const getVMLogs = async (name: string, tail = 65536): Promise<VMLogs> => {
@@ -812,7 +810,7 @@ export const getVMLogs = async (name: string, tail = 65536): Promise<VMLogs> => 
     params: { path: { name }, query: { tail } },
   });
   if (error) throwErr(error);
-  return data as unknown as VMLogs;
+  return data;
 };
 
 // ---- SSH-keys catalogue -------------------------------------------

@@ -508,10 +508,26 @@ func (c *Client) DeleteVM(ctx context.Context, name, project string) (retErr err
 	return err
 }
 
-// VMStatus returns the live VMInfo for a single VM. Marshalled to the
-// same map shape the list endpoints already emit, so the drawer can
-// reuse the table-cell helpers (status badges, etc.).
-func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[string]any, retErr error) {
+// VMInfo is the typed shape every VM-level read returns — VMStatus
+// today, future per-VM watchers tomorrow. Mirror of weft-proto's
+// weftv1.VMInfo with State pre-rendered to a human string ; the
+// fields and JSON tags match what handleResourceRows emits for the
+// /api/microvms listing so the SPA renders both via the same code.
+type VMInfo struct {
+	Name    string `json:"name"`
+	UUID    string `json:"uuid"`
+	Image   string `json:"image"`
+	Status  string `json:"status"`
+	OS      string `json:"os"`
+	CPU     uint32 `json:"cpu"`
+	MemMB   uint64 `json:"mem_mb"`
+	DiskGB  uint64 `json:"disk_gb"`
+	IP      string `json:"ip"`
+	Project string `json:"project"`
+}
+
+// VMStatus returns the live VMInfo for a single VM.
+func (c *Client) VMStatus(ctx context.Context, name, project string) (info *VMInfo, retErr error) {
 	defer c.measured("VMStatus", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -527,17 +543,12 @@ func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[s
 		return nil, errors.New("nil VMStatus response")
 	}
 	v := resp.Vm
-	return map[string]any{
-		"name":    v.Name,
-		"uuid":    v.Uuid,
-		"image":   v.Image,
-		"status":  vzclient.StateString(v.State),
-		"os":      v.Os,
-		"cpu":     v.Cpu,
-		"mem_mb":  v.MemMb,
-		"disk_gb": v.DiskGb,
-		"ip":      v.Ip,
-		"project": v.Project,
+	return &VMInfo{
+		Name: v.Name, UUID: v.Uuid, Image: v.Image,
+		Status: vzclient.StateString(v.State),
+		OS:     v.Os,
+		CPU:    v.Cpu, MemMB: v.MemMb, DiskGB: v.DiskGb,
+		IP: v.Ip, Project: v.Project,
 	}, nil
 }
 
@@ -567,11 +578,18 @@ func (c *Client) DetachVolume(ctx context.Context, volumeUUID string) (retErr er
 	return err
 }
 
+// VMTimingEvent is one entry in the lifecycle-events list. ts is the
+// RFC-3339 rendering of the proto's ts_unix_ns so the frontend can
+// emit it verbatim without re-encoding.
+type VMTimingEvent struct {
+	Name string            `json:"name"`
+	TS   string            `json:"ts"`
+	Meta map[string]string `json:"meta"`
+}
+
 // VMTimings returns the recorded lifecycle events for a VM (state
-// transitions, network up, exec ready, …). Each event has a name, a
-// wall-clock ns timestamp, and a meta map. We translate ts_unix_ns to
-// an RFC-3339 string so the frontend can render without re-encoding.
-func (c *Client) VMTimings(ctx context.Context, name, project string) (events []map[string]any, retErr error) {
+// transitions, network up, exec ready, …).
+func (c *Client) VMTimings(ctx context.Context, name, project string) (events []VMTimingEvent, retErr error) {
 	defer c.measured("VMTimings", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -583,20 +601,28 @@ func (c *Client) VMTimings(ctx context.Context, name, project string) (events []
 	if err != nil {
 		return nil, err
 	}
-	out := make([]map[string]any, 0, len(resp.GetEvents()))
+	out := make([]VMTimingEvent, 0, len(resp.GetEvents()))
 	for _, e := range resp.GetEvents() {
-		out = append(out, map[string]any{
-			"name": e.Name,
-			"ts":   time.Unix(0, e.TsUnixNs).UTC().Format(time.RFC3339Nano),
-			"meta": e.Meta,
+		out = append(out, VMTimingEvent{
+			Name: e.Name,
+			TS:   time.Unix(0, e.TsUnixNs).UTC().Format(time.RFC3339Nano),
+			Meta: e.Meta,
 		})
 	}
 	return out, nil
 }
 
+// VMLogsResult is the console-log tail returned by /api/microvms/
+// {name}/logs. Contents is the raw text ; TotalBytes is the size on
+// disk so the SPA can show "showing N of M bytes".
+type VMLogsResult struct {
+	Contents   string `json:"contents"`
+	TotalBytes int64  `json:"total_bytes"`
+}
+
 // VMLogs returns the tail of the console log. tailBytes=0 reads
 // everything ; the frontend defaults to a sensible cap (~64 KiB).
-func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int64) (out map[string]any, retErr error) {
+func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int64) (out *VMLogsResult, retErr error) {
 	defer c.measured("VMLogs", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -608,9 +634,9 @@ func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"contents":    string(resp.GetContents()),
-		"total_bytes": resp.GetTotalBytes(),
+	return &VMLogsResult{
+		Contents:   string(resp.GetContents()),
+		TotalBytes: resp.GetTotalBytes(),
 	}, nil
 }
 
@@ -678,8 +704,8 @@ func (c *Client) DeleteVolume(ctx context.Context, uuid string) (retErr error) {
 // public type so handlers can decode the SPA's payload without
 // touching the weftv1 alias.
 type SecurityRule struct {
-	Direction       string `json:"direction"` // "ingress" | "egress"
-	Protocol        string `json:"protocol"`  // "tcp" | "udp" | "icmp" | "any"
+	Direction       string `json:"direction" enum:"ingress,egress"`
+	Protocol        string `json:"protocol" enum:"tcp,udp,icmp,any"`
 	PortMin         int32  `json:"port_min"`
 	PortMax         int32  `json:"port_max"`
 	RemoteCIDR      string `json:"remote_cidr"`

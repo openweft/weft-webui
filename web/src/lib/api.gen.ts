@@ -2133,12 +2133,14 @@ export interface components {
             status: string;
         };
         SecurityRule: {
-            direction: string;
+            /** @enum {string} */
+            direction: "ingress" | "egress";
             /** Format: int32 */
             port_max: number;
             /** Format: int32 */
             port_min: number;
-            protocol: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp" | "icmp" | "any";
             remote_cidr: string;
             remote_group_uuid: string;
         };
@@ -2196,6 +2198,45 @@ export interface components {
             readonly $schema?: string;
             networks: components["schemas"]["TopoNetwork"][] | null;
             nodes: components["schemas"]["TopoNode"][] | null;
+        };
+        VMInfo: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VMInfo.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            cpu: number;
+            /** Format: int64 */
+            disk_gb: number;
+            image: string;
+            ip: string;
+            /** Format: int64 */
+            mem_mb: number;
+            name: string;
+            os: string;
+            project: string;
+            status: string;
+            uuid: string;
+        };
+        VMLogsResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VMLogsResult.json
+             */
+            readonly $schema?: string;
+            contents: string;
+            /** Format: int64 */
+            total_bytes: number;
+        };
+        VMTimingEvent: {
+            meta: {
+                [key: string]: string;
+            };
+            name: string;
+            ts: string;
         };
         VmStateBody: {
             /**
@@ -3203,7 +3244,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VMLogsResult"];
                 };
             };
             /** @description Error */
@@ -3375,7 +3416,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VMInfo"];
                 };
             };
             /** @description Error */
@@ -3445,7 +3486,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VMTimingEvent"][] | null;
                 };
             };
             /** @description Error */
@@ -4277,7 +4318,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SecurityRule"][] | null;
                 };
             };
             /** @description Error */

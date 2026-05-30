@@ -61,6 +61,12 @@ export type APITopoNetwork = components['schemas']['TopoNetwork'];
 export type APITopoNode = components['schemas']['TopoNode'];
 export type APITopologyBody = components['schemas']['TopologyBody'];
 
+// VM inspect — wclient-side typed shapes.
+export type APIVMInfo = components['schemas']['VMInfo'];
+export type APIVMTimingEvent = components['schemas']['VMTimingEvent'];
+export type APIVMLogsResult = components['schemas']['VMLogsResult'];
+export type APISecurityRule = components['schemas']['SecurityRule'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };

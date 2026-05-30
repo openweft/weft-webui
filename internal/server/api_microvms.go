@@ -128,7 +128,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/status",
 		Summary:     "Read a VM's current status",
 		Tags:        []string{"microvms", "inspect"},
-	}, func(ctx context.Context, in *vmProjectInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *vmProjectInput) (*vmStatusOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -140,7 +140,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
-		return &passthroughOutput{Body: info}, nil
+		return &vmStatusOutput{Body: *info}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -149,7 +149,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		Path:        "/api/microvms/{name}/timings",
 		Summary:     "Read a VM's boot/lifecycle event timings",
 		Tags:        []string{"microvms", "inspect"},
-	}, func(ctx context.Context, in *vmProjectInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *vmProjectInput) (*vmTimingsOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -161,7 +161,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
-		return &passthroughOutput{Body: events}, nil
+		return &vmTimingsOutput{Body: events}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -171,7 +171,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		Summary:     "Read the VM's serial console log",
 		Description: "?tail caps the response to the last N bytes (default 65536). A VM with a giant console.log doesn't blow up the SPA on first open.",
 		Tags:        []string{"microvms", "inspect"},
-	}, func(ctx context.Context, in *vmLogsInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *vmLogsInput) (*vmLogsOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -187,7 +187,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
-		return &passthroughOutput{Body: out}, nil
+		return &vmLogsOutput{Body: *out}, nil
 	})
 
 	// --- Create ---------------------------------------------------
@@ -364,6 +364,13 @@ type CreateVMResp struct {
 type createVMOutput struct {
 	Body CreateVMResp
 }
+
+// vmStatusOutput / vmTimingsOutput / vmLogsOutput surface the wclient
+// types directly so the OpenAPI schema gains real VMInfo /
+// VMTimingEvent / VMLogsResult shapes instead of `any`.
+type vmStatusOutput  struct{ Body wclient.VMInfo }
+type vmTimingsOutput struct{ Body []wclient.VMTimingEvent }
+type vmLogsOutput    struct{ Body wclient.VMLogsResult }
 
 // passthroughOutput is the response shape for endpoints that
 // forward whatever the live client returned without re-typing.

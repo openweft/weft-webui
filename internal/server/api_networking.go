@@ -157,11 +157,11 @@ func mountSecurityGroupsAPI(api huma.API) {
 		Summary:     "Get a security group's rule list",
 		Description: "Live-first ; on Unimplemented OR no daemon, falls back to the mock 'security-rules' resource (matched by group name) so the dashboard stays explorable before weft-agent's SG-rule embedding lands.",
 		Tags:        []string{"security-groups"},
-	}, func(ctx context.Context, in *uuidInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *uuidInput) (*sgRulesOutput, error) {
 		if live != nil {
 			rules, err := live.GetSecurityGroup(ctx, in.UUID)
 			if err == nil {
-				return &passthroughOutput{Body: rules}, nil
+				return &sgRulesOutput{Body: rules}, nil
 			}
 			if !wclient.IsUnimplemented(err) {
 				return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -174,23 +174,23 @@ func mountSecurityGroupsAPI(api huma.API) {
 				break
 			}
 		}
-		out := make([]map[string]any, 0)
+		out := make([]wclient.SecurityRule, 0)
 		if groupName != "" {
 			for _, row := range resourceByID["security-rules"].Rows {
 				if row["group"] == groupName {
 					portMin, portMax := parsePortRange(row["port_range"])
-					out = append(out, map[string]any{
-						"direction":         row["direction"],
-						"protocol":          row["protocol"],
-						"port_min":          portMin,
-						"port_max":          portMax,
-						"remote_cidr":       row["remote"],
-						"remote_group_uuid": "",
+					dir, _ := row["direction"].(string)
+					proto, _ := row["protocol"].(string)
+					cidr, _ := row["remote"].(string)
+					out = append(out, wclient.SecurityRule{
+						Direction: dir, Protocol: proto,
+						PortMin: int32(portMin), PortMax: int32(portMax),
+						RemoteCIDR: cidr,
 					})
 				}
 			}
 		}
-		return &passthroughOutput{Body: out}, nil
+		return &sgRulesOutput{Body: out}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -726,6 +726,7 @@ type createNetworkOutput         struct{ Body CreateNetworkResp }
 type createSGOutput              struct{ Body CreateSecurityGroupResp }
 type allocateFloatingIPOutput    struct{ Body AllocateFloatingIPResp }
 type createDNSRecordOutput       struct{ Body CreateDNSRecordResp }
+type sgRulesOutput               struct{ Body []wclient.SecurityRule }
 
 type createNetworkInput struct {
 	Project string `query:"project" doc:"Override the session project"`
