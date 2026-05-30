@@ -24,7 +24,7 @@ import {
   type MeBody, type APIQuota, type APIScopeEntry,
   type APITopoNetwork, type APITopoNode, type APITopologyBody,
   type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult,
-  type APISecurityRule,
+  type APISecurityRule, type APIImportResult,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -612,7 +612,7 @@ export const setLoadBalancerBackends = async (uuid: string, backends: string[]) 
     body: backends,
   });
   if (error) throwErr(error);
-  return data as unknown as { backends: number };
+  return data;
 };
 
 export interface CreateDNSZoneBody {
@@ -685,10 +685,10 @@ export interface CreateSchedulingRuleBody {
   project?: string;
 }
 
-export const createSchedulingRule = async (b: CreateSchedulingRuleBody): Promise<Row> => {
+export const createSchedulingRule = async (b: CreateSchedulingRuleBody) => {
   const { data, error } = await client.POST('/api/scheduling-rules', { body: b });
   if (error) throwErr(error);
-  return data as unknown as Row;
+  return data;
 };
 
 export const deleteSchedulingRule = async (name: string): Promise<void> => {
@@ -706,10 +706,10 @@ export interface CreateShareBody {
   read_only?: boolean;
 }
 
-export const createShare = async (b: CreateShareBody): Promise<Row> => {
+export const createShare = async (b: CreateShareBody) => {
   const { data, error } = await client.POST('/api/shares', { body: b });
   if (error) throwErr(error);
-  return data as unknown as Row;
+  return data;
 };
 
 export const deleteShare = async (name: string): Promise<void> => {
@@ -752,7 +752,7 @@ export const setSecurityGroupRules = async (uuid: string, rules: SecurityRule[])
     body: rules,
   });
   if (error) throwErr(error);
-  return data as unknown as { uuid: string; rules: number };
+  return data;
 };
 
 // ---- Floating IPs -------------------------------------------------
@@ -776,7 +776,7 @@ export const mapFloatingIP = async (uuid: string, targetKind: 'vm' | 'lb', targe
     body: { target_kind: targetKind, target_name: targetName },
   });
   if (error) throwErr(error);
-  return data as unknown as { uuid: string; target: string };
+  return data;
 };
 
 export const unmapFloatingIP = async (uuid: string): Promise<void> => {
@@ -859,9 +859,9 @@ export const deleteSSHKeyCatalogue = async (name: string): Promise<void> => {
   if (error) throwErr(error);
 };
 
-export interface ImportSSHKeysResult {
-  added: number; skipped_existing: number; total_seen: number; names: string[];
-}
+// Override names from the generated 'string[] | null' to non-null —
+// the helper coerces null → [] so callers never see the null branch.
+export type ImportSSHKeysResult = Omit<APIImportResult, 'names'> & { names: string[] };
 
 export const importSSHKeys = async (b: {
   provider: 'github' | 'gitlab' | 'forgejo';
@@ -872,7 +872,7 @@ export const importSSHKeys = async (b: {
     body: { provider: b.provider, account: b.account, forgejo_base: b.forgejo_base ?? '' },
   });
   if (error) throwErr(error);
-  return data as unknown as ImportSSHKeysResult;
+  return { ...data, names: data.names ?? [] };
 };
 
 // ---- Per-VM SSH-key assignments -----------------------------------

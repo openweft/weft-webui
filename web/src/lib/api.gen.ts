@@ -1569,6 +1569,15 @@ export interface components {
             vm: string;
             volume: string;
         };
+        BucketNameResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BucketNameResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
         BucketPolicy: {
             /**
              * Format: uri
@@ -1706,6 +1715,16 @@ export interface components {
             description?: string;
             name: string;
             rules?: components["schemas"]["SecurityRule"][] | null;
+        };
+        CreateSchedRuleResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateSchedRuleResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            project: string;
         };
         CreateSchedulingRuleInputBody: {
             /**
@@ -1865,6 +1884,15 @@ export interface components {
             readonly $schema?: string;
             deleted: string;
         };
+        DeletedNameResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletedNameResp.json
+             */
+            readonly $schema?: string;
+            deleted: string;
+        };
         EmailResp: {
             /**
              * Format: uri
@@ -1983,6 +2011,16 @@ export interface components {
             readonly $schema?: string;
             /** @description Cluster-wide compute envelope catalogue */
             flavors: components["schemas"]["APIFlavor"][] | null;
+        };
+        MapFIPResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MapFIPResp.json
+             */
+            readonly $schema?: string;
+            target: string;
+            uuid: string;
         };
         MapFloatingIPInputBody: {
             /**
@@ -2144,6 +2182,27 @@ export interface components {
             remote_cidr: string;
             remote_group_uuid: string;
         };
+        SetLBBackendsResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetLBBackendsResp.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            backends: number;
+        };
+        SetSGRulesResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetSGRulesResp.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            rules: number;
+            uuid: string;
+        };
         SetVMKeysInputBody: {
             /**
              * Format: uri
@@ -2276,7 +2335,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BucketNameResp"];
                 };
             };
             /** @description Error */
@@ -2308,7 +2367,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DeletedNameResp"];
                 };
             };
             /** @description Error */
@@ -2811,7 +2870,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MapFIPResp"];
                 };
             };
             /** @description Error */
@@ -2971,7 +3030,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SetLBBackendsResp"];
                 };
             };
             /** @description Error */
@@ -4065,7 +4124,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateSchedRuleResp"];
                 };
             };
             /** @description Error */
@@ -4353,7 +4412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SetSGRulesResp"];
                 };
             };
             /** @description Error */

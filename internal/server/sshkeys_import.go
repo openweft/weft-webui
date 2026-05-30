@@ -47,10 +47,11 @@ type importBody struct {
 	ForgejoBase  string `json:"forgejo_base"`  // required when provider == "forgejo"
 }
 
-// importResult is the wire shape returned to the SPA — small summary
+// ImportResult is the wire shape returned to the SPA — small summary
 // + the names of the newly-stored entries (so the SPA can highlight
-// or scroll-to them).
-type importResult struct {
+// or scroll-to them). Exported so the huma op publishes it as a
+// named OpenAPI schema instead of an inline object.
+type ImportResult struct {
 	Added           int      `json:"added"`
 	SkippedExisting int      `json:"skipped_existing"`
 	TotalSeen       int      `json:"total_seen"`

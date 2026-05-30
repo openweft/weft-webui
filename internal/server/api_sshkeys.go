@@ -186,7 +186,7 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 			}
 		}
 
-		res := importResult{TotalSeen: len(lines)}
+		res := ImportResult{TotalSeen: len(lines)}
 		for i, line := range lines {
 			_, comment, fp, ok := parseSSHLine(line)
 			if !ok {
@@ -266,5 +266,5 @@ type importSSHKeysInput struct {
 }
 
 type importSSHKeysOutput struct {
-	Body importResult
+	Body ImportResult
 }

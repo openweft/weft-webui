@@ -285,7 +285,7 @@ func mountBucketsAPI(api huma.API) {
 		Summary:       "Create an object-storage bucket",
 		Tags:          []string{"buckets"},
 		DefaultStatus: 201,
-	}, func(_ context.Context, in *createBucketInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *createBucketInput) (*bucketNameOutput, error) {
 		name := strings.TrimSpace(in.Body.Name)
 		if !bucketName.MatchString(name) {
 			return nil, huma.Error400BadRequest("bucket name must be 3–63 chars, lowercase letters/digits/hyphens")
@@ -296,7 +296,7 @@ func mountBucketsAPI(api huma.API) {
 			return nil, huma.Error409Conflict("bucket already exists")
 		}
 		buckets = append(buckets, &bucket{Name: name, Created: time.Now().UTC().Format("2006-01-02")})
-		return &passthroughOutput{Body: map[string]any{"name": name}}, nil
+		return &bucketNameOutput{Body: BucketNameResp{Name: name}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -305,14 +305,14 @@ func mountBucketsAPI(api huma.API) {
 		Path:        "/api/buckets/{name}",
 		Summary:     "Delete a bucket (cascades the attached policy)",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *bucketNameInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *bucketNameInput) (*deletedNameOutput, error) {
 		bucketsMu.Lock()
 		defer bucketsMu.Unlock()
 		for i, b := range buckets {
 			if b.Name == in.Name {
 				buckets = append(buckets[:i], buckets[i+1:]...)
 				delete(policies, in.Name)
-				return &passthroughOutput{Body: map[string]any{"deleted": in.Name}}, nil
+				return &deletedNameOutput{Body: DeletedNameResp{Deleted: in.Name}}, nil
 			}
 		}
 		return nil, huma.Error404NotFound("no such bucket")
@@ -604,3 +604,16 @@ type CreateShareResp struct {
 type createVolumeOutput struct{ Body CreateVolumeResp }
 type attachVolumeOutput struct{ Body AttachVolumeResp }
 type createShareOutput  struct{ Body CreateShareResp }
+
+// BucketNameResp is the create-bucket ack — just the new name.
+type BucketNameResp struct {
+	Name string `json:"name"`
+}
+type bucketNameOutput struct{ Body BucketNameResp }
+
+// DeletedNameResp is what delete-bucket returns ; reused anywhere we
+// want to echo a "you just deleted X" payload to the SPA.
+type DeletedNameResp struct {
+	Deleted string `json:"deleted"`
+}
+type deletedNameOutput struct{ Body DeletedNameResp }
