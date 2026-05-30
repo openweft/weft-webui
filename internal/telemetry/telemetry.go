@@ -194,8 +194,8 @@ func RouteLabel(method, path string) string {
 		return "GET /api/network-topology"
 	case path == "/api/session/project":
 		return "POST /api/session/project"
-	case path == "/api/images/upload":
-		return "POST /api/images/upload"
+	case path == "/api/registry/upload":
+		return "POST /api/registry/upload"
 	case path == "/api/buckets":
 		return method + " /api/buckets"
 	case path == "/api/auth/login":

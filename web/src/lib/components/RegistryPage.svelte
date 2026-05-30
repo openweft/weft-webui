@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getRows, uploadImage, type ResourceMeta, type Row } from '../api';
+  import { getRows, uploadArtifact, type ResourceMeta, type Row } from '../api';
   import ResourceTable from './ResourceTable.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
@@ -11,7 +11,7 @@
 
   function refresh() {
     loading = true;
-    getRows('images')
+    getRows('registry')
       .then((r) => (rows = r))
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
@@ -66,7 +66,7 @@
 
     submitting = true;
     try {
-      await uploadImage(fd);
+      await uploadArtifact(fd);
       dialog.close();
       repository = '';
       tag = 'latest';

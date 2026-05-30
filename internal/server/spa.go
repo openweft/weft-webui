@@ -26,7 +26,18 @@ func spaHandler(static fs.FS) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		// SPA fallback.
+		// Unknown /api/* paths are real 404s — never falling through
+		// to index.html, which would give a misleading 200 + HTML body
+		// to a misrouted client. The SPA fallback below is for
+		// deep-linked routes the client-side router resolves.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+			return
+		}
+
+		// SPA fallback (deep-linked client-side routes).
 		idx, err := fs.ReadFile(static, "index.html")
 		if err != nil {
 			http.Error(w, "frontend not built — run `task build-web` (see README)", http.StatusServiceUnavailable)

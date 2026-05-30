@@ -5,7 +5,7 @@
   import Sidebar from './lib/components/Sidebar.svelte';
   import Topbar from './lib/components/Topbar.svelte';
   import ResourcePage from './lib/components/ResourcePage.svelte';
-  import ImagesPage from './lib/components/ImagesPage.svelte';
+  import RegistryPage from './lib/components/RegistryPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import SharesPage from './lib/components/SharesPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
@@ -58,9 +58,9 @@
         <div class="alert alert-error">Failed to load resources: {error}</div>
       {:else if active === ''}
         <Overview {grouped} />
-      {:else if active === 'images'}
+      {:else if active === 'registry'}
         {#key active}
-          <ImagesPage meta={byId.get(active)!} />
+          <RegistryPage meta={byId.get(active)!} />
         {/key}
       {:else if active === 'buckets'}
         <ObjectStoragePage />

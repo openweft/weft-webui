@@ -41,10 +41,11 @@ export const getRows = (id: string) => getJSON<Row[]>(`/resources/${id}`);
 export const getSummary = () =>
   getJSON<{ id: string; label: string; count: number }[]>('/summary');
 
-// Upload a container or raw multi-arch image to a registry. The FormData
-// carries: type, registry, repository, tag, repeated arch fields, and files.
-export async function uploadImage(form: FormData): Promise<Row> {
-  return postForm('/api/images/upload', form);
+// Push any OCI artifact (container image, raw multi-arch disk, chart,
+// model blob) to a registry. The FormData carries: type, registry,
+// repository, tag, repeated arch fields, and files.
+export async function uploadArtifact(form: FormData): Promise<Row> {
+  return postForm('/api/registry/upload', form);
 }
 
 // ---- File storage (buckets = S3 prefixes, shares = POSIX dirs) ----
