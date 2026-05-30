@@ -12,8 +12,8 @@
   // applies idempotently). This keeps the create surface small and
   // honest : "what kind, where, behind which entry point".
   import {
-    createVM, getMe, getFlavors, getRowsPage,
-    type Row, type VMIngressKind, type VMProvisioningSourceKind,
+    createVM, getMe, getFlavors, getRowsPage, listScripts, getScript,
+    type Row, type VMIngressKind, type VMProvisioningSourceKind, type Script,
   } from '../api';
   import Combobox from './Combobox.svelte';
 
@@ -46,10 +46,18 @@
   // the in-guest weft-vm-agent reads them on first boot, performs
   // git clone / oras pull + extract, then runs the script through
   // mvdan.cc/sh/v3 (POSIX sh in Go, no /bin/sh required).
+  //
+  // The script body comes from the catalogue (managed in the Scripts
+  // page) — never typed/pasted here. Picking sends the script's body
+  // to the server in Provisioning.script ; the catalogue name is
+  // captured separately as a property for traceability.
   let provSource = $state<VMProvisioningSourceKind>('none');
   let provURL = $state('');
   let provRef = $state('');
-  let provScript = $state('');
+  let scriptCatalogue = $state<Script[]>([]);
+  let scriptName = $state('');
+  let scriptDetail = $state<Script | null>(null);
+  let scriptLoading = $state(false);
 
   // Loaded once when the modal opens.
   let project = $state('');
@@ -80,6 +88,22 @@
       .then((p) => (fips = p.rows)).catch(() => { /* ok */ });
     getRowsPage('loadbalancers', { limit: 200 })
       .then((p) => (lbs = p.rows)).catch(() => { /* ok */ });
+    // Script catalogue : the list endpoint sends bodies too, but at
+    // catalogue scale (dozens of entries max) that's fine. If it
+    // grows the bodies move to a getScript-only-on-pick fetch.
+    listScripts().then((ss) => (scriptCatalogue = ss)).catch(() => { /* ok */ });
+  });
+
+  // When the operator picks a script, fetch the canonical body — the
+  // catalogue list might be stale, and we want exactly what the
+  // server has at submit time.
+  $effect(() => {
+    if (!scriptName) { scriptDetail = null; return; }
+    scriptLoading = true;
+    getScript(scriptName)
+      .then((s) => (scriptDetail = s))
+      .catch(() => (scriptDetail = null))
+      .finally(() => (scriptLoading = false));
   });
 
   // Free FIPs : unmapped ones in the project scope. The map column
@@ -120,8 +144,9 @@
     }
     busy = true;
     try {
+      const scriptBody = scriptDetail?.body ?? '';
       const hasProvisioning =
-        provSource !== 'none' || provScript.trim() !== '';
+        provSource !== 'none' || scriptBody.trim() !== '';
       const res = await createVM({
         Name: name.trim(),
         Image: image.trim(),
@@ -135,7 +160,7 @@
           source_kind: provSource,
           source_url: provURL.trim(),
           source_ref: provRef.trim(),
-          script: provScript,
+          script: scriptBody,
         } : undefined,
       }) as { name: string; project: string; warnings?: string[] };
       warnings = res.warnings ?? [];
@@ -157,7 +182,8 @@
     flavorName = '';
     schedulingRule = ''; network = '';
     ingressKind = 'none'; ingressFIP = ''; ingressLB = '';
-    provSource = 'none'; provURL = ''; provRef = ''; provScript = '';
+    provSource = 'none'; provURL = ''; provRef = '';
+    scriptName = ''; scriptDetail = null;
     error = ''; warnings = [];
   }
 
@@ -374,18 +400,40 @@
         </div>
       {/if}
 
-      <label class="form-control mt-2">
-        <span class="label-text text-xs">Script (sh)</span>
-        <textarea class="textarea textarea-sm textarea-bordered font-mono text-xs"
-          rows="4"
-          placeholder={'#!/bin/sh\nset -eu\ncd payload\n./setup.sh'}
-          bind:value={provScript}></textarea>
-        <span class="mt-1 text-xs text-base-content/50">
-          Runs in the payload's CWD post-pull. Exit non-zero marks the
-          provisioning as failed on the VM's Timings stream ; the VM
-          stays up so you can debug.
-        </span>
-      </label>
+      <div class="mt-2 grid gap-3 sm:grid-cols-[1fr_1.4fr]">
+        <div class="form-control">
+          <span class="label-text text-xs">Script (from catalogue)</span>
+          <Combobox
+            items={scriptCatalogue}
+            bind:value={scriptName}
+            getId={(s) => String(s.name)}
+            getLabel={(s) => String(s.name)}
+            getSub={(s) => String(s.description ?? '')}
+            placeholder={scriptCatalogue.length === 0 ? 'No script in catalogue yet' : 'Type to filter scripts…'}
+            disabled={scriptCatalogue.length === 0}
+          />
+          <span class="mt-1 text-xs text-base-content/50">
+            Manage scripts in the Scripts page. No raw pasting here —
+            named scripts are versioned + auditable.
+          </span>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-200/40 p-3">
+          {#if scriptLoading}
+            <div class="py-6 text-center"><span class="loading loading-spinner loading-sm"></span></div>
+          {:else if scriptDetail}
+            <div class="text-xs text-base-content/60 mb-1">
+              <span class="font-mono">{scriptDetail.name}</span>
+              {#if scriptDetail.updated_by} · last edited by {scriptDetail.updated_by}{/if}
+            </div>
+            <pre class="max-h-40 overflow-auto font-mono text-[11px] leading-snug">{scriptDetail.body}</pre>
+          {:else}
+            <p class="text-xs text-base-content/50">
+              Pick a script on the left to preview its body.
+              The preview is read-only — edit goes through the Scripts page.
+            </p>
+          {/if}
+        </div>
+      </div>
     </fieldset>
 
     {#if error}<div class="mt-3 alert alert-error py-2 text-sm">{error}</div>{/if}
