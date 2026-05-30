@@ -266,6 +266,216 @@ func (c *NetworkClient) ListSchedulingRules(ctx context.Context, project string)
 	return out, nil
 }
 
+// --- Mutators ------------------------------------------------------
+//
+// Every Create takes a typed opts struct so the handler can decode the
+// SPA's body once and forward without re-massaging the field names.
+// Delete handlers key by UUID (the daemon's stable identifier).
+
+type CreateRouterOpts struct {
+	Project, Name, Kind, Backend, External string
+	Networks                               []string
+}
+
+func (c *NetworkClient) CreateRouter(ctx context.Context, o CreateRouterOpts) (uuid string, retErr error) {
+	defer c.measured("CreateRouter", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateRouter(cctx, &netv1.CreateRouterRequest{
+		Project: o.Project, Name: o.Name, Kind: o.Kind, Backend: o.Backend,
+		Networks: o.Networks, External: o.External,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Router == nil {
+		return "", errors.New("nil CreateRouter response")
+	}
+	return resp.Router.Uuid, nil
+}
+
+func (c *NetworkClient) DeleteRouter(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteRouter", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteRouter(cctx, &netv1.DeleteRouterRequest{Uuid: uuid})
+	return err
+}
+
+type CreateLoadBalancerOpts struct {
+	Project, Name, Mode, AZ string
+	Port                    uint32
+	Backends                []string
+}
+
+func (c *NetworkClient) CreateLoadBalancer(ctx context.Context, o CreateLoadBalancerOpts) (uuid string, retErr error) {
+	defer c.measured("CreateLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateLoadBalancer(cctx, &netv1.CreateLoadBalancerRequest{
+		Project: o.Project, Name: o.Name, Mode: o.Mode, Port: o.Port,
+		Backends: o.Backends, Az: o.AZ,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.LoadBalancer == nil {
+		return "", errors.New("nil CreateLoadBalancer response")
+	}
+	return resp.LoadBalancer.Uuid, nil
+}
+
+func (c *NetworkClient) DeleteLoadBalancer(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteLoadBalancer(cctx, &netv1.DeleteLoadBalancerRequest{Uuid: uuid})
+	return err
+}
+
+func (c *NetworkClient) SetLoadBalancerBackends(ctx context.Context, uuid string, backends []string) (retErr error) {
+	defer c.measured("SetLoadBalancerBackends", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetLoadBalancerBackends(cctx, &netv1.SetLoadBalancerBackendsRequest{
+		Uuid: uuid, Backends: backends,
+	})
+	return err
+}
+
+type CreateDNSZoneOpts struct {
+	Project, Name, Role, PushTarget string
+	TTLDefault                      int32
+}
+
+func (c *NetworkClient) CreateDNSZone(ctx context.Context, o CreateDNSZoneOpts) (uuid string, retErr error) {
+	defer c.measured("CreateDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateDNSZone(cctx, &netv1.CreateDNSZoneRequest{
+		Project: o.Project, Name: o.Name, Role: o.Role,
+		TtlDefault: o.TTLDefault, PushTarget: o.PushTarget,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Zone == nil {
+		return "", errors.New("nil CreateDNSZone response")
+	}
+	return resp.Zone.Uuid, nil
+}
+
+func (c *NetworkClient) DeleteDNSZone(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteDNSZone(cctx, &netv1.DeleteDNSZoneRequest{Uuid: uuid})
+	return err
+}
+
+type CreateDNSRecordOpts struct {
+	ZoneUUID, Name, Type, Value string
+	TTL                         int32
+}
+
+func (c *NetworkClient) CreateDNSRecord(ctx context.Context, o CreateDNSRecordOpts) (uuid string, retErr error) {
+	defer c.measured("CreateDNSRecord", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateDNSRecord(cctx, &netv1.CreateDNSRecordRequest{
+		ZoneUuid: o.ZoneUUID, Name: o.Name, Type: o.Type, Value: o.Value, Ttl: o.TTL,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Record == nil {
+		return "", errors.New("nil CreateDNSRecord response")
+	}
+	return resp.Record.Uuid, nil
+}
+
+func (c *NetworkClient) DeleteDNSRecord(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteDNSRecord", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteDNSRecord(cctx, &netv1.DeleteDNSRecordRequest{Uuid: uuid})
+	return err
+}
+
+type CreateSchedulingRuleNetOpts struct {
+	Project, Name, Selector, AZ, Rack, Host string
+	Count                                   int32
+}
+
+func (c *NetworkClient) CreateSchedulingRule(ctx context.Context, o CreateSchedulingRuleNetOpts) (uuid string, retErr error) {
+	defer c.measured("CreateSchedulingRule", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateSchedulingRule(cctx, &netv1.CreateSchedulingRuleRequest{
+		Project: o.Project, Name: o.Name, Count: o.Count,
+		Selector: o.Selector, Az: o.AZ, Rack: o.Rack, Host: o.Host,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Rule == nil {
+		return "", errors.New("nil CreateSchedulingRule response")
+	}
+	return resp.Rule.Uuid, nil
+}
+
+func (c *NetworkClient) DeleteSchedulingRule(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteSchedulingRule", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteSchedulingRule(cctx, &netv1.DeleteSchedulingRuleRequest{Uuid: uuid})
+	return err
+}
+
 // --- small shared helpers ------------------------------------------
 
 func joinStrings(s []string) string {

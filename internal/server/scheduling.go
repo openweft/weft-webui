@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // SchedulingRule is the in-memory shape. The Placement field is the
@@ -204,6 +206,26 @@ func handleCreateSchedulingRule(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Project == "" {
 		body.Project = "platform"
+	}
+	// Live-first via weft-network ; fall back to the local store on
+	// Unimplemented so the affordance keeps working before the
+	// controller catches up.
+	if liveNet != nil {
+		_, err := liveNet.CreateSchedulingRule(r.Context(), wclient.CreateSchedulingRuleNetOpts{
+			Project: body.Project, Name: body.Name, Count: int32(body.Count),
+			Selector: body.Selector, AZ: body.AZ, Rack: body.Rack, Host: body.Host,
+		})
+		if err == nil {
+			userAction(r, "scheduling-rule.create")
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"name": body.Name, "project": body.Project,
+			})
+			return
+		}
+		if !wclient.IsUnimplemented(err) {
+			writeErr(w, &httpErr{http.StatusBadGateway, "net: " + err.Error()})
+			return
+		}
 	}
 	rule := &SchedulingRule{
 		Name: body.Name, Count: body.Count, Selector: body.Selector,
