@@ -250,8 +250,11 @@
           placeholder="Type to filter rules… (empty = no constraint)"
         />
         <span class="mt-1 text-xs text-base-content/50">
-          ready/desired · placement · selector — the rule's selector
-          must match the VM's labels for this VM to count toward it.
+          ready/desired · placement · selector — picking a rule here
+          binds this VM <em>nominally</em> : it counts under the rule
+          regardless of its labels. The selector still applies to
+          VMs that were created without an explicit binding (discovery
+          path). If you typed the name, the name wins.
         </span>
       </div>
       <div class="form-control">
