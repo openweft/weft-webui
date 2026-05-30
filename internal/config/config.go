@@ -71,6 +71,14 @@ type Config struct {
 	DevMode      bool
 	PublicURL    string // used to build absolute redirect URLs when OIDCRedirectURL is empty
 	TrustProxies bool   // honour X-Forwarded-Proto when building redirects
+
+	// PolicyStrict flips the bucket-policy evaluator's default from
+	// "no matching statement = allow" (today's permissive default) to
+	// "no matching statement = deny" (AWS-aligned default-deny when a
+	// policy exists at all). Off by default so existing deployments
+	// don't lose access on upgrade ; flip when an operator is ready
+	// for the stricter model.
+	PolicyStrict bool
 }
 
 const (
@@ -110,6 +118,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		PublicURL:     os.Getenv("WEBUI_PUBLIC_URL"),
 		DevMode:       envBool("WEBUI_DEV_MODE", false),
 		TrustProxies:  envBool("WEBUI_TRUST_PROXIES", false),
+		PolicyStrict:  envBool("WEBUI_POLICY_STRICT", false),
 	}
 
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
@@ -160,6 +169,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.WeftSocket, "weft-socket", cfg.WeftSocket, "weft daemon socket (unix path or ssh://) ; empty = mock mode (dev only)")
 	flagSet.StringVar(&cfg.WeftNetworkSocket, "weft-network-socket", cfg.WeftNetworkSocket, "weft-network controller socket ; empty = mock data for routers/LBs/DNS/scheduling-rules")
 	flagSet.BoolVar(&cfg.DevMode, "dev", cfg.DevMode, "dev mode : disables auth, allows mock fallback")
+	flagSet.BoolVar(&cfg.PolicyStrict, "policy-strict", cfg.PolicyStrict, "bucket policies default-deny when a policy exists (AWS-aligned ; off = today's permissive default)")
 	flagSet.StringVar(&cfg.AuthMode, "auth-mode", cfg.AuthMode, `"oidc" or "none" ("none" is dev-only)`)
 	flagSet.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "external base URL (used to compute the OIDC redirect when not set explicitly)")
 	return cfg, nil

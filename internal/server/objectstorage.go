@@ -103,16 +103,21 @@ type policyDecision struct {
 }
 
 // evaluatePolicy answers "may this principal perform action on this
-// key in this bucket?". The semantics are deliberately permissive for
-// the demo : no policy = allow ; otherwise an explicit Deny match
-// wins, an explicit Allow match grants, and a no-match falls back to
-// allow. AWS-style default-deny would be more correct, but lock-outs
-// from a single Allow-only statement would be confusing here — wire
-// strict mode behind a flag when the deployment needs it.
+// key in this bucket?". The semantics :
+//
+//   - no policy on the bucket           → allow (uncontrolled object)
+//   - cluster/tenant admin              → allow (S3-root bypass, same
+//                                         shortcut Shares uses)
+//   - explicit Deny match               → deny (always wins)
+//   - explicit Allow match              → allow
+//   - no statement matches              → policyStrict ? deny : allow
+//
+// The last branch is the policy-strict knob (config.PolicyStrict
+// → server.policyStrict). Off by default to avoid upgrade-time
+// lock-outs from a bucket that has an Allow-only policy ; on
+// gives the AWS-aligned default-deny once the operator is sure.
 //
 // key may be "" for bucket-level actions (s3:ListBucket).
-//
-// Cluster/tenant admins bypass policies — same shortcut Shares uses.
 func evaluatePolicy(ctx context.Context, bucket, action, key string) policyDecision {
 	u := auth.UserFromContext(ctx)
 	if u != nil && (isClusterAdmin(u) || tenantsDB.isAnyTenantAdmin(u.Email)) {
@@ -156,7 +161,13 @@ func evaluatePolicy(ctx context.Context, bucket, action, key string) policyDecis
 	if allowed != nil {
 		return policyDecision{allow: true}
 	}
-	return policyDecision{allow: true} // permissive default ; see comment
+	if policyStrict {
+		return policyDecision{
+			allow:  false,
+			reason: "denied by policy : no matching statement (strict mode)",
+		}
+	}
+	return policyDecision{allow: true}
 }
 
 // principalMatch — "*" matches anyone (even unauthenticated callers),
