@@ -5,6 +5,7 @@
   import CreateVolumeModal from './CreateVolumeModal.svelte';
   import CreateNetworkModal from './CreateNetworkModal.svelte';
   import CreateSchedulingRuleModal from './CreateSchedulingRuleModal.svelte';
+  import MicroVMDrawer from './MicroVMDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -43,6 +44,13 @@
   // active. Everything else keeps it disabled with a hint — clicking
   // a stub button used to do nothing, now it's at least honest.
   let createOpen = $state(false);
+  // Row-detail drawer. Currently only wired for microvms ; other
+  // resources will get their own drawer components as the relevant
+  // RPCs land (volumes → VolumeInfo, networks → NetworkInfo, …).
+  let selectedRow = $state<Row | null>(null);
+  function handleSelect(row: Row) {
+    if (meta.id === 'microvms') selectedRow = row;
+  }
   const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules'];
   let canCreate = $derived(creatable.includes(meta.id));
   let createLabel = $derived(
@@ -86,7 +94,8 @@
     <div class="alert alert-error">{error}</div>
   {:else}
     <ResourceTable columns={meta.columns} rows={filtered}
-      resourceId={meta.id} onChange={refresh} />
+      resourceId={meta.id} onChange={refresh}
+      onSelect={meta.id === 'microvms' ? handleSelect : undefined} />
   {/if}
 </div>
 
@@ -101,4 +110,12 @@
   <CreateNetworkModal bind:open={createOpen} onCreated={refresh} />
 {:else if meta.id === 'scheduling-rules'}
   <CreateSchedulingRuleModal bind:open={createOpen} onCreated={refresh} />
+{/if}
+
+{#if meta.id === 'microvms' && selectedRow}
+  <MicroVMDrawer
+    row={selectedRow}
+    onClose={() => (selectedRow = null)}
+    onChanged={refresh}
+  />
 {/if}

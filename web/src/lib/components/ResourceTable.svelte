@@ -10,6 +10,7 @@
     rows,
     resourceId = '',
     onChange,
+    onSelect,
   }: {
     columns: Column[];
     rows: Row[];
@@ -19,6 +20,10 @@
     resourceId?: string;
     // Called after a successful mutation so the parent can refresh.
     onChange?: () => void;
+    // Called when a row is clicked (outside the actions cell). The
+    // parent decides what to render — e.g. ResourcePage opens the
+    // MicroVMDrawer for resourceId=microvms.
+    onSelect?: (row: Row) => void;
   } = $props();
 
   function statusClass(v: unknown): string {
@@ -164,7 +169,10 @@
     </thead>
     <tbody>
       {#each sorted as r, i (i)}
-        <tr class="hover" data-name={typeof r.name === 'string' ? r.name : ''}>
+        <tr class="hover"
+          class:cursor-pointer={!!onSelect}
+          data-name={typeof r.name === 'string' ? r.name : ''}
+          onclick={() => onSelect?.(r)}>
           {#each columns as c (c.key)}
             <td>
               {#if isStatus(c.key)}
@@ -182,7 +190,7 @@
               {/if}
             </td>
           {/each}
-          <td class="text-right">
+          <td class="text-right" onclick={(e) => e.stopPropagation()}>
             <div class="dropdown dropdown-end">
               <div tabindex="0" role="button" class="btn btn-ghost btn-xs">
                 {#if busyRow === rowKey(r)}

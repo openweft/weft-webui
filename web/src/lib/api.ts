@@ -406,6 +406,33 @@ export const createSchedulingRule = (b: CreateSchedulingRuleBody) =>
 export const deleteSchedulingRule = (name: string) =>
   deleteJSON(`/scheduling-rules/${encodeURIComponent(name)}`);
 
+// ---- microVM inspect (status / timings / logs) ----
+
+export interface VMStatus {
+  name: string;
+  image: string;
+  status: string;
+  os: string;
+  cpu: number;
+  mem_mb: number;
+  disk_gb: number;
+  ip: string;
+}
+export interface VMTimingEvent {
+  name: string;            // e.g. "registered", "vz.state.Running"
+  ts: string;              // RFC-3339
+  meta: Record<string, string>;
+}
+export interface VMLogs {
+  contents: string;
+  total_bytes: number;
+}
+
+export const getVMStatus  = (name: string) => getJSON<VMStatus>(`/microvms/${encodeURIComponent(name)}/status`);
+export const getVMTimings = (name: string) => getJSON<VMTimingEvent[]>(`/microvms/${encodeURIComponent(name)}/timings`);
+export const getVMLogs    = (name: string, tail = 65536) =>
+  getJSON<VMLogs>(`/microvms/${encodeURIComponent(name)}/logs?tail=${tail}`);
+
 // Quota dimension metadata for UI labels + units. Order matters : it
 // drives the visual layout. Mirrors internal/server/tenants.go.
 export interface QuotaDimMeta {
