@@ -23,7 +23,9 @@ var quotas = []Quota{
 	{ID: "microvms", Label: "microVMs", Icon: "microvm", Used: 51, Limit: 80, Unit: ""},
 	{ID: "instances", Label: "Instances", Icon: "vm", Used: 2, Limit: 10, Unit: ""},
 	{ID: "volumes", Label: "Volumes", Icon: "volume", Used: 7, Limit: 20, Unit: ""},
+	{ID: "shares", Label: "Shares", Icon: "share", Used: 3, Limit: 12, Unit: ""},
 	{ID: "block_gb", Label: "Block storage", Icon: "storage", Used: 1480, Limit: 2000, Unit: "GB"},
+	{ID: "share_gb", Label: "Share storage", Icon: "share", Used: 6660, Limit: 16384, Unit: "GB"},
 	{ID: "object_gb", Label: "Object storage", Icon: "bucket", Used: 1660, Limit: 4096, Unit: "GB"},
 	{ID: "floating_ips", Label: "Floating IPs", Icon: "ip", Used: 4, Limit: 4, Unit: ""},
 }

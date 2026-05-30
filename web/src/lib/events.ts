@@ -17,6 +17,13 @@ export interface PlatformEvent {
 const KEEP = 20;
 export const lastEvents: Writable<PlatformEvent[]> = writable([]);
 
+// Longer-lived buffer for the Activity feed view. Capped at FEED_KEEP
+// to avoid unbounded growth in a long-running tab ; the operator can
+// click "Clear" in the Activity page to drop the buffer.
+const FEED_KEEP = 500;
+export const eventFeed: Writable<PlatformEvent[]> = writable([]);
+export function clearEventFeed() { eventFeed.set([]); }
+
 // State of the underlying connection ; the SPA can show a small
 // indicator if it ever flips to `error`.
 export const eventsConnection: Writable<'idle' | 'open' | 'error'> = writable('idle');
@@ -36,6 +43,11 @@ export function startEventsStream() {
       lastEvents.update((xs) => {
         const next = [e, ...xs];
         if (next.length > KEEP) next.length = KEEP;
+        return next;
+      });
+      eventFeed.update((xs) => {
+        const next = [e, ...xs];
+        if (next.length > FEED_KEEP) next.length = FEED_KEEP;
         return next;
       });
     } catch { /* ignore malformed frames */ }

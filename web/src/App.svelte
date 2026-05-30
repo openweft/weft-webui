@@ -11,6 +11,7 @@
   import SharesPage from './lib/components/SharesPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
+  import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
@@ -43,8 +44,17 @@
     return order.map((section) => ({ section, items: m.get(section)! }));
   });
 
-  let active = $derived(byId.has($route) ? $route : '');
-  let pageTitle = $derived(active === '' ? 'Overview' : (byId.get(active)?.label ?? ''));
+  // Special non-resource routes (no registry entry). The Sidebar
+  // surfaces them above the section list.
+  const SPECIAL = new Set(['activity']);
+  let active = $derived(
+    byId.has($route) || SPECIAL.has($route) ? $route : '',
+  );
+  let pageTitle = $derived.by(() => {
+    if (active === '') return 'Overview';
+    if (active === 'activity') return 'Activity';
+    return byId.get(active)?.label ?? '';
+  });
 </script>
 
 <div class="flex h-full overflow-hidden">
@@ -60,6 +70,8 @@
         <div class="alert alert-error">Failed to load resources: {error}</div>
       {:else if active === ''}
         <Overview {grouped} />
+      {:else if active === 'activity'}
+        <ActivityPage />
       {:else if active === 'registry'}
         {#key active}
           <RegistryPage meta={byId.get(active)!} />
