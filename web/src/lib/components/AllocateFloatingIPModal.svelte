@@ -7,6 +7,7 @@
   // additional public pools. Mock-mode returns 503 (the address would
   // be meaningless without a real pool to draw from).
   import { allocateFloatingIP, getMe, getRows, type Row } from '../api';
+  import Combobox from './Combobox.svelte';
 
   let {
     open = $bindable(false),
@@ -73,14 +74,17 @@
       Maps to a VM or load-balancer via the row action after allocation.
     </p>
 
-    <label class="form-control mt-4">
+    <div class="form-control mt-4">
       <span class="label-text text-xs">Network</span>
-      <select class="select select-sm select-bordered" bind:value={network}>
-        {#each networks as n (n.name)}
-          <option value={n.name}>{n.name} · {n.cidr}</option>
-        {/each}
-      </select>
-    </label>
+      <Combobox
+        items={networks}
+        bind:value={network}
+        getId={(n) => String(n.name)}
+        getLabel={(n) => String(n.name)}
+        getSub={(n) => String(n.cidr ?? '')}
+        placeholder="Type to filter networks…"
+      />
+    </div>
 
     {#if error}<div class="mt-3 alert alert-error py-2 text-sm">{error}</div>{/if}
 
