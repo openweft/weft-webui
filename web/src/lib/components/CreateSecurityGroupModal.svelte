@@ -65,9 +65,9 @@
     busy = true;
     try {
       await createSecurityGroup({
-        Name: name.trim(),
-        Description: description.trim(),
-        Rules: rules.map((r) => ({
+        name: name.trim(),
+        description: description.trim(),
+        rules: rules.map((r) => ({
           ...r,
           // Coerce protocol="any" to "" if the daemon treats it as such (some do).
           // The wire shape uses the string verbatim ; we leave it to the agent.

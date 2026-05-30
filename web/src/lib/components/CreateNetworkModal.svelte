@@ -49,11 +49,11 @@
     busy = true;
     try {
       await createNetwork({
-        Name: name.trim(),
-        CIDR: cidr.trim(),
-        Gateway: gateway.trim(),
-        Type: type,
-        DNSServers: dnsServers.split(',').map((s) => s.trim()).filter(Boolean),
+        name: name.trim(),
+        cidr: cidr.trim(),
+        gateway: gateway.trim(),
+        type,
+        dns_servers: dnsServers.split(',').map((s) => s.trim()).filter(Boolean),
       });
       onCreated();
       reset();

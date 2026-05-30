@@ -66,13 +66,13 @@
     busy = true;
     try {
       await createSchedulingRule({
-        Name: name.trim(),
-        Selector: selector.trim(),
-        Count: count,
-        AZ: resolve(azKind, azSpec),
-        Rack: resolve(rackKind, rackSpec),
-        Host: resolve(hostKind, hostSpec),
-        Project: project || undefined, // server falls back to "platform" when missing
+        name: name.trim(),
+        selector: selector.trim(),
+        count,
+        az: resolve(azKind, azSpec),
+        rack: resolve(rackKind, rackSpec),
+        host: resolve(hostKind, hostSpec),
+        project: project || undefined, // server falls back to "platform" when missing
       });
       onCreated();
       reset();

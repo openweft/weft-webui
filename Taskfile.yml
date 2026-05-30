@@ -72,6 +72,23 @@ tasks:
       - go vet ./...
       - cd web && npm run check
 
+  check:drift:
+    desc: Fail when the committed OpenAPI snapshot + typed client are stale
+    deps: [gen-api]
+    cmds:
+      # Tracked files only — non-tracked artifacts (vendored modules, etc)
+      # are explicitly excluded. Exit code is what matters ; the diff body
+      # is informational for whoever reads the CI log.
+      - |
+        if ! git diff --quiet -- web/openapi.json web/src/lib/api.gen.ts ; then
+          echo "✗ Generated files drifted from internal/server/api_*.go" >&2
+          git --no-pager diff --stat -- web/openapi.json web/src/lib/api.gen.ts >&2
+          echo "" >&2
+          echo "  Run 'task gen-api' and commit the result." >&2
+          exit 1
+        fi
+        echo "✓ web/openapi.json + web/src/lib/api.gen.ts are in sync with the Go handlers."
+
   clean:
     cmds:
       - rm -rf {{.BIN}} web/dist

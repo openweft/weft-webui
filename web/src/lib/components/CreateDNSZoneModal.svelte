@@ -34,8 +34,8 @@
     busy = true;
     try {
       await createDNSZone({
-        Name: name.trim(), Role: role,
-        TTLDefault: ttl, PushTarget: pushTarget.trim(),
+        name: name.trim(), role,
+        ttl_default: ttl, push_target: pushTarget.trim(),
       });
       onCreated();
       reset();

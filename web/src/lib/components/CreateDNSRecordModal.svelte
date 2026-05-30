@@ -45,11 +45,11 @@
     busy = true;
     try {
       await createDNSRecord({
-        ZoneUUID: zoneUUID,
-        Name: leaf.trim() || '@',
-        Type: type,
-        Value: value.trim(),
-        TTL: ttl,
+        zone_uuid: zoneUUID,
+        name: leaf.trim() || '@',
+        type,
+        value: value.trim(),
+        ttl,
       });
       onCreated();
       reset();
