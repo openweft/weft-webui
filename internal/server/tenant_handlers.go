@@ -69,7 +69,32 @@ func handleAddTenantAdmin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
 	}
-	if err := tenantsDB.addTenantAdmin(r.PathValue("name"), body.Email); err != nil {
+	tenant := r.PathValue("name")
+	if live != nil {
+		// AddTenantAdmin keys by tenant UUID — resolve name first.
+		// On Unimplemented the resolve isn't worth doing ; fall
+		// straight to the store path.
+		rows, lerr := live.ListTenants(r.Context())
+		if lerr == nil {
+			var uuid string
+			for _, t := range rows {
+				if t["name"] == tenant {
+					uuid, _ = t["uuid"].(string)
+					break
+				}
+			}
+			if uuid != "" {
+				if err := live.AddTenantAdmin(r.Context(), uuid, body.Email); err == nil {
+					writeJSON(w, http.StatusOK, map[string]string{"email": body.Email})
+					return
+				} else if !wclient.IsUnimplemented(err) {
+					writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+					return
+				}
+			}
+		}
+	}
+	if err := tenantsDB.addTenantAdmin(tenant, body.Email); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -140,6 +165,27 @@ func handleAddTenantMember(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
+	}
+	if live != nil {
+		rows, lerr := live.ListTenants(r.Context())
+		if lerr == nil {
+			var uuid string
+			for _, t := range rows {
+				if t["name"] == tenant {
+					uuid, _ = t["uuid"].(string)
+					break
+				}
+			}
+			if uuid != "" {
+				if err := live.AddTenantMember(r.Context(), uuid, body.Email, body.Groups); err == nil {
+					writeJSON(w, http.StatusOK, map[string]any{"email": body.Email, "groups": body.Groups})
+					return
+				} else if !wclient.IsUnimplemented(err) {
+					writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+					return
+				}
+			}
+		}
 	}
 	if err := tenantsDB.addMember(tenant, body.Email, body.Groups); err != nil {
 		writeErr(w, err)
@@ -280,11 +326,37 @@ func handleSetTenantQuota(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
 	}
-	if err := tenantsDB.setTenantQuota(r.PathValue("name"), body); err != nil {
+	tenant := r.PathValue("name")
+	if live != nil {
+		rows, lerr := live.ListTenants(r.Context())
+		if lerr == nil {
+			var uuid string
+			for _, t := range rows {
+				if t["name"] == tenant {
+					uuid, _ = t["uuid"].(string)
+					break
+				}
+			}
+			if uuid != "" {
+				if err := live.SetTenantQuota(r.Context(), uuid, quotasMap(body)); err == nil {
+					cap, alloc, _ := live.GetTenantQuota(r.Context(), uuid)
+					writeJSON(w, http.StatusOK, map[string]any{
+						"cap": cap, "allocated": alloc,
+						"remaining": remainingMapFromMaps(cap, alloc),
+					})
+					return
+				} else if !wclient.IsUnimplemented(err) {
+					writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+					return
+				}
+			}
+		}
+	}
+	if err := tenantsDB.setTenantQuota(tenant, body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	v, _ := tenantsDB.tenantQuotaView(r.PathValue("name"))
+	v, _ := tenantsDB.tenantQuotaView(tenant)
 	writeJSON(w, http.StatusOK, v)
 }
 
@@ -328,6 +400,22 @@ func handleSetProjectQuota(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
+	}
+	// Live-first : look up the project UUID via wclient (vzd keys on
+	// UUID), call SetProjectQuota. The store path still runs the
+	// validation locally on Unimplemented.
+	if live != nil {
+		uuid, lerr := live.ProjectUUIDByName(r.Context(), name)
+		if lerr == nil && uuid != "" {
+			if err := live.SetProjectQuota(r.Context(), uuid, quotasMap(body)); err == nil {
+				v, _ := tenantsDB.projectQuotaView(name) // store re-read so SPA gets the same shape
+				writeJSON(w, http.StatusOK, v)
+				return
+			} else if !wclient.IsUnimplemented(err) {
+				writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+				return
+			}
+		}
 	}
 	if err := tenantsDB.setProjectQuota(name, body); err != nil {
 		writeErr(w, err)

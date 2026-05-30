@@ -2,6 +2,7 @@
   import {
     startVM, stopVM, deleteVM,
     deleteVolume, deleteNetwork, deleteSchedulingRule, deleteSecurityGroup,
+    releaseFloatingIP, unmapFloatingIP,
     type Column, type Row,
   } from '../api';
 
@@ -11,6 +12,7 @@
     resourceId = '',
     onChange,
     onSelect,
+    onAction,
   }: {
     columns: Column[];
     rows: Row[];
@@ -24,6 +26,10 @@
     // parent decides what to render — e.g. ResourcePage opens the
     // MicroVMDrawer for resourceId=microvms.
     onSelect?: (row: Row) => void;
+    // Called for row dropdown actions that need parent-owned state
+    // (e.g. opening a modal). Mutations handled directly in this
+    // file don't go through this hook.
+    onAction?: (row: Row, action: string) => void;
   } = $props();
 
   function statusClass(v: unknown): string {
@@ -115,7 +121,7 @@
     return (r.uuid as string) || (r.name as string) || '';
   }
 
-  async function runAction(action: 'start' | 'stop' | 'delete', r: Row) {
+  async function runAction(action: 'start' | 'stop' | 'delete' | 'map' | 'unmap', r: Row) {
     actionError = '';
     const key = rowKey(r);
     busyRow = key;
@@ -159,6 +165,21 @@
           await deleteSecurityGroup(uuid);
           break;
         }
+        case 'floating-ips': {
+          const uuid = r.uuid as string;
+          if (action === 'delete') {
+            if (!confirm(`Release ${r.address} ?`)) break;
+            await releaseFloatingIP(uuid);
+          } else if (action === 'unmap') {
+            await unmapFloatingIP(uuid);
+          } else if (action === 'map') {
+            // Map needs a target — bubble up to the parent which owns
+            // the MapFloatingIPModal.
+            onAction?.(r, 'map');
+            return;
+          }
+          break;
+        }
       }
       onChange?.();
     } catch (e) {
@@ -170,8 +191,16 @@
 
   // Which actions does the row dropdown surface, given the resource ?
   const showStartStop = $derived(resourceId === 'microvms');
-  const showDelete    = $derived(['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups'].includes(resourceId));
-  const liveWired     = $derived(showStartStop || showDelete);
+  const showDelete    = $derived(['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups', 'floating-ips'].includes(resourceId));
+  const showFipMap    = $derived(resourceId === 'floating-ips');
+  const liveWired     = $derived(showStartStop || showDelete || showFipMap);
+
+  function fipMapped(r: Row): boolean {
+    const mt = r.mapped_to;
+    return typeof mt === 'string' && mt !== '';
+  }
+  // Floating IPs : "Release" is the destructive verb, not "Delete".
+  const deleteLabel = $derived(resourceId === 'floating-ips' ? 'Release' : 'Delete');
 </script>
 
 {#if actionError}
@@ -228,17 +257,24 @@
                   <span class="loading loading-spinner loading-xs"></span>
                 {:else}⋯{/if}
               </div>
-              <ul class="menu dropdown-content z-10 w-36 rounded-box bg-base-100 p-1 shadow">
+              <ul class="menu dropdown-content z-10 w-40 rounded-box bg-base-100 p-1 shadow">
                 {#if showStartStop}
                   <li><button onclick={() => runAction('start', r)}>Start</button></li>
                   <li><button onclick={() => runAction('stop',  r)}>Stop</button></li>
+                {/if}
+                {#if showFipMap}
+                  {#if fipMapped(r)}
+                    <li><button onclick={() => runAction('unmap', r)}>Unmap</button></li>
+                  {:else}
+                    <li><button onclick={() => runAction('map', r)}>Map to…</button></li>
+                  {/if}
                 {/if}
                 {#if !liveWired}
                   <li class="disabled px-2 py-1 text-xs text-base-content/50">read-only</li>
                 {/if}
                 {#if showDelete}
                   <li>
-                    <button class="text-error" onclick={() => runAction('delete', r)}>Delete</button>
+                    <button class="text-error" onclick={() => runAction('delete', r)}>{deleteLabel}</button>
                   </li>
                 {/if}
               </ul>
