@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -195,33 +196,21 @@ type flavorSpec struct {
 	DiskGB uint64
 }
 
-// resolveFlavor looks up a flavor by name in the catalogue served at
-// /api/flavors and returns its CPU / RAM / ephemeral-disk envelope.
-// The registry stores RAM as "<n>Gi" or "<n>Mi" ; parsed here so the
-// agent gets megabytes regardless of how the operator wrote it.
-func resolveFlavor(name string) (flavorSpec, bool) {
-	res, ok := resourceByID["flavors"]
+// resolveFlavor looks up a flavor by name via flavorsCatalogue (see
+// flavors.go) and returns its CPU / RAM / ephemeral-disk envelope.
+// The catalogue stores RAM as "<n>Gi" or "<n>Mi" ; parsed here at the
+// wire boundary so weft-agent gets megabytes regardless of how the
+// operator wrote it.
+func resolveFlavor(ctx context.Context, name string) (flavorSpec, bool) {
+	f, ok := flavorsCatalogue.Get(ctx, name)
 	if !ok {
 		return flavorSpec{}, false
 	}
-	for _, row := range res.Rows {
-		n, _ := row["name"].(string)
-		if n != name {
-			continue
-		}
-		s := flavorSpec{}
-		if v, ok := row["vcpu"].(int); ok {
-			s.CPU = uint32(v)
-		}
-		if v, ok := row["ephemeral_gb"].(int); ok {
-			s.DiskGB = uint64(v)
-		}
-		if v, ok := row["ram"].(string); ok {
-			s.MemMB = parseRAMtoMB(v)
-		}
-		return s, true
-	}
-	return flavorSpec{}, false
+	return flavorSpec{
+		CPU:    uint32(f.VCPU),
+		MemMB:  parseRAMtoMB(f.RAM),
+		DiskGB: uint64(f.EphemeralGB),
+	}, true
 }
 
 // parseRAMtoMB turns "4Gi" / "256Mi" / "4096" into megabytes. Unrecognised
@@ -300,7 +289,7 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("flavor is required (microVM = flavor + image + scheduling)"))
 		return
 	}
-	spec, ok := resolveFlavor(body.Flavor)
+	spec, ok := resolveFlavor(r.Context(), body.Flavor)
 	if !ok {
 		writeErr(w, errBadReq("unknown flavor: "+body.Flavor))
 		return
