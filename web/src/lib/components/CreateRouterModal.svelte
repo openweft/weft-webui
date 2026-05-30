@@ -60,8 +60,8 @@
     busy = true;
     try {
       await createRouter({
-        Name: name.trim(), Kind: kind, Backend: backend,
-        Networks: selectedNets, External: external.trim(),
+        name: name.trim(), kind, backend,
+        networks: selectedNets, external: external.trim(),
       });
       onCreated();
       reset();

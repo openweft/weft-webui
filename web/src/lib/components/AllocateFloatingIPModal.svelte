@@ -53,7 +53,7 @@
     }
     busy = true;
     try {
-      await allocateFloatingIP({ Network: network });
+      await allocateFloatingIP({ network });
       onCreated();
       open = false;
     } catch (err) {

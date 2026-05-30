@@ -46,8 +46,8 @@
     busy = true;
     try {
       await createLoadBalancer({
-        Name: name.trim(), Mode: mode, Port: port,
-        Backends: backends, AZ: az,
+        name: name.trim(), mode, port,
+        backends, az,
       });
       onCreated();
       reset();

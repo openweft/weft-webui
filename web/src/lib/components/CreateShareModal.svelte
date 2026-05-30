@@ -46,7 +46,7 @@
     }
     busy = true;
     try {
-      await createShare({ Name: name.trim(), SizeGB: sizeGB, ReadOnly: readonly });
+      await createShare({ name: name.trim(), size_gb: sizeGB, read_only: readonly });
       onCreated();
       reset();
       open = false;

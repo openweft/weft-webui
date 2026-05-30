@@ -285,7 +285,7 @@ export const getBucketPolicy = async (name: string): Promise<BucketPolicy> => {
 export async function setBucketPolicy(name: string, p: BucketPolicy): Promise<BucketPolicy> {
   const { data, error } = await client.PUT('/api/buckets/{name}/policy', {
     params: { path: { name } },
-    body: p as never,
+    body: p,
   });
   if (error) throwErr(error);
   return data as unknown as BucketPolicy;
@@ -510,33 +510,19 @@ export interface VMProvisioning {
 }
 
 export interface CreateVMBody {
-  Name: string;
-  Image: string;
-  Flavor: string;
-  SchedulingRule?: string;
-  Network?: string;
-  IngressKind?: VMIngressKind;
-  IngressFloatingIP?: string;
-  IngressLoadBalancer?: string;
-  Provisioning?: VMProvisioning;
+  name: string;
+  image: string;
+  flavor: string;
+  scheduling_rule?: string;
+  network?: string;
+  ingress_kind?: VMIngressKind;
+  ingress_floating_ip?: string;
+  ingress_load_balancer?: string;
+  provisioning?: VMProvisioning;
 }
 
 export const createVM = async (b: CreateVMBody) => {
-  // Server expects snake_case-shaped JSON ; the legacy callers pass
-  // PascalCase keys (Name, Image, …). Translate at the boundary.
-  const { data, error } = await client.POST('/api/microvms', {
-    body: {
-      name: b.Name,
-      image: b.Image,
-      flavor: b.Flavor,
-      scheduling_rule: b.SchedulingRule,
-      network: b.Network,
-      ingress_kind: b.IngressKind,
-      ingress_floating_ip: b.IngressFloatingIP,
-      ingress_load_balancer: b.IngressLoadBalancer,
-      provisioning: b.Provisioning,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/microvms', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; project: string };
 };
@@ -544,13 +530,13 @@ export const createVM = async (b: CreateVMBody) => {
 // ---- Volumes ------------------------------------------------------
 
 export interface CreateVolumeBody {
-  Name: string; SizeGiB: number; Format?: string;
+  name: string;
+  size_gib: number;
+  format?: string;
 }
 
 export const createVolume = async (b: CreateVolumeBody) => {
-  const { data, error } = await client.POST('/api/volumes', {
-    body: { name: b.Name, size_gib: b.SizeGiB, format: b.Format ?? '' } as never,
-  });
+  const { data, error } = await client.POST('/api/volumes', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; project: string; size_gib: number };
 };
@@ -565,7 +551,7 @@ export const deleteVolume = async (uuid: string): Promise<void> => {
 export const attachVolume = async (uuid: string, vmUUID: string) => {
   const { data, error } = await client.POST('/api/volumes/{uuid}/attach', {
     params: { path: { uuid } },
-    body: { vm_uuid: vmUUID } as never,
+    body: { vm_uuid: vmUUID },
   });
   if (error) throwErr(error);
   return data as unknown as { volume: string; vm: string };
@@ -581,20 +567,15 @@ export const detachVolume = async (uuid: string) => {
 // ---- Network controller (routers / LBs / DNS) ---------------------
 
 export interface CreateRouterBody {
-  Name: string;
-  Kind: 'peer' | 'egress';
-  Backend?: string;
-  Networks?: string[];
-  External?: string;
+  name: string;
+  kind: 'peer' | 'egress';
+  backend?: string;
+  networks?: string[];
+  external?: string;
 }
 
 export const createRouter = async (b: CreateRouterBody) => {
-  const { data, error } = await client.POST('/api/routers', {
-    body: {
-      name: b.Name, kind: b.Kind, backend: b.Backend,
-      networks: b.Networks, external: b.External,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/routers', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; uuid: string };
 };
@@ -605,17 +586,15 @@ export const deleteRouter = async (uuid: string): Promise<void> => {
 };
 
 export interface CreateLoadBalancerBody {
-  Name: string; Mode: 'L4' | 'L7'; Port: number;
-  Backends?: string[]; AZ?: string;
+  name: string;
+  mode: 'L4' | 'L7';
+  port: number;
+  backends?: string[];
+  az?: string;
 }
 
 export const createLoadBalancer = async (b: CreateLoadBalancerBody) => {
-  const { data, error } = await client.POST('/api/loadbalancers', {
-    body: {
-      name: b.Name, mode: b.Mode, port: b.Port,
-      backends: b.Backends, az: b.AZ,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/loadbalancers', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; uuid: string };
 };
@@ -628,25 +607,21 @@ export const deleteLoadBalancer = async (uuid: string): Promise<void> => {
 export const setLoadBalancerBackends = async (uuid: string, backends: string[]) => {
   const { data, error } = await client.PUT('/api/loadbalancers/{uuid}/backends', {
     params: { path: { uuid } },
-    body: backends as never,
+    body: backends,
   });
   if (error) throwErr(error);
   return data as unknown as { backends: number };
 };
 
 export interface CreateDNSZoneBody {
-  Name: string;
-  Role?: 'primary' | 'secondary' | 'forward';
-  TTLDefault?: number;
-  PushTarget?: string;
+  name: string;
+  role?: 'primary' | 'secondary' | 'forward';
+  ttl_default?: number;
+  push_target?: string;
 }
 
 export const createDNSZone = async (b: CreateDNSZoneBody) => {
-  const { data, error } = await client.POST('/api/dns-zones', {
-    body: {
-      name: b.Name, role: b.Role, ttl_default: b.TTLDefault, push_target: b.PushTarget,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/dns-zones', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; uuid: string };
 };
@@ -657,15 +632,15 @@ export const deleteDNSZone = async (uuid: string): Promise<void> => {
 };
 
 export interface CreateDNSRecordBody {
-  ZoneUUID: string; Name: string; Type: string; Value: string; TTL?: number;
+  zone_uuid: string;
+  name: string;
+  type: string;
+  value: string;
+  ttl?: number;
 }
 
 export const createDNSRecord = async (b: CreateDNSRecordBody) => {
-  const { data, error } = await client.POST('/api/dns-records', {
-    body: {
-      zone_uuid: b.ZoneUUID, name: b.Name, type: b.Type, value: b.Value, ttl: b.TTL,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/dns-records', { body: b });
   if (error) throwErr(error);
   return data as unknown as { uuid: string; name: string; type: string };
 };
@@ -678,18 +653,15 @@ export const deleteDNSRecord = async (uuid: string): Promise<void> => {
 // ---- Networks -----------------------------------------------------
 
 export interface CreateNetworkBody {
-  Name: string; CIDR: string;
-  Gateway?: string; Type?: string;
-  DNSServers?: string[];
+  name: string;
+  cidr: string;
+  gateway?: string;
+  type?: string;
+  dns_servers?: string[];
 }
 
 export const createNetwork = async (b: CreateNetworkBody) => {
-  const { data, error } = await client.POST('/api/networks', {
-    body: {
-      name: b.Name, cidr: b.CIDR, gateway: b.Gateway,
-      type: b.Type, dns_servers: b.DNSServers,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/networks', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; project: string; cidr: string };
 };
@@ -702,17 +674,17 @@ export const deleteNetwork = async (uuid: string): Promise<void> => {
 // ---- Scheduling rules ---------------------------------------------
 
 export interface CreateSchedulingRuleBody {
-  Name: string; Selector: string; Count: number;
-  AZ?: string; Rack?: string; Host?: string; Project?: string;
+  name: string;
+  selector: string;
+  count: number;
+  az?: string;
+  rack?: string;
+  host?: string;
+  project?: string;
 }
 
 export const createSchedulingRule = async (b: CreateSchedulingRuleBody): Promise<Row> => {
-  const { data, error } = await client.POST('/api/scheduling-rules', {
-    body: {
-      name: b.Name, selector: b.Selector, count: b.Count,
-      az: b.AZ, rack: b.Rack, host: b.Host, project: b.Project,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/scheduling-rules', { body: b });
   if (error) throwErr(error);
   return data as unknown as Row;
 };
@@ -725,21 +697,15 @@ export const deleteSchedulingRule = async (name: string): Promise<void> => {
 // ---- Shares (lifecycle) -------------------------------------------
 
 export interface CreateShareBody {
-  Name: string;
-  Project?: string;
-  Backend?: string;
-  SizeGB: number;
-  ReadOnly?: boolean;
+  name: string;
+  project?: string;
+  backend?: string;
+  size_gb: number;
+  read_only?: boolean;
 }
 
 export const createShare = async (b: CreateShareBody): Promise<Row> => {
-  const { data, error } = await client.POST('/api/shares', {
-    body: {
-      name: b.Name, project: b.Project ?? '',
-      backend: b.Backend ?? '', size_gb: b.SizeGB,
-      read_only: b.ReadOnly ?? false,
-    } as never,
-  });
+  const { data, error } = await client.POST('/api/shares', { body: b });
   if (error) throwErr(error);
   return data as unknown as Row;
 };
@@ -758,13 +724,13 @@ export interface SecurityRule {
   remote_cidr: string; remote_group_uuid: string;
 }
 export interface CreateSecurityGroupBody {
-  Name: string; Description?: string; Rules: SecurityRule[];
+  name: string;
+  description?: string;
+  rules: SecurityRule[];
 }
 
 export const createSecurityGroup = async (b: CreateSecurityGroupBody) => {
-  const { data, error } = await client.POST('/api/security-groups', {
-    body: { name: b.Name, description: b.Description, rules: b.Rules } as never,
-  });
+  const { data, error } = await client.POST('/api/security-groups', { body: b });
   if (error) throwErr(error);
   return data as unknown as { name: string; project: string; uuid: string; rules: number };
 };
@@ -783,7 +749,7 @@ export const getSecurityGroupRules = async (uuid: string): Promise<SecurityRule[
 export const setSecurityGroupRules = async (uuid: string, rules: SecurityRule[]) => {
   const { data, error } = await client.PUT('/api/security-groups/{uuid}/rules', {
     params: { path: { uuid } },
-    body: rules as never,
+    body: rules,
   });
   if (error) throwErr(error);
   return data as unknown as { uuid: string; rules: number };
@@ -791,12 +757,10 @@ export const setSecurityGroupRules = async (uuid: string, rules: SecurityRule[])
 
 // ---- Floating IPs -------------------------------------------------
 
-export interface AllocateFloatingIPBody { Network: string }
+export interface AllocateFloatingIPBody { network: string }
 
 export const allocateFloatingIP = async (b: AllocateFloatingIPBody) => {
-  const { data, error } = await client.POST('/api/floating-ips', {
-    body: { network: b.Network } as never,
-  });
+  const { data, error } = await client.POST('/api/floating-ips', { body: b });
   if (error) throwErr(error);
   return data as unknown as { uuid: string; address: string; network: string; project: string };
 };
@@ -809,7 +773,7 @@ export const releaseFloatingIP = async (uuid: string): Promise<void> => {
 export const mapFloatingIP = async (uuid: string, targetKind: 'vm' | 'lb', targetName: string) => {
   const { data, error } = await client.POST('/api/floating-ips/{uuid}/map', {
     params: { path: { uuid } },
-    body: { target_kind: targetKind, target_name: targetName } as never,
+    body: { target_kind: targetKind, target_name: targetName },
   });
   if (error) throwErr(error);
   return data as unknown as { uuid: string; target: string };

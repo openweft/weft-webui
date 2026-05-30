@@ -43,7 +43,7 @@
     }
     busy = true;
     try {
-      await createVolume({ Name: name.trim(), SizeGiB: sizeGiB, Format: format });
+      await createVolume({ name: name.trim(), size_gib: sizeGiB, format });
       onCreated();
       reset();
       open = false;

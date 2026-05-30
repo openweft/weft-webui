@@ -148,15 +148,15 @@
       const hasProvisioning =
         provSource !== 'none' || scriptBody.trim() !== '';
       const res = await createVM({
-        Name: name.trim(),
-        Image: image.trim(),
-        Flavor: String(flavor.name),
-        SchedulingRule: schedulingRule || undefined,
-        Network: network || undefined,
-        IngressKind: ingressKind,
-        IngressFloatingIP: ingressFIP || undefined,
-        IngressLoadBalancer: ingressLB || undefined,
-        Provisioning: hasProvisioning ? {
+        name: name.trim(),
+        image: image.trim(),
+        flavor: String(flavor.name),
+        scheduling_rule: schedulingRule || undefined,
+        network: network || undefined,
+        ingress_kind: ingressKind,
+        ingress_floating_ip: ingressFIP || undefined,
+        ingress_load_balancer: ingressLB || undefined,
+        provisioning: hasProvisioning ? {
           source_kind: provSource,
           source_url: provURL.trim(),
           source_ref: provRef.trim(),
