@@ -59,7 +59,7 @@ func mountNetworksAPI(api huma.API) {
 		Summary:       "Create a network (live-only)",
 		Tags:          []string{"networks"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createNetworkInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createNetworkInput) (*createNetworkOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func mountNetworksAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "network.create")
-		return &createOutput{Body: map[string]any{"name": in.Body.Name, "project": project, "cidr": in.Body.CIDR}}, nil
+		return &createNetworkOutput{Body: CreateNetworkResp{Name: in.Body.Name, Project: project, CIDR: in.Body.CIDR}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -109,7 +109,7 @@ func mountSecurityGroupsAPI(api huma.API) {
 		Summary:       "Create a security group (live-only)",
 		Tags:          []string{"security-groups"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createSGInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createSGInput) (*createSGOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -127,8 +127,8 @@ func mountSecurityGroupsAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "security-group.create")
-		return &createOutput{Body: map[string]any{
-			"name": in.Body.Name, "project": project, "uuid": uuid, "rules": len(in.Body.Rules),
+		return &createSGOutput{Body: CreateSecurityGroupResp{
+			Name: in.Body.Name, Project: project, UUID: uuid, Rules: len(in.Body.Rules),
 		}}, nil
 	})
 
@@ -221,7 +221,7 @@ func mountFloatingIPsAPI(api huma.API) {
 		Summary:       "Allocate a floating IP (live-only)",
 		Tags:          []string{"floating-ips"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *allocateFloatingIPInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *allocateFloatingIPInput) (*allocateFloatingIPOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -237,8 +237,8 @@ func mountFloatingIPsAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "floating-ip.allocate")
-		return &createOutput{Body: map[string]any{
-			"uuid": uuid, "address": addr, "network": in.Body.Network, "project": project,
+		return &allocateFloatingIPOutput{Body: AllocateFloatingIPResp{
+			UUID: uuid, Address: addr, Network: in.Body.Network, Project: project,
 		}}, nil
 	})
 
@@ -312,7 +312,7 @@ func mountRoutersAPI(api huma.API) {
 		Summary:       "Create a router (weft-network controller)",
 		Tags:          []string{"routers"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createRouterInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createRouterInput) (*createNameUUIDOutput, error) {
 		if err := requireLiveNetCtx(); err != nil {
 			return nil, err
 		}
@@ -328,7 +328,7 @@ func mountRoutersAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "router.create")
-		return &createOutput{Body: map[string]any{"name": in.Body.Name, "uuid": uuid}}, nil
+		return &createNameUUIDOutput{Body: CreateNameUUID{Name: in.Body.Name, UUID: uuid}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -360,7 +360,7 @@ func mountLoadBalancersAPI(api huma.API) {
 		Summary:       "Create a load balancer",
 		Tags:          []string{"loadbalancers"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createLBInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createLBInput) (*createNameUUIDOutput, error) {
 		if err := requireLiveNetCtx(); err != nil {
 			return nil, err
 		}
@@ -379,7 +379,7 @@ func mountLoadBalancersAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("net: " + cerr.Error())
 		}
 		userActionCtx(ctx, "lb.create")
-		return &createOutput{Body: map[string]any{"name": in.Body.Name, "uuid": uuid}}, nil
+		return &createNameUUIDOutput{Body: CreateNameUUID{Name: in.Body.Name, UUID: uuid}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -428,7 +428,7 @@ func mountDNSAPI(api huma.API) {
 		Summary:       "Create a DNS zone",
 		Tags:          []string{"dns"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createDNSZoneInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createDNSZoneInput) (*createNameUUIDOutput, error) {
 		if err := requireLiveNetCtx(); err != nil {
 			return nil, err
 		}
@@ -444,7 +444,7 @@ func mountDNSAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "dns-zone.create")
-		return &createOutput{Body: map[string]any{"name": in.Body.Name, "uuid": uuid}}, nil
+		return &createNameUUIDOutput{Body: CreateNameUUID{Name: in.Body.Name, UUID: uuid}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -472,7 +472,7 @@ func mountDNSAPI(api huma.API) {
 		Summary:       "Create a DNS record",
 		Tags:          []string{"dns"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createDNSRecordInput) (*createOutput, error) {
+	}, func(ctx context.Context, in *createDNSRecordInput) (*createDNSRecordOutput, error) {
 		if err := requireLiveNetCtx(); err != nil {
 			return nil, err
 		}
@@ -487,7 +487,7 @@ func mountDNSAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "dns-record.create")
-		return &createOutput{Body: map[string]any{"uuid": uuid, "type": in.Body.Type, "name": in.Body.Name}}, nil
+		return &createDNSRecordOutput{Body: CreateDNSRecordResp{UUID: uuid, Name: in.Body.Name, Type: in.Body.Type}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -677,13 +677,55 @@ type uuidInput struct {
 	UUID string `path:"uuid" doc:"Resource UUID" minLength:"1" maxLength:"64"`
 }
 
-// createOutput is the canonical 201 envelope : whatever fields the
-// underlying RPC produced, surfaced as JSON. Body is `any` because
-// the shape varies per resource (some return name+uuid, some
-// uuid+address, …) ; the OpenAPI doc surfaces an open object.
-type createOutput struct {
-	Body any
+// Typed 201-envelopes for the create endpoints. Each shape stays
+// minimal — the SPA only consumes the names + uuids ; richer reads
+// come from /api/resources/<kind> right after.
+
+// CreateNameUUID is what routers, load balancers, and DNS zones
+// return : {name, uuid}.
+type CreateNameUUID struct {
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
 }
+
+// CreateNetworkResp echoes name + project + cidr.
+type CreateNetworkResp struct {
+	Name    string `json:"name"`
+	Project string `json:"project"`
+	CIDR    string `json:"cidr"`
+}
+
+// CreateSecurityGroupResp adds project + uuid + rule-count to the
+// name. SecurityRules themselves live behind GET .../rules.
+type CreateSecurityGroupResp struct {
+	Name    string `json:"name"`
+	Project string `json:"project"`
+	UUID    string `json:"uuid"`
+	Rules   int    `json:"rules"`
+}
+
+// AllocateFloatingIPResp carries everything the FIP table needs to
+// render the new row without a refresh.
+type AllocateFloatingIPResp struct {
+	UUID    string `json:"uuid"`
+	Address string `json:"address"`
+	Network string `json:"network"`
+	Project string `json:"project"`
+}
+
+// CreateDNSRecordResp surfaces the operator-friendly fields ; type
+// is kept because the records-table groups by it.
+type CreateDNSRecordResp struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type createNameUUIDOutput        struct{ Body CreateNameUUID }
+type createNetworkOutput         struct{ Body CreateNetworkResp }
+type createSGOutput              struct{ Body CreateSecurityGroupResp }
+type allocateFloatingIPOutput    struct{ Body AllocateFloatingIPResp }
+type createDNSRecordOutput       struct{ Body CreateDNSRecordResp }
 
 type createNetworkInput struct {
 	Project string `query:"project" doc:"Override the session project"`

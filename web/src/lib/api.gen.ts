@@ -1538,6 +1538,18 @@ export interface components {
             /** @description Network name to allocate from */
             network: string;
         };
+        AllocateFloatingIPResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AllocateFloatingIPResp.json
+             */
+            readonly $schema?: string;
+            address: string;
+            network: string;
+            project: string;
+            uuid: string;
+        };
         AttachVolumeInputBody: {
             /**
              * Format: uri
@@ -1586,6 +1598,17 @@ export interface components {
             value: string;
             zone_uuid: string;
         };
+        CreateDNSRecordResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateDNSRecordResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            type: string;
+            uuid: string;
+        };
         CreateDNSZoneInputBody: {
             /**
              * Format: uri
@@ -1613,6 +1636,16 @@ export interface components {
             /** Format: int32 */
             port: number;
         };
+        CreateNameUUID: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateNameUUID.json
+             */
+            readonly $schema?: string;
+            name: string;
+            uuid: string;
+        };
         CreateNetworkInputBody: {
             /**
              * Format: uri
@@ -1627,6 +1660,17 @@ export interface components {
             name: string;
             /** @description e.g. 'wireguard' / 'flat' */
             type?: string;
+        };
+        CreateNetworkResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateNetworkResp.json
+             */
+            readonly $schema?: string;
+            cidr: string;
+            name: string;
+            project: string;
         };
         CreateRouterInputBody: {
             /**
@@ -1668,6 +1712,19 @@ export interface components {
             project?: string;
             rack?: string;
             selector?: string;
+        };
+        CreateSecurityGroupResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateSecurityGroupResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            project: string;
+            /** Format: int64 */
+            rules: number;
+            uuid: string;
         };
         CreateShareInputBody: {
             /**
@@ -2367,7 +2424,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateDNSRecordResp"];
                 };
             };
             /** @description Error */
@@ -2433,7 +2490,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateNameUUID"];
                 };
             };
             /** @description Error */
@@ -2560,7 +2617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AllocateFloatingIPResp"];
                 };
             };
             /** @description Error */
@@ -2720,7 +2777,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateNameUUID"];
                 };
             };
             /** @description Error */
@@ -3469,7 +3526,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateNetworkResp"];
                 };
             };
             /** @description Error */
@@ -3816,7 +3873,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateNameUUID"];
                 };
             };
             /** @description Error */
@@ -4070,7 +4127,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateSecurityGroupResp"];
                 };
             };
             /** @description Error */
