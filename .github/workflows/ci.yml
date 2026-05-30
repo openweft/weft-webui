@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: vet
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go vet ./...
+
+      - name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+      - name: test
+        # Tests run on linux/amd64 only; cross-arch execution needs qemu
+        # and the webui is pure-Go so native host coverage suffices.
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: go test -race -count=1 ./...
+
+  web-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: svelte-check (TS + Svelte)
+        run: npm run check
+
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+
+      - name: vite build
+        run: npm run build
+
+  gen-api-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: regenerate OpenAPI spec + typed client
+        run: task gen-api
+
+      - name: fail if generated files drifted
+        # Mirrors Taskfile's check:drift gate. The committed
+        # web/openapi.json + web/src/lib/api.gen.ts MUST match what
+        # `task gen-api` emits from the current Go handlers.
+        run: |
+          if ! git diff --exit-code -- web/openapi.json web/src/lib/api.gen.ts ; then
+            echo "::error::Generated API contract is stale. Run 'task gen-api' locally and commit the result." >&2
+            exit 1
+          fi
