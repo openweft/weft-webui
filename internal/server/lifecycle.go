@@ -245,24 +245,39 @@ func parseRAMtoMB(s string) uint64 {
 // handleCreateVM : POST /api/microvms
 //
 //	{name, image, flavor, scheduling_rule, network,
-//	 ingress_kind, ingress_floating_ip, ingress_load_balancer}
+//	 ingress_kind, ingress_floating_ip, ingress_load_balancer,
+//	 provisioning}
 //
 // A microVM is the combination of a flavor (sizing envelope), an
 // image, and a scheduling policy ; cpu/ram/disk aren't independent
 // fields — they're resolved from the flavor catalogue on the server.
 // SSH keys are pushed at runtime via /api/microvms/{name}/keys.
 //
-// Wire status of the optional fields :
-//   - scheduling_rule : captured but not yet threaded to weft-agent
-//     (proto extension pending). The selector-based rules in
-//     weft-network still apply to every VM matching their selector.
-//   - network         : captured but not yet threaded to weft-agent
-//     (proto extension pending).
+// Wire model — DECIDED : pull / reconcile (not push). When the proto
+// extension lands, scheduling_rule and network ride on
+// CreateVMRequest as plain string labels ; weft-agent persists them
+// on the VMRecord and does nothing else. weft-network's reconcile
+// loop (which already powers the scheduling-rule.compliant /
+// drifting event stream) watches VM events, sees the labels, and
+// applies AttachVM / BindRule on its own. Same pattern as
+// weft-vm-agent's guest-side Subscriber+ApplyFunc — pull, never push,
+// at every layer. No agent→network gRPC dependency in the hot path.
+//
+// Wire status of the optional fields, today :
+//   - scheduling_rule : captured ; ignored by the wclient call
+//     (proto extension pending). Selector-based rules in
+//     weft-network still match by labels, so this is forward-
+//     compat without breaking anything.
+//   - network         : captured ; ignored by the wclient call
+//     (proto extension pending). Same forward-compat story.
 //   - ingress         : best-effort orchestration post-create using
-//     existing endpoints — mapFloatingIP for kind=floating_ip,
-//     SetLoadBalancerBackends for kind=loadbalancer. Failures here
-//     don't unwind the create ; the VM exists and the operator can
-//     re-do the mapping from the dashboard.
+//     existing endpoints — MapFloatingIP for kind=floating_ip,
+//     SetLoadBalancerBackends for kind=loadbalancer. This is the
+//     transitional push path ; once weft-network reconciles ingress
+//     too, drop these calls — the labels on the VMRecord drive it.
+//   - provisioning    : stamps weft.boot/* properties (guest-readable).
+//     The in-guest weft-vm-agent reads them on first boot — pull
+//     side again. See lifecycle.go writeBootProperty + 2c098e7.
 func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
 		return
