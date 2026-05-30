@@ -105,7 +105,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// /api/me lives in this package (not in auth) because the role
 	// flags depend on the tenant store, which sits in this layer.
 	mux.HandleFunc("GET /api/me", handleMe)
-	mux.HandleFunc("POST /api/session/project", d.Auth.SetProjectHandler)
+	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
 	// Resource catalogue + rows : filtered by scope so the user-facing
 	// listener never even acknowledges that hosts/users/tenants exist.
@@ -286,14 +286,40 @@ func rowCount(res *Resource) int {
 	return len(res.Rows)
 }
 
-// projectFromRequest reads the session's selected project (set by
-// /api/session/project), falling back to a query parameter for
-// convenience.
-func projectFromRequest(r *http.Request) string {
-	if u := auth.UserFromContext(r.Context()); u != nil && u.Project != "" {
-		return u.Project
+// scopeFromRequest returns the (tenant, project) the user has selected
+// via /api/session/scope (cascading topbar). Either or both can be
+// empty :
+//
+//   - tenant="" project=""    cluster-wide / no filter (cluster admin
+//                             only when the listener serves it)
+//   - tenant="acme" project="" tenant-aggregate : sum every project of
+//                             the tenant. The mock filters by tenant
+//                             membership ; the live gRPC path will
+//                             accept this when vzd adds the param.
+//   - tenant="acme" project="X" project-scoped : full filter.
+//
+// Query params (?tenant= / ?project=) override the session for
+// scripting convenience.
+func scopeFromRequest(r *http.Request) (tenant, project string) {
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		tenant, project = u.Tenant, u.Project
 	}
-	return r.URL.Query().Get("project")
+	if q := r.URL.Query().Get("tenant"); q != "" {
+		tenant = q
+	}
+	if q := r.URL.Query().Get("project"); q != "" {
+		project = q
+	}
+	return
+}
+
+// projectFromRequest preserves the old single-return helper for the
+// gRPC client call sites that only know about projects. When the
+// session also carries a tenant, vzd will get it via metadata in a
+// future revision ; for now we just pass the project name.
+func projectFromRequest(r *http.Request) string {
+	_, p := scopeFromRequest(r)
+	return p
 }
 
 func handleResourceRows(w http.ResponseWriter, r *http.Request) {
@@ -328,12 +354,15 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			liveServe(w, r, func() ([]map[string]any, error) { return live.ListProjects(r.Context()) })
 			return
 		}
-		// Mock path : carry the tenant column from the store.
+		// Mock path : carry the tenant column from the store, filtered
+		// by membership (user-UI) AND by the cascading topbar tenant
+		// selection.
 		filter := ""
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
 			filter = u.Email
 		}
-		writeJSON(w, http.StatusOK, tenantsDB.listProjects(filter))
+		tenant, _ := scopeFromRequest(r)
+		writeJSON(w, http.StatusOK, tenantsDB.listProjects(filter, tenant))
 		return
 	case "microvms":
 		if live != nil {
@@ -373,7 +402,54 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	if rows == nil {
 		rows = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, rows)
+	writeJSON(w, http.StatusOK, applyScopeFilter(rows, r))
+}
+
+// applyScopeFilter narrows a mock row set by the session's (tenant,
+// project) selection. Rows that don't carry a `project` field pass
+// through untouched (cluster-wide resources : hosts, tenants, …).
+//
+//   - project set     → exact match on row["project"]
+//   - project empty   → row["project"] must belong to the selected
+//                       tenant (mock aggregate view).
+//   - tenant empty    → no narrowing — cluster admin's "(all)" choice.
+//
+// Live-mode handlers don't go through this path : vzd applies its own
+// filters via the bearer token and the project parameter.
+func applyScopeFilter(rows []map[string]any, r *http.Request) []map[string]any {
+	tenant, project := scopeFromRequest(r)
+	if tenant == "" && project == "" {
+		return rows
+	}
+	// Build a quick "is this project in the tenant ?" lookup once.
+	tenantProjects := map[string]struct{}{}
+	if tenant != "" {
+		for _, p := range tenantsDB.projectsInTenant(tenant) {
+			tenantProjects[p] = struct{}{}
+		}
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		rp, hasProject := row["project"].(string)
+		if !hasProject || rp == "" {
+			// Resource isn't project-scoped (or row doesn't carry it).
+			// Don't drop it — the registry includes infra-flavoured
+			// rows like flavors that are visible everywhere.
+			out = append(out, row)
+			continue
+		}
+		if project != "" {
+			if rp != project {
+				continue
+			}
+		} else if tenant != "" {
+			if _, ok := tenantProjects[rp]; !ok {
+				continue
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // devLogin / devLogout — stubs that make the SPA's auth helpers work
@@ -404,11 +480,15 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"email":         u.Email,
 		"name":          u.Name,
 		"groups":        u.Groups,
+		"tenant":        u.Tenant,
 		"project":       u.Project,
 		"initials":      u.Initials(),
 		"dev":           u.DevMode,
 		"cluster_admin": isClusterAdmin(u),
 		"tenant_admin":  tenantsDB.isAnyTenantAdmin(u.Email),
+		// scopes drives the cascading topbar selector — one entry per
+		// tenant the user belongs to, each with its projects.
+		"scopes": tenantsDB.userScopes(u),
 	})
 }
 

@@ -275,13 +275,20 @@ func (s *tenantStore) listTenants(forEmail string) []map[string]any {
 }
 
 // listProjects mirrors the registry shape (name/uuid/created) and adds
-// the tenant column. forEmail filters to projects whose tenant the
-// user belongs to.
-func (s *tenantStore) listProjects(forEmail string) []map[string]any {
+// the tenant column.
+//
+//   - forEmail != ""  → filter to projects whose tenant the user
+//                       belongs to (user-UI view of "their" projects).
+//   - tenantFilter != "" → only projects of that tenant (cascading
+//                       topbar selection). Combines with forEmail.
+func (s *tenantStore) listProjects(forEmail, tenantFilter string) []map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]map[string]any, 0, len(s.projects))
 	for _, p := range sortedProjects(s.projects) {
+		if tenantFilter != "" && p.Tenant != tenantFilter {
+			continue
+		}
 		if forEmail != "" {
 			t := s.tenants[p.Tenant]
 			if t == nil {
@@ -298,6 +305,20 @@ func (s *tenantStore) listProjects(forEmail string) []map[string]any {
 			"created": p.Created,
 		})
 	}
+	return out
+}
+
+// projectsInTenant returns the project names that belong to `tenant`.
+// Returns nil for an unknown tenant.
+func (s *tenantStore) projectsInTenant(tenant string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[tenant]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(t.Projects))
+	copy(out, t.Projects)
 	return out
 }
 
@@ -685,6 +706,38 @@ func remainingMap(cap, used Quotas) map[string]map[string]int {
 	out := make(map[string]map[string]int, len(pairs))
 	for _, p := range pairs {
 		out[p.name] = map[string]int{"used": p.u, "cap": p.c, "free": p.c - p.u}
+	}
+	return out
+}
+
+// userScopes returns the tenants a user is a member of, each with the
+// list of projects in that tenant. Drives the cascading topbar
+// selector in the SPA : tenant → project. Cluster admins get every
+// tenant ; everyone else only their memberships.
+func (s *tenantStore) userScopes(u *auth.User) []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	all := isClusterAdmin(u)
+	out := make([]map[string]any, 0)
+	for _, t := range sortedTenants(s.tenants) {
+		if !all {
+			if u == nil {
+				return out
+			}
+			if _, ok := t.Members[u.Email]; !ok {
+				continue
+			}
+		}
+		// Copy project names ; ListUserTenants is called on every page
+		// load so avoid aliasing the store's slice.
+		projs := make([]string, len(t.Projects))
+		copy(projs, t.Projects)
+		out = append(out, map[string]any{
+			"name":     t.Name,
+			"domain":   t.Domain,
+			"status":   t.Status,
+			"projects": projs,
+		})
 	}
 	return out
 }

@@ -151,20 +151,31 @@ async function postForm(path: string, form: FormData): Promise<Row> {
 
 // ---- Auth / current user ----
 
+export interface ScopeEntry {
+  name: string;        // tenant name
+  domain: string;
+  status: string;
+  projects: string[];  // project names of this tenant
+}
+
 export interface Me {
   sub: string;
   email: string;
   name: string;
   groups: string[];
+  // Current cascading-topbar selection. Both can be empty :
+  // tenant="" project=""  → "(all tenants)" — cluster admin only
+  // tenant set, project=""→ tenant-aggregate (all projects of tenant)
+  // both set              → project-scoped
+  tenant: string;
   project: string;
   initials: string;
   dev: boolean;
-  // cluster_admin : OIDC group claim "admin"/"admins" — SUPERADMIN.
-  // tenant_admin  : present in at least one Tenant.Admins set —
-  //                 ADMIN (delegated, scoped to the user's tenants).
-  // Both flags can be true ; the SPA shows SUPERADMIN preferentially.
   cluster_admin: boolean;
   tenant_admin: boolean;
+  // scopes : one entry per tenant the user belongs to, each carrying
+  // its project names. Drives the cascading dropdown.
+  scopes: ScopeEntry[];
 }
 
 // onAdminUI tells the SPA which listener served it. The admin handler
@@ -185,11 +196,13 @@ export async function onAdminUI(): Promise<boolean> {
 
 export const getMe = () => getJSON<Me>('/me');
 
-export async function setProject(project: string): Promise<void> {
-  const res = await fetch('/api/session/project', {
+// setScope sets the session's (tenant, project) pair. Pass empty
+// strings to clear either field. The server re-mints the cookie.
+export async function setScope(tenant: string, project: string): Promise<void> {
+  const res = await fetch('/api/session/scope', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project }),
+    body: JSON.stringify({ tenant, project }),
   });
   if (res.status === 401) handleUnauthorised();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
