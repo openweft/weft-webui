@@ -1,0 +1,5858 @@
+{
+  "components": {
+    "schemas": {
+      "APIFlavor": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIFlavor.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ephemeral_gb": {
+            "description": "Ephemeral disk in GiB (0 = none)",
+            "examples": [
+              8
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "gpu": {
+            "description": "GPU descriptor (empty = none)",
+            "examples": [
+              "1×A100-40G"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "Flavor name (e.g. small / gpu-large)",
+            "examples": [
+              "small"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ram": {
+            "description": "RAM with unit suffix (Gi/Mi) or raw MB",
+            "examples": [
+              "4Gi"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "vcpu": {
+            "description": "vCPU count",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "vcpu",
+          "ram",
+          "ephemeral_gb",
+          "gpu"
+        ],
+        "type": "object"
+      },
+      "APISSHKey": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APISSHKey.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Short description ; falls back to the OpenSSH comment when empty",
+            "examples": [
+              "alice's laptop"
+            ],
+            "type": "string"
+          },
+          "fingerprint": {
+            "description": "SHA256:\u003cbase64-no-pad\u003e, server-computed",
+            "examples": [
+              "SHA256:abc…"
+            ],
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Operator-chosen unique name",
+            "examples": [
+              "alice@laptop"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "public_key": {
+            "description": "OpenSSH-format line : '\u003ctype\u003e \u003cb64\u003e [comment]'",
+            "examples": [
+              "ssh-ed25519 AAAA… alice@laptop"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "description": "Provenance",
+            "enum": [
+              "manual",
+              "github",
+              "gitlab",
+              "forgejo"
+            ],
+            "examples": [
+              "manual"
+            ],
+            "type": "string"
+          },
+          "source_account": {
+            "description": "Upstream login when imported",
+            "examples": [
+              "alice"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC3339, server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC sub / email of the last editor",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "public_key",
+          "description",
+          "source",
+          "source_account",
+          "fingerprint",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
+      "APIScript": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIScript.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "body": {
+            "description": "POSIX sh source",
+            "examples": [
+              "#!/bin/sh\\nset -eu\\napk add nginx"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "description": "Short description shown in listings",
+            "examples": [
+              "Installs nginx + copies the site"
+            ],
+            "maxLength": 512,
+            "type": "string"
+          },
+          "name": {
+            "description": "Script name (must be unique)",
+            "examples": [
+              "deploy-nginx"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC3339, server-stamped",
+            "examples": [
+              "2026-05-29T10:00:00Z"
+            ],
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC sub / email of the last editor",
+            "examples": [
+              "alice@x"
+            ],
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "body",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
+      "APIUEFIVar": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIUEFIVar.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "attributes": {
+            "description": "UEFI attribute flags",
+            "examples": [
+              [
+                "NonVolatile",
+                "BootServiceAccess",
+                "RuntimeAccess"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Variable name",
+            "examples": [
+              "BootOrder"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespace": {
+            "description": "EFI vendor GUID ; empty defaults to EFI Global Variable",
+            "examples": [
+              "8be4df61-93ca-11d2-aa0d-00e098032b8c"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC3339, server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value_hex": {
+            "description": "Hex of raw bytes ; empty = empty value (still valid). Whitespace stripped server-side.",
+            "examples": [
+              "0000"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "value_hex",
+          "attributes",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "APIVMProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIVMProperty.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "guest_readable": {
+            "description": "When true, the in-guest weft-vm-agent can read this via NATS",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Operator-defined property key",
+            "examples": [
+              "owner"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC3339, server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "description": "Property value (opaque string ; structured data is the caller's serialisation)",
+            "examples": [
+              "team-alpha"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "guest_readable",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "APIVMSSHKey": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIVMSSHKey.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "added_at": {
+            "description": "RFC3339 — when the assignment was made",
+            "readOnly": true,
+            "type": "string"
+          },
+          "comment": {
+            "description": "OpenSSH comment ; falls back to the catalogue description",
+            "readOnly": true,
+            "type": "string"
+          },
+          "fingerprint": {
+            "description": "SHA256:\u003cbase64-no-pad\u003e, resolved from the catalogue",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Catalogue entry name",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Full OpenSSH-format line",
+            "readOnly": true,
+            "type": "string"
+          },
+          "type": {
+            "description": "Algorithm (ssh-ed25519, ssh-rsa, …)",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fingerprint",
+          "type",
+          "public_key",
+          "comment",
+          "added_at"
+        ],
+        "type": "object"
+      },
+      "AddTenantAdminInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AddTenantAdminInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "AddTenantMemberInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AddTenantMemberInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "AddTenantProjectInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AddTenantProjectInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "AddVMKeyInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AddVMKeyInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Catalogue entry name to assign",
+            "examples": [
+              "alice-laptop"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "AllocateFloatingIPInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AllocateFloatingIPInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "network": {
+            "description": "Network name to allocate from",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "network"
+        ],
+        "type": "object"
+      },
+      "AttachVolumeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AttachVolumeInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "vm_uuid": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "vm_uuid"
+        ],
+        "type": "object"
+      },
+      "BucketPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/BucketPolicy.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyStatement"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "statements"
+        ],
+        "type": "object"
+      },
+      "Column": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "type": "object"
+      },
+      "CreateBucketInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateBucketInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Bucket name (3–63 chars, lowercase letters / digits / hyphens)",
+            "maxLength": 63,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateDNSRecordInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateDNSRecordInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ttl": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "A / AAAA / CNAME / TXT / SRV / …",
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "zone_uuid": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone_uuid",
+          "type",
+          "value"
+        ],
+        "type": "object"
+      },
+      "CreateDNSZoneInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateDNSZoneInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 253,
+            "minLength": 1,
+            "type": "string"
+          },
+          "push_target": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "ttl_default": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateLBInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateLBInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "az": {
+            "type": "string"
+          },
+          "backends": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "port": {
+            "format": "int32",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "port"
+        ],
+        "type": "object"
+      },
+      "CreateNetworkInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateNetworkInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cidr": {
+            "examples": [
+              "10.0.0.0/24"
+            ],
+            "type": "string"
+          },
+          "dns_servers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "gateway": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": {
+            "description": "e.g. 'wireguard' / 'flat'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cidr"
+        ],
+        "type": "object"
+      },
+      "CreateRouterInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateRouterInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "external": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "Router kind (controller-defined)",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "networks": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "CreateSGInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateSGInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityRule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateSchedulingRuleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateSchedulingRuleInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "az": {
+            "type": "string"
+          },
+          "count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "host": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "rack": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateShareInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateShareInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "size_gb": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateTenantInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateTenantInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateVMInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateVMInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "flavor": {
+            "description": "Catalogue flavor name (resolves to cpu/ram/disk server-side)",
+            "type": "string"
+          },
+          "image": {
+            "description": "OCI reference or registered image name",
+            "type": "string"
+          },
+          "ingress_floating_ip": {
+            "type": "string"
+          },
+          "ingress_kind": {
+            "description": "Best-effort ingress setup",
+            "enum": [
+              "none",
+              "floating_ip",
+              "loadbalancer"
+            ],
+            "type": "string"
+          },
+          "ingress_load_balancer": {
+            "type": "string"
+          },
+          "name": {
+            "description": "VM name (must be unique within the project)",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "network": {
+            "description": "Network to attach (label ; weft-network reconcile loop performs AttachVM)",
+            "type": "string"
+          },
+          "provisioning": {
+            "$ref": "#/components/schemas/ProvisioningStruct"
+          },
+          "scheduling_rule": {
+            "description": "Nominal binding to a SchedulingRule (k8s PVC volumeName pattern)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "image",
+          "flavor"
+        ],
+        "type": "object"
+      },
+      "CreateVMOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateVMOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "warnings": {
+            "description": "Best-effort post-create steps that didn't complete cleanly. The VM itself is created ; these are follow-ups the operator can retry.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "project"
+        ],
+        "type": "object"
+      },
+      "CreateVolumeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateVolumeInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "size_gib": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "size_gib"
+        ],
+        "type": "object"
+      },
+      "DeleteSSHKeyOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteSSHKeyOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "DeleteScriptOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteScriptOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'",
+            "type": "string"
+          },
+          "message": {
+            "description": "Error message text",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value at the given location"
+          }
+        },
+        "type": "object"
+      },
+      "ErrorModel": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ErrorModel.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "detail": {
+            "description": "A human-readable explanation specific to this occurrence of the problem.",
+            "examples": [
+              "Property foo is required but is missing."
+            ],
+            "type": "string"
+          },
+          "errors": {
+            "description": "Optional list of individual error details",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "instance": {
+            "description": "A URI reference that identifies the specific occurrence of the problem.",
+            "examples": [
+              "https://example.com/error-log/abc123"
+            ],
+            "format": "uri",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "examples": [
+              400
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "A short, human-readable summary of the problem type. This value should not change between occurrences of the error.",
+            "examples": [
+              "Bad Request"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "default": "about:blank",
+            "description": "A URI reference to human-readable documentation for the error.",
+            "examples": [
+              "https://example.com/errors/example"
+            ],
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FormFile": {
+        "additionalProperties": false,
+        "properties": {
+          "ContentType": {
+            "type": "string"
+          },
+          "Filename": {
+            "type": "string"
+          },
+          "IsSet": {
+            "type": "boolean"
+          },
+          "Size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ContentType",
+          "IsSet",
+          "Size",
+          "Filename"
+        ],
+        "type": "object"
+      },
+      "GrantProjectRoleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/GrantProjectRoleInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "type": "object"
+      },
+      "ImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ImportResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "added": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "skipped_existing": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_seen": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "skipped_existing",
+          "total_seen",
+          "names"
+        ],
+        "type": "object"
+      },
+      "ImportSSHKeysInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ImportSSHKeysInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "account": {
+            "description": "Upstream login",
+            "examples": [
+              "alice"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "forgejo_base": {
+            "description": "Required when provider == forgejo (https://codeberg.org)",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Upstream provider",
+            "enum": [
+              "github",
+              "gitlab",
+              "forgejo"
+            ],
+            "examples": [
+              "github"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "account"
+        ],
+        "type": "object"
+      },
+      "ListFlavorsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ListFlavorsOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "flavors": {
+            "description": "Cluster-wide compute envelope catalogue",
+            "items": {
+              "$ref": "#/components/schemas/APIFlavor"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "flavors"
+        ],
+        "type": "object"
+      },
+      "MapFloatingIPInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MapFloatingIPInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "target_kind": {
+            "enum": [
+              "vm",
+              "lb"
+            ],
+            "type": "string"
+          },
+          "target_name": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_kind",
+          "target_name"
+        ],
+        "type": "object"
+      },
+      "OkBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OkBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "PolicyStatement": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "principal": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "effect",
+          "principal",
+          "action",
+          "resource"
+        ],
+        "type": "object"
+      },
+      "ProvisioningStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "script": {
+            "type": "string"
+          },
+          "source_kind": {
+            "description": "First-boot payload source",
+            "enum": [
+              "none",
+              "git",
+              "oci"
+            ],
+            "type": "string"
+          },
+          "source_ref": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_kind",
+          "source_url"
+        ],
+        "type": "object"
+      },
+      "Quotas": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/Quotas.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "buckets": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "buckets_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "floating_ips": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "gpus": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projects": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ram_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "registry_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "shares": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "shares_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vcpu": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "volumes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "volumes_gib": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vcpu",
+          "ram_gib",
+          "gpus",
+          "volumes",
+          "volumes_gib",
+          "shares",
+          "shares_gib",
+          "buckets",
+          "buckets_gib",
+          "registry_gib",
+          "floating_ips",
+          "projects"
+        ],
+        "type": "object"
+      },
+      "RemovedOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RemovedOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "removed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "ResourceMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "section",
+          "columns",
+          "count"
+        ],
+        "type": "object"
+      },
+      "SecurityRule": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "port_max": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "port_min": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "remote_cidr": {
+            "type": "string"
+          },
+          "remote_group_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "protocol",
+          "port_min",
+          "port_max",
+          "remote_cidr",
+          "remote_group_uuid"
+        ],
+        "type": "object"
+      },
+      "SetVMKeysInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetVMKeysInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "names": {
+            "description": "The exact set of catalogue names to assign (replace-set)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "type": "object"
+      },
+      "SummaryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "count"
+        ],
+        "type": "object"
+      },
+      "VmStateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VmStateBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Weft WebUI API",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/buckets": {
+      "post": {
+        "operationId": "create-bucket",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBucketInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create an object-storage bucket",
+        "tags": [
+          "buckets"
+        ]
+      }
+    },
+    "/api/buckets/{name}": {
+      "delete": {
+        "operationId": "delete-bucket",
+        "parameters": [
+          {
+            "description": "Bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Bucket name",
+              "maxLength": 63,
+              "minLength": 3,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a bucket (cascades the attached policy)",
+        "tags": [
+          "buckets"
+        ]
+      }
+    },
+    "/api/buckets/{name}/object": {
+      "delete": {
+        "operationId": "delete-bucket-object",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object key (full path within the bucket)",
+            "explode": false,
+            "in": "query",
+            "name": "key",
+            "schema": {
+              "description": "Object key (full path within the bucket)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete one bucket object (s3:DeleteObject gate)",
+        "tags": [
+          "buckets"
+        ]
+      },
+      "get": {
+        "operationId": "get-bucket-object",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object key (full path within the bucket)",
+            "explode": false,
+            "in": "query",
+            "name": "key",
+            "schema": {
+              "description": "Object key (full path within the bucket)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one bucket object (s3:GetObject gate)",
+        "tags": [
+          "buckets"
+        ]
+      }
+    },
+    "/api/buckets/{name}/objects": {
+      "get": {
+        "operationId": "list-bucket-objects",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to entries under this prefix",
+            "explode": false,
+            "in": "query",
+            "name": "prefix",
+            "schema": {
+              "description": "Filter to entries under this prefix",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List bucket objects (s3:ListBucket gate)",
+        "tags": [
+          "buckets"
+        ]
+      },
+      "post": {
+        "operationId": "upload-bucket-objects",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                },
+                "prefix": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "items": {
+                      "contentEncoding": "binary",
+                      "contentMediaType": "application/octet-stream",
+                      "format": "binary",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "prefix": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "prefix"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Upload one or more bucket objects (s3:PutObject gate on the destination prefix)",
+        "tags": [
+          "buckets"
+        ]
+      }
+    },
+    "/api/buckets/{name}/policy": {
+      "get": {
+        "operationId": "get-bucket-policy",
+        "parameters": [
+          {
+            "description": "Bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Bucket name",
+              "maxLength": 63,
+              "minLength": 3,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a bucket's IAM policy (empty {Statements:[]} when none)",
+        "tags": [
+          "buckets"
+        ]
+      },
+      "put": {
+        "description": "An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.",
+        "operationId": "set-bucket-policy",
+        "parameters": [
+          {
+            "description": "Bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Bucket name",
+              "maxLength": 63,
+              "minLength": 3,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BucketPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Atomically set a bucket's policy",
+        "tags": [
+          "buckets"
+        ]
+      }
+    },
+    "/api/dns-records": {
+      "post": {
+        "operationId": "create-dns-record",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDNSRecordInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a DNS record",
+        "tags": [
+          "dns"
+        ]
+      }
+    },
+    "/api/dns-records/{uuid}": {
+      "delete": {
+        "operationId": "delete-dns-record",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a DNS record",
+        "tags": [
+          "dns"
+        ]
+      }
+    },
+    "/api/dns-zones": {
+      "post": {
+        "operationId": "create-dns-zone",
+        "parameters": [
+          {
+            "description": "Override the session project (defaults to platform)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project (defaults to platform)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDNSZoneInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a DNS zone",
+        "tags": [
+          "dns"
+        ]
+      }
+    },
+    "/api/dns-zones/{uuid}": {
+      "delete": {
+        "operationId": "delete-dns-zone",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a DNS zone",
+        "tags": [
+          "dns"
+        ]
+      }
+    },
+    "/api/flavors": {
+      "get": {
+        "description": "Cluster-wide compute envelope catalogue. Read-open on both listeners since the CreateVMModal picker needs it.",
+        "operationId": "list-flavors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListFlavorsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the cluster's compute flavors",
+        "tags": [
+          "flavors"
+        ]
+      }
+    },
+    "/api/flavors/{name}": {
+      "get": {
+        "operationId": "get-flavor",
+        "parameters": [
+          {
+            "description": "Flavor name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Flavor name",
+              "examples": [
+                "small"
+              ],
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIFlavor"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one flavor by name",
+        "tags": [
+          "flavors"
+        ]
+      }
+    },
+    "/api/floating-ips": {
+      "post": {
+        "operationId": "allocate-floating-ip",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllocateFloatingIPInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Allocate a floating IP (live-only)",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/floating-ips/{uuid}": {
+      "delete": {
+        "operationId": "release-floating-ip",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Release a floating IP (live-only)",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/floating-ips/{uuid}/map": {
+      "post": {
+        "operationId": "map-floating-ip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MapFloatingIPInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Map a floating IP to a target",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/floating-ips/{uuid}/unmap": {
+      "post": {
+        "operationId": "unmap-floating-ip",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Unmap a floating IP",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/loadbalancers": {
+      "post": {
+        "operationId": "create-loadbalancer",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLBInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a load balancer",
+        "tags": [
+          "loadbalancers"
+        ]
+      }
+    },
+    "/api/loadbalancers/{uuid}": {
+      "delete": {
+        "operationId": "delete-loadbalancer",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a load balancer",
+        "tags": [
+          "loadbalancers"
+        ]
+      }
+    },
+    "/api/loadbalancers/{uuid}/backends": {
+      "put": {
+        "operationId": "set-loadbalancer-backends",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Atomically replace a load balancer's backend list",
+        "tags": [
+          "loadbalancers"
+        ]
+      }
+    },
+    "/api/me": {
+      "get": {
+        "description": "Returns 401 with a login URL when there's no session so the SPA's api.ts can trigger the OIDC redirect uniformly.",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Current session : user + role flags + reachable scopes",
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/api/microvms": {
+      "post": {
+        "description": "A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-vm-agent (pull model).",
+        "operationId": "create-vm",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVMInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateVMOutputBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a VM (flavor + image + scheduling)",
+        "tags": [
+          "microvms",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/microvms/{name}": {
+      "delete": {
+        "operationId": "delete-vm",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a VM (irreversible)",
+        "tags": [
+          "microvms",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/microvms/{name}/keys": {
+      "get": {
+        "operationId": "list-vm-keys",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "examples": [
+                "web-1"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIVMSSHKey"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the VM's assigned SSH keys (resolved against the catalogue)",
+        "tags": [
+          "microvms",
+          "ssh-keys"
+        ]
+      },
+      "post": {
+        "description": "Idempotent — re-assigning an existing name is a no-op. The catalogue name must already exist ; unknown names are rejected with a 400.",
+        "operationId": "add-vm-key",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddVMKeyInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIVMSSHKey"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Assign a catalogue SSH key to the VM",
+        "tags": [
+          "microvms",
+          "ssh-keys"
+        ]
+      },
+      "put": {
+        "description": "Replace-set semantics. Unknown names cause the whole call to fail (no partial saves) so the operator never sees a half-applied state.",
+        "operationId": "set-vm-keys",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetVMKeysInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIVMSSHKey"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace the VM's assigned SSH-key set",
+        "tags": [
+          "microvms",
+          "ssh-keys"
+        ]
+      }
+    },
+    "/api/microvms/{name}/keys/{key_name}": {
+      "delete": {
+        "operationId": "remove-vm-key",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Catalogue entry name",
+            "in": "path",
+            "name": "key_name",
+            "required": true,
+            "schema": {
+              "description": "Catalogue entry name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a key assignment from the VM",
+        "tags": [
+          "microvms",
+          "ssh-keys"
+        ]
+      }
+    },
+    "/api/microvms/{name}/logs": {
+      "get": {
+        "description": "?tail caps the response to the last N bytes (default 65536). A VM with a giant console.log doesn't blow up the SPA on first open.",
+        "operationId": "vm-logs",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cap the response to the last N bytes (0 = default 65536)",
+            "explode": false,
+            "in": "query",
+            "name": "tail",
+            "schema": {
+              "description": "Cap the response to the last N bytes (0 = default 65536)",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read the VM's serial console log",
+        "tags": [
+          "microvms",
+          "inspect"
+        ]
+      }
+    },
+    "/api/microvms/{name}/properties": {
+      "get": {
+        "operationId": "list-vm-properties",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "examples": [
+                "web-1"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIVMProperty"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List per-VM application-level properties",
+        "tags": [
+          "microvms",
+          "properties"
+        ]
+      },
+      "post": {
+        "operationId": "set-vm-property",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "examples": [
+                "web-1"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIVMProperty"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIVMProperty"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or replace a per-VM property (upsert)",
+        "tags": [
+          "microvms",
+          "properties"
+        ]
+      }
+    },
+    "/api/microvms/{name}/properties/{key}": {
+      "delete": {
+        "operationId": "delete-vm-property",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Property key",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Property key",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a per-VM property",
+        "tags": [
+          "microvms",
+          "properties"
+        ]
+      }
+    },
+    "/api/microvms/{name}/start": {
+      "post": {
+        "description": "Acceptance-style endpoint — returns 202 with state=starting ; poll status for the actual transition.",
+        "operationId": "start-vm",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmStateBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Start a stopped VM",
+        "tags": [
+          "microvms",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/microvms/{name}/status": {
+      "get": {
+        "operationId": "vm-status",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a VM's current status",
+        "tags": [
+          "microvms",
+          "inspect"
+        ]
+      }
+    },
+    "/api/microvms/{name}/stop": {
+      "post": {
+        "operationId": "stop-vm",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmStateBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Stop a running VM",
+        "tags": [
+          "microvms",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/microvms/{name}/timings": {
+      "get": {
+        "operationId": "vm-timings",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a VM's boot/lifecycle event timings",
+        "tags": [
+          "microvms",
+          "inspect"
+        ]
+      }
+    },
+    "/api/microvms/{name}/uefi-vars": {
+      "get": {
+        "operationId": "list-uefi-vars",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "examples": [
+                "web-1"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIUEFIVar"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the VM's UEFI NVRAM variables",
+        "tags": [
+          "microvms",
+          "uefi"
+        ]
+      },
+      "post": {
+        "description": "Empty namespace defaults to the EFI Global Variable GUID so the common case (BootOrder, SecureBoot, …) doesn't require typing the GUID. value_hex has whitespace stripped before validation.",
+        "operationId": "set-uefi-var",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIUEFIVar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIUEFIVar"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or replace a UEFI variable (upsert on (namespace, name))",
+        "tags": [
+          "microvms",
+          "uefi"
+        ]
+      }
+    },
+    "/api/microvms/{name}/uefi-vars/{ns}/{varname}": {
+      "delete": {
+        "operationId": "delete-uefi-var",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "EFI vendor GUID",
+            "in": "path",
+            "name": "ns",
+            "required": true,
+            "schema": {
+              "description": "EFI vendor GUID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "UEFI variable name",
+            "in": "path",
+            "name": "varname",
+            "required": true,
+            "schema": {
+              "description": "UEFI variable name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a UEFI variable",
+        "tags": [
+          "microvms",
+          "uefi"
+        ]
+      }
+    },
+    "/api/network-topology": {
+      "get": {
+        "description": "Admin-only — exposes host placement for every node. Mounted on the admin listener only ; the user listener returns 404 so a stale SPA build never accidentally reveals which host runs a VM.",
+        "operationId": "network-topology",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Mesh graph of overlay networks + attached workloads (admin)",
+        "tags": [
+          "network-topology"
+        ]
+      }
+    },
+    "/api/networks": {
+      "post": {
+        "operationId": "create-network",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNetworkInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a network (live-only)",
+        "tags": [
+          "networks"
+        ]
+      }
+    },
+    "/api/networks/{uuid}": {
+      "delete": {
+        "operationId": "delete-network",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a network (live-only)",
+        "tags": [
+          "networks"
+        ]
+      }
+    },
+    "/api/projects/{name}/quota": {
+      "get": {
+        "operationId": "get-project-quota",
+        "parameters": [
+          {
+            "description": "Project name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Project name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a project's quota view",
+        "tags": [
+          "projects",
+          "quotas"
+        ]
+      },
+      "put": {
+        "description": "Validated against the tenant cap : sum(other projects) + new ≤ cap.",
+        "operationId": "set-project-quota",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Quotas"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a project's quota (tenant admin)",
+        "tags": [
+          "projects",
+          "quotas"
+        ]
+      }
+    },
+    "/api/projects/{name}/roles": {
+      "post": {
+        "description": "The role string is webui-side metadata for now (weft-agent has membership but no per-project role enum yet) ; we mirror it on the store and also call AddProjectMember so weft-agent sees the membership.",
+        "operationId": "grant-project-role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantProjectRoleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Grant a per-project role to a user (tenant admin)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/quotas": {
+      "get": {
+        "description": "When the session carries a tenant scope, returns the tenant's quotas mapped to the 12 cluster-overview dimensions. Otherwise falls back to the static cluster-wide demo numbers.",
+        "operationId": "list-quotas",
+        "parameters": [
+          {
+            "description": "Override the session tenant",
+            "explode": false,
+            "in": "query",
+            "name": "tenant",
+            "schema": {
+              "description": "Override the session tenant",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Scope-aware quota overview",
+        "tags": [
+          "quotas"
+        ]
+      }
+    },
+    "/api/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Readiness probe (returns mode=mock when no daemon is wired)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/registry/upload": {
+      "post": {
+        "description": "Accepts a multipart form with type / repository / tag / registry / arch / file. Persists a registry row so the dashboard round-trips.",
+        "operationId": "registry-upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "arch": {
+                  "contentType": "text/plain"
+                },
+                "file": {
+                  "contentType": "application/octet-stream"
+                },
+                "registry": {
+                  "contentType": "text/plain"
+                },
+                "repository": {
+                  "contentType": "text/plain"
+                },
+                "tag": {
+                  "contentType": "text/plain"
+                },
+                "type": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "arch": {
+                    "description": "Architectures included in the artifact",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "file": {
+                    "items": {
+                      "contentEncoding": "binary",
+                      "contentMediaType": "application/octet-stream",
+                      "description": "Artifact blobs",
+                      "format": "binary",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "registry": {
+                    "description": "Target registry name (default zot.dc-a)",
+                    "type": "string"
+                  },
+                  "repository": {
+                    "description": "OCI repository name",
+                    "type": "string"
+                  },
+                  "tag": {
+                    "description": "Tag for this artifact",
+                    "type": "string"
+                  },
+                  "type": {
+                    "description": "'container' or 'raw'",
+                    "enum": [
+                      "container",
+                      "raw"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "repository",
+                  "tag",
+                  "registry",
+                  "arch",
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Register an OCI artifact (mock — records the row, no real push)",
+        "tags": [
+          "registry"
+        ]
+      }
+    },
+    "/api/resources": {
+      "get": {
+        "description": "Scope-filtered : the user listener excludes admin-only entries (hosts / users / tenants) so a stale SPA never even sees they exist.",
+        "operationId": "list-resource-catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceMeta"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the visible resource catalogue (sidebar)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/resources/{id}": {
+      "get": {
+        "description": "Polymorphic across the catalogue. Live-first for resources weft-agent ships ; mem-fallback otherwise. ?limit=N\u0026page_token=... ; the cursor is opaque (base64 offset today, real keyset cursor once the upstream paginates).",
+        "operationId": "list-resource-rows",
+        "parameters": [
+          {
+            "description": "Resource catalogue id (e.g. 'microvms', 'tenants')",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Resource catalogue id (e.g. 'microvms', 'tenants')",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (1..1000)",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size (1..1000)",
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page",
+            "explode": false,
+            "in": "query",
+            "name": "page_token",
+            "schema": {
+              "description": "Opaque cursor from a previous page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session tenant",
+            "explode": false,
+            "in": "query",
+            "name": "tenant",
+            "schema": {
+              "description": "Override the session tenant",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Paginated row listing for one resource kind",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/routers": {
+      "post": {
+        "operationId": "create-router",
+        "parameters": [
+          {
+            "description": "Override the session project (defaults to platform)",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project (defaults to platform)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRouterInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a router (weft-network controller)",
+        "tags": [
+          "routers"
+        ]
+      }
+    },
+    "/api/routers/{uuid}": {
+      "delete": {
+        "operationId": "delete-router",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a router",
+        "tags": [
+          "routers"
+        ]
+      }
+    },
+    "/api/scheduling-rules": {
+      "post": {
+        "operationId": "create-scheduling-rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSchedulingRuleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a scheduling rule (live-first ; mem fallback on Unimplemented)",
+        "tags": [
+          "scheduling-rules"
+        ]
+      }
+    },
+    "/api/scheduling-rules/{name}": {
+      "delete": {
+        "operationId": "delete-scheduling-rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a scheduling rule (mem store)",
+        "tags": [
+          "scheduling-rules"
+        ]
+      }
+    },
+    "/api/scripts": {
+      "get": {
+        "description": "The body is the heavy payload ; the CreateVMModal picker uses this listing then lazy-loads bodies via GET /api/scripts/{name}.",
+        "operationId": "list-scripts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIScript"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List provisioning scripts (metadata only — body omitted)",
+        "tags": [
+          "scripts"
+        ]
+      },
+      "post": {
+        "description": "UpdatedAt + UpdatedBy are server-stamped from the auth context ; the wire can't lie about provenance.",
+        "operationId": "set-script",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIScript"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIScript"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or update a script (admin)",
+        "tags": [
+          "scripts"
+        ]
+      }
+    },
+    "/api/scripts/{name}": {
+      "delete": {
+        "description": "Missing scripts return 200 with the requested name in 'deleted', so a retried client doesn't see a confusing 404.",
+        "operationId": "delete-script",
+        "parameters": [
+          {
+            "description": "Script name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Script name",
+              "examples": [
+                "deploy-nginx"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteScriptOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a script (admin) — idempotent",
+        "tags": [
+          "scripts"
+        ]
+      },
+      "get": {
+        "operationId": "get-script",
+        "parameters": [
+          {
+            "description": "Script name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Script name",
+              "examples": [
+                "deploy-nginx"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIScript"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one script (body included)",
+        "tags": [
+          "scripts"
+        ]
+      }
+    },
+    "/api/security-groups": {
+      "post": {
+        "operationId": "create-security-group",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSGInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a security group (live-only)",
+        "tags": [
+          "security-groups"
+        ]
+      }
+    },
+    "/api/security-groups/{uuid}": {
+      "delete": {
+        "operationId": "delete-security-group",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a security group (live-only)",
+        "tags": [
+          "security-groups"
+        ]
+      }
+    },
+    "/api/security-groups/{uuid}/rules": {
+      "get": {
+        "description": "Live-first ; on Unimplemented OR no daemon, falls back to the mock 'security-rules' resource (matched by group name) so the dashboard stays explorable before weft-agent's SG-rule embedding lands.",
+        "operationId": "get-security-group-rules",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a security group's rule list",
+        "tags": [
+          "security-groups"
+        ]
+      },
+      "put": {
+        "operationId": "set-security-group-rules",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/SecurityRule"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Atomically replace a security group's rules",
+        "tags": [
+          "security-groups"
+        ]
+      }
+    },
+    "/api/shares": {
+      "post": {
+        "description": "POSIX (RWX) face of CubeFS. Live-first via weft-agent ; falls back to the mock store on Unimplemented so the dashboard stays useful before the daemon catches up with CreateShare.",
+        "operationId": "create-share",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a share (tenant admin)",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{name}": {
+      "delete": {
+        "operationId": "delete-share",
+        "parameters": [
+          {
+            "description": "Share name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a share (tenant admin)",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{name}/object": {
+      "get": {
+        "operationId": "get-share-object",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object key (full path within the bucket)",
+            "explode": false,
+            "in": "query",
+            "name": "key",
+            "schema": {
+              "description": "Object key (full path within the bucket)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one share object's metadata + preview",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/shares/{name}/objects": {
+      "get": {
+        "operationId": "list-share-objects",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to entries under this prefix",
+            "explode": false,
+            "in": "query",
+            "name": "prefix",
+            "schema": {
+              "description": "Filter to entries under this prefix",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the share's objects under ?prefix",
+        "tags": [
+          "shares"
+        ]
+      },
+      "post": {
+        "operationId": "upload-share-objects",
+        "parameters": [
+          {
+            "description": "Share or bucket name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share or bucket name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                },
+                "prefix": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "items": {
+                      "contentEncoding": "binary",
+                      "contentMediaType": "application/octet-stream",
+                      "format": "binary",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "prefix": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "prefix"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Upload one or more objects into a share",
+        "tags": [
+          "shares"
+        ]
+      }
+    },
+    "/api/ssh-keys": {
+      "get": {
+        "description": "Cluster-wide named SSH keys. Operators push their own keys here ; per-VM key assignments reference these by name.",
+        "operationId": "list-ssh-keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APISSHKey"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the SSH-key catalogue",
+        "tags": [
+          "ssh-keys"
+        ]
+      },
+      "post": {
+        "description": "PublicKey is parsed server-side ; the algorithm whitelist is closed (ssh-ed25519, ssh-rsa, ssh-dss, ecdsa-sha2-nistp{256,384,521}). The fingerprint is computed from the decoded blob and overwrites whatever the client sent.",
+        "operationId": "set-ssh-key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APISSHKey"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APISSHKey"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or update an SSH key (tenant-admin or cluster-admin)",
+        "tags": [
+          "ssh-keys"
+        ]
+      }
+    },
+    "/api/ssh-keys/import": {
+      "post": {
+        "description": "Hits the provider's .keys endpoint (github/gitlab/forgejo) and stores every key not already present (dedup by fingerprint). Returns a summary of added/skipped counts.",
+        "operationId": "import-ssh-keys",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSSHKeysInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Bulk-import an upstream account's SSH keys (tenant-admin or cluster-admin)",
+        "tags": [
+          "ssh-keys"
+        ]
+      }
+    },
+    "/api/ssh-keys/{name}": {
+      "delete": {
+        "operationId": "delete-ssh-key",
+        "parameters": [
+          {
+            "description": "SSH-key name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "SSH-key name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteSSHKeyOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete an SSH key (tenant-admin or cluster-admin) — idempotent",
+        "tags": [
+          "ssh-keys"
+        ]
+      },
+      "get": {
+        "operationId": "get-ssh-key",
+        "parameters": [
+          {
+            "description": "SSH-key name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "SSH-key name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APISSHKey"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one SSH key by name",
+        "tags": [
+          "ssh-keys"
+        ]
+      }
+    },
+    "/api/summary": {
+      "get": {
+        "description": "One item per visible catalogue entry. When the session carries a tenant + project, counts narrow to that scope (mock + live agreed semantics).",
+        "operationId": "scope-summary",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "tenant",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SummaryItem"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Per-resource row counts narrowed by the session scope",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/tenants": {
+      "post": {
+        "description": "Live-first via weft-agent ; falls back to the mock store on Unimplemented so the affordance keeps working before the daemon catches up.",
+        "operationId": "create-tenant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a tenant (cluster admin)",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/tenants/{name}": {
+      "get": {
+        "description": "Non-members get 404 (don't-acknowledge). The response annotates the caller's effective role so the SPA knows which affordances to render — saves a round-trip.",
+        "operationId": "tenant-detail",
+        "parameters": [
+          {
+            "description": "Tenant name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Tenant name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Tenant detail (projects + members + groups + roles)",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/tenants/{name}/admins": {
+      "post": {
+        "operationId": "add-tenant-admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTenantAdminInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Elect a tenant admin (cluster admin)",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/tenants/{name}/members": {
+      "post": {
+        "operationId": "add-tenant-member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTenantMemberInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a member to a tenant (tenant admin)",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/tenants/{name}/projects": {
+      "post": {
+        "operationId": "add-tenant-project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTenantProjectInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a project to a tenant (tenant admin)",
+        "tags": [
+          "tenants",
+          "projects"
+        ]
+      }
+    },
+    "/api/tenants/{name}/quota": {
+      "get": {
+        "operationId": "get-tenant-quota",
+        "parameters": [
+          {
+            "description": "Tenant name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Tenant name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a tenant's quota view (cap + allocated + remaining)",
+        "tags": [
+          "tenants",
+          "quotas"
+        ]
+      },
+      "put": {
+        "description": "Rejects a cap below current allocation so tenant admins don't end up with negative remaining.",
+        "operationId": "set-tenant-quota",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Quotas"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a tenant's quota (cluster admin)",
+        "tags": [
+          "tenants",
+          "quotas"
+        ]
+      }
+    },
+    "/api/volumes": {
+      "post": {
+        "operationId": "create-volume",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVolumeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a volume (live-only)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{uuid}": {
+      "delete": {
+        "operationId": "delete-volume",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a volume (live-only)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{uuid}/attach": {
+      "post": {
+        "description": "weft-agent keys on VM UUID, not name ; the caller looks up the VM UUID from VMStatus or ListVMs before calling.",
+        "operationId": "attach-volume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachVolumeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Attach a volume to a VM (live-only)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{uuid}/detach": {
+      "post": {
+        "operationId": "detach-volume",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Detach a volume from its current VM (live-only)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    }
+  }
+}

@@ -1,6 +1,15 @@
-// Thin client for the weft-webui JSON API. The Go backend currently serves
-// mock data ; the shapes here match what it will return once wired to the
-// real weft gRPC API, so the UI won't change when that lands.
+// Thin client for the weft-webui JSON API.
+//
+// The hand-rolled types below are being migrated to the auto-
+// generated `api.gen.ts` (run `npm run gen:api`). New code should
+// pull types from `./client.ts` ; the legacy exports here forward
+// to the same source where the migration has landed.
+//
+// Status :
+//   * Flavors, Scripts, SSH-keys catalogue, per-VM (props/uefi/keys)
+//     — types come from `api.gen.ts` via `client.ts`.
+//   * Everything else — still hand-rolled. Migration is mechanical
+//     and incremental ; one section per PR.
 
 export interface Column {
   key: string;
@@ -45,22 +54,55 @@ export const getResources = () => getJSON<ResourceMeta[]>('/resources');
 // _etcd_embedded]]) ; for now it's an in-memory mock served by the
 // webui. Same shape as the flavors catalogue : List on both ports,
 // write-side admin-gated.
+//
+// Type now comes from api.gen.ts ; the helpers use the typed client.
 
-export interface Script {
-  name: string;
-  description: string;
-  body: string;        // sh source
-  updated_at: string;
-  updated_by: string;
+import { client, type APIScript } from './client';
+
+// Backwards-compatible alias for callers that still import `Script`.
+export type Script = APIScript;
+
+export const listScripts = async (): Promise<Script[]> => {
+  const { data, error } = await client.GET('/api/scripts');
+  if (error) throw new Error(toMsg(error));
+  // openapi-typescript types the array as `T[] | null` because OpenAPI
+  // doesn't forbid null. The Go side always returns [], never null —
+  // coerce so callers don't have to.
+  return data ?? [];
+};
+export const getScript = async (name: string): Promise<Script> => {
+  const { data, error } = await client.GET('/api/scripts/{name}', {
+    params: { path: { name } },
+  });
+  if (error) throw new Error(toMsg(error));
+  return data;
+};
+export const setScript = async (
+  s: { name: string; description: string; body: string },
+): Promise<Script> => {
+  const { data, error } = await client.POST('/api/scripts', {
+    body: { ...s, updated_at: '', updated_by: '' },
+  });
+  if (error) throw new Error(toMsg(error));
+  return data;
+};
+export const deleteScript = async (name: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/scripts/{name}', {
+    params: { path: { name } },
+  });
+  if (error) throw new Error(toMsg(error));
+};
+
+// toMsg unboxes huma's RFC 7807 error envelope to a plain string the
+// existing call sites can throw. detail is the operator-facing field ;
+// title falls back when detail is empty.
+function toMsg(e: unknown): string {
+  if (e && typeof e === 'object') {
+    const o = e as { detail?: string; title?: string; error?: string };
+    return o.detail || o.title || o.error || JSON.stringify(e);
+  }
+  return String(e);
 }
-
-export const listScripts = () => getJSON<Script[]>('/scripts');
-export const getScript   = (name: string) =>
-  getJSON<Script>(`/scripts/${encodeURIComponent(name)}`);
-export const setScript   = (s: { name: string; description: string; body: string }) =>
-  postJSON<Script>('/scripts', s);
-export const deleteScript = (name: string) =>
-  deleteJSON(`/scripts/${encodeURIComponent(name)}`);
 
 // /api/resources/:id now returns a {rows, next, total} envelope. Most
 // callers don't care about the cursor (modals, search palette, drawers
