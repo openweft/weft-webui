@@ -103,21 +103,24 @@ func grpcCodeName(err error) string {
 
 // ListRouters returns the registered routers. Same row shape the
 // existing static `routers` resource emits, so the table can render
-// either source without code change.
-func (c *NetworkClient) ListRouters(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+// either source without code change. opts is the page knob shared with
+// every other wclient List* (see ListOpts in wclient.go).
+func (c *NetworkClient) ListRouters(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListRouters", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListRouters(cctx, &netv1.ListRoutersRequest{Project: project})
+	resp, err := rpc.ListRouters(cctx, &netv1.ListRoutersRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if resp == nil {
-		return nil, errors.New("nil ListRouters response")
+		return nil, "", errors.New("nil ListRouters response")
 	}
 	out := make([]map[string]any, 0, len(resp.GetRouters()))
 	for _, r := range resp.GetRouters() {
@@ -133,20 +136,22 @@ func (c *NetworkClient) ListRouters(ctx context.Context, project string) (rows [
 			"status":     r.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *NetworkClient) ListLoadBalancers(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *NetworkClient) ListLoadBalancers(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListLoadBalancers", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListLoadBalancers(cctx, &netv1.ListLoadBalancersRequest{Project: project})
+	resp, err := rpc.ListLoadBalancers(cctx, &netv1.ListLoadBalancersRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetLoadBalancers()))
 	for _, lb := range resp.GetLoadBalancers() {
@@ -163,20 +168,22 @@ func (c *NetworkClient) ListLoadBalancers(ctx context.Context, project string) (
 			"status":     lb.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *NetworkClient) ListDNSZones(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *NetworkClient) ListDNSZones(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListDNSZones", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListDNSZones(cctx, &netv1.ListDNSZonesRequest{Project: project})
+	resp, err := rpc.ListDNSZones(cctx, &netv1.ListDNSZonesRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetZones()))
 	for _, z := range resp.GetZones() {
@@ -193,20 +200,22 @@ func (c *NetworkClient) ListDNSZones(ctx context.Context, project string) (rows 
 			"status":      z.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *NetworkClient) ListDNSRecords(ctx context.Context, zoneUUID string) (rows []map[string]any, retErr error) {
+func (c *NetworkClient) ListDNSRecords(ctx context.Context, zoneUUID string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListDNSRecords", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListDNSRecords(cctx, &netv1.ListDNSRecordsRequest{ZoneUuid: zoneUUID})
+	resp, err := rpc.ListDNSRecords(cctx, &netv1.ListDNSRecordsRequest{
+		ZoneUuid: zoneUUID, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetRecords()))
 	for _, rec := range resp.GetRecords() {
@@ -220,20 +229,22 @@ func (c *NetworkClient) ListDNSRecords(ctx context.Context, zoneUUID string) (ro
 			"source": rec.Source,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *NetworkClient) ListSchedulingRules(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *NetworkClient) ListSchedulingRules(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListSchedulingRules", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListSchedulingRules(cctx, &netv1.ListSchedulingRulesRequest{Project: project})
+	resp, err := rpc.ListSchedulingRules(cctx, &netv1.ListSchedulingRulesRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetRules()))
 	for _, r := range resp.GetRules() {
@@ -263,7 +274,7 @@ func (c *NetworkClient) ListSchedulingRules(ctx context.Context, project string)
 			"status":    r.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
 // --- Mutators ------------------------------------------------------

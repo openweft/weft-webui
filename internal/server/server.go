@@ -399,18 +399,17 @@ type resourceMeta struct {
 	Count   int      `json:"count"`
 }
 
-// liveServe runs a live-mode list callback and writes the result through
-// the {rows, next} envelope (writePage). Any gRPC error becomes a 502 with
-// the message. The mock-pagination at this layer is correct as long as the
-// live source returns the full set ; once weft-agent honours limit+token
-// itself the slice in writePage becomes a no-op pass-through.
-func liveServe(w http.ResponseWriter, r *http.Request, fn func() ([]map[string]any, error)) {
-	rows, err := fn()
+// liveServe runs a live-mode paginated list callback and writes the
+// result through writePagedThrough — the daemon already paginated, the
+// JSON layer just relays its cursor. Any gRPC error becomes a 502 with
+// the message.
+func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]any, string, error)) {
+	rows, next, err := fn()
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "live: " + err.Error()})
 		return
 	}
-	writePage(w, r, rows)
+	writePagedThrough(w, rows, next)
 }
 
 // rowCount returns the live count for a resource (cluster-wide).
@@ -523,9 +522,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// store on Unimplemented / no controller wired.
 		_, project := scopeFromRequest(r)
 		if liveNet != nil {
-			rows, err := liveNet.ListSchedulingRules(r.Context(), project)
+			rows, next, err := liveNet.ListSchedulingRules(r.Context(), project, pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -544,9 +543,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// inline mock rows in the registry.
 		_, project := scopeFromRequest(r)
 		if liveNet != nil {
-			rows, err := liveNet.ListRouters(r.Context(), project)
+			rows, next, err := liveNet.ListRouters(r.Context(), project, pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -557,9 +556,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	case "loadbalancers":
 		_, project := scopeFromRequest(r)
 		if liveNet != nil {
-			rows, err := liveNet.ListLoadBalancers(r.Context(), project)
+			rows, next, err := liveNet.ListLoadBalancers(r.Context(), project, pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -570,9 +569,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	case "dns-zones":
 		_, project := scopeFromRequest(r)
 		if liveNet != nil {
-			rows, err := liveNet.ListDNSZones(r.Context(), project)
+			rows, next, err := liveNet.ListDNSZones(r.Context(), project, pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -585,9 +584,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// by zone" picks up via the existing front-end dropdown.
 		// Pass empty = every zone (the controller does the filtering).
 		if liveNet != nil {
-			rows, err := liveNet.ListDNSRecords(r.Context(), "")
+			rows, next, err := liveNet.ListDNSRecords(r.Context(), "", pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -600,11 +599,14 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// Scope filtering applies on both paths.
 		tenant, project := scopeFromRequest(r)
 		if live != nil {
-			rows, err := live.ListShares(r.Context(), project)
+			rows, next, err := live.ListShares(r.Context(), project, pageOptsFromRequest(r))
 			if err == nil {
 				if project == "" && tenant != "" {
 					// Re-filter to the tenant's projects since the live
-					// list returned everything we can see.
+					// list returned everything we can see. The cursor
+					// stays valid : the daemon paginated unfiltered, this
+					// shaves rows after the fact ; "Load more" still walks
+					// the unfiltered cursor and the same filter runs again.
 					allowed := map[string]struct{}{}
 					for _, p := range tenantsDB.projectsInTenant(tenant) {
 						allowed[p] = struct{}{}
@@ -619,7 +621,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 					}
 					rows = out
 				}
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -639,7 +641,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	case "projects":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListProjects(r.Context()) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListProjects(r.Context(), pageOptsFromRequest(r))
+			})
 			return
 		}
 		// Mock path : carry the tenant column from the store, filtered
@@ -654,27 +658,37 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	case "microvms":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListVMs(r.Context(), projectFromRequest(r)) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListVMs(r.Context(), projectFromRequest(r), pageOptsFromRequest(r))
+			})
 			return
 		}
 	case "networks":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListNetworks(r.Context(), projectFromRequest(r)) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListNetworks(r.Context(), projectFromRequest(r), pageOptsFromRequest(r))
+			})
 			return
 		}
 	case "hosts":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListHosts(r.Context(), "") })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListHosts(r.Context(), "", pageOptsFromRequest(r))
+			})
 			return
 		}
 	case "volumes":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListVolumes(r.Context(), projectFromRequest(r)) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListVolumes(r.Context(), projectFromRequest(r), pageOptsFromRequest(r))
+			})
 			return
 		}
 	case "users":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListUsers(r.Context()) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListUsers(r.Context(), pageOptsFromRequest(r))
+			})
 			return
 		}
 		// Mock path : memberships column comes from the store.
@@ -682,7 +696,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	case "security-groups":
 		if live != nil {
-			liveServe(w, r, func() ([]map[string]any, error) { return live.ListSecurityGroups(r.Context(), projectFromRequest(r)) })
+			liveServe(w, r, func() ([]map[string]any, string, error) {
+				return live.ListSecurityGroups(r.Context(), projectFromRequest(r), pageOptsFromRequest(r))
+			})
 			return
 		}
 	case "floating-ips":
@@ -690,9 +706,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// inline mock rows (the table still surfaces something useful
 		// while the agent catches up with AllocateFloatingIP).
 		if live != nil {
-			rows, err := live.ListFloatingIPs(r.Context(), projectFromRequest(r))
+			rows, next, err := live.ListFloatingIPs(r.Context(), projectFromRequest(r), pageOptsFromRequest(r))
 			if err == nil {
-				writePage(w, r, rows)
+				writePagedThrough(w, rows, next)
 				return
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -839,6 +855,37 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// pageOptsFromRequest reads ?limit / ?page_token off a list request and
+// hands them to wclient as ListOpts. Limit clamped to [0, 1000] (0 =
+// daemon default). Used by the live branches so the gRPC source owns
+// the cursor when it implements pagination itself.
+func pageOptsFromRequest(r *http.Request) wclient.ListOpts {
+	o := wclient.ListOpts{}
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 1000 {
+			o.Limit = int32(n)
+		}
+	}
+	o.PageToken = r.URL.Query().Get("page_token")
+	return o
+}
+
+// writePagedThrough is the live-mode sibling of writePage : it emits
+// {rows, next} as-is from an upstream that already paginated, without
+// re-slicing on this side. total is -1 (sentinel for "unknown") so the
+// SPA hides the parenthetical "of N" — the daemon doesn't tell us the
+// global count.
+func writePagedThrough(w http.ResponseWriter, rows []map[string]any, next string) {
+	if rows == nil {
+		rows = []map[string]any{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"rows":  rows,
+		"next":  next,
+		"total": -1,
+	})
 }
 
 // writePage emits the {rows, next} envelope every /api/resources/:id and

@@ -129,24 +129,37 @@ func rpcCtx(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, 5*time.Second)
 }
 
-// Each List* below returns dashboard rows whose keys match the columns the
-// frontend already declares for that resource. Mock rows share the same
-// shape (see internal/server/resources.go), so the table renders either.
+// ListOpts is the universal page knob threaded through every List*
+// call. Limit==0 means "server default" (the daemon currently maps that
+// to 50 ; the proto pins the upper bound at 1000). PageToken=="" =
+// first page. Both fields are pass-through to the proto request ; the
+// daemon owns the cursor semantics.
+type ListOpts struct {
+	Limit     int32
+	PageToken string
+}
 
-func (c *Client) ListProjects(ctx context.Context) (rows []map[string]any, retErr error) {
+// Each List* below returns dashboard rows whose keys match the columns the
+// frontend already declares for that resource, plus the next-page token
+// the daemon hands back. Mock rows share the same shape (see
+// internal/server/resources.go), so the table renders either.
+
+func (c *Client) ListProjects(ctx context.Context, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListProjects", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{})
+	resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{
+		Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if resp == nil {
-		return nil, errors.New("nil ListProjects response")
+		return nil, "", errors.New("nil ListProjects response")
 	}
 	out := make([]map[string]any, 0, len(resp.Projects))
 	for _, p := range resp.Projects {
@@ -156,20 +169,22 @@ func (c *Client) ListProjects(ctx context.Context) (rows []map[string]any, retEr
 			"created": tsDate(p.CreatedAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListVMs(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListVMs(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListVMs", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListVMs(cctx, &weftv1.ListVMsRequest{Project: project})
+	resp, err := rpc.ListVMs(cctx, &weftv1.ListVMsRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetVms()))
 	for _, v := range resp.GetVms() {
@@ -185,20 +200,22 @@ func (c *Client) ListVMs(ctx context.Context, project string) (rows []map[string
 			"project": v.Project,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListNetworks(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListNetworks(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListNetworks", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListNetworks(cctx, &weftv1.ListNetworksRequest{Project: project})
+	resp, err := rpc.ListNetworks(cctx, &weftv1.ListNetworksRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetNetworks()))
 	for _, n := range resp.GetNetworks() {
@@ -210,20 +227,22 @@ func (c *Client) ListNetworks(ctx context.Context, project string) (rows []map[s
 			"created": tsDate(n.CreatedAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListHosts(ctx context.Context, az string) (rows []map[string]any, retErr error) {
+func (c *Client) ListHosts(ctx context.Context, az string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListHosts", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListHosts(cctx, &weftv1.ListHostsRequest{Az: az})
+	resp, err := rpc.ListHosts(cctx, &weftv1.ListHostsRequest{
+		Az: az, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetHosts()))
 	for _, h := range resp.GetHosts() {
@@ -237,20 +256,22 @@ func (c *Client) ListHosts(ctx context.Context, az string) (rows []map[string]an
 			"last_seen":  tsDate(h.LastSeenAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListVolumes(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListVolumes(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListVolumes", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListVolumes(cctx, &weftv1.ListVolumesRequest{Project: project})
+	resp, err := rpc.ListVolumes(cctx, &weftv1.ListVolumesRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetVolumes()))
 	for _, v := range resp.GetVolumes() {
@@ -263,20 +284,22 @@ func (c *Client) ListVolumes(ctx context.Context, project string) (rows []map[st
 			"created":     tsDate(v.CreatedAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListUsers(ctx context.Context) (rows []map[string]any, retErr error) {
+func (c *Client) ListUsers(ctx context.Context, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListUsers", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{})
+	resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{
+		Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetUsers()))
 	for _, u := range resp.GetUsers() {
@@ -288,20 +311,22 @@ func (c *Client) ListUsers(ctx context.Context) (rows []map[string]any, retErr e
 			"last_seen": tsDate(u.LastSeenAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
-func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListSecurityGroups(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListSecurityGroups", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{Project: project})
+	resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetGroups()))
 	for _, g := range resp.GetGroups() {
@@ -313,7 +338,7 @@ func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows [
 			"created":     tsDate(g.CreatedAtUnixNs),
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
 // --- Mutators -------------------------------------------------------
@@ -722,8 +747,9 @@ func (c *Client) SetSecurityGroupRules(ctx context.Context, uuid string, rules [
 }
 
 // GetSecurityGroup returns one SG by UUID. There's no dedicated
-// GetSecurityGroup RPC ; we list and filter. Good enough at SG-list
-// scale (typically dozens, not thousands per project).
+// GetSecurityGroup RPC ; we list (paginating to be safe) and filter.
+// Good enough at SG-list scale (typically dozens, not thousands per
+// project).
 func (c *Client) GetSecurityGroup(ctx context.Context, uuid string) (rules []SecurityRule, retErr error) {
 	defer c.measured("GetSecurityGroup", &retErr)()
 	rpc, err := c.dial()
@@ -732,25 +758,33 @@ func (c *Client) GetSecurityGroup(ctx context.Context, uuid string) (rules []Sec
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{})
-	if err != nil {
-		return nil, err
-	}
-	for _, g := range resp.GetGroups() {
-		if g.Uuid != uuid {
-			continue
+	token := ""
+	for {
+		resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{
+			PageToken: token,
+		})
+		if err != nil {
+			return nil, err
 		}
-		out := make([]SecurityRule, 0, len(g.Rules))
-		for _, r := range g.Rules {
-			out = append(out, SecurityRule{
-				Direction: r.Direction, Protocol: r.Protocol,
-				PortMin: r.PortMin, PortMax: r.PortMax,
-				RemoteCIDR: r.RemoteCidr, RemoteGroupUUID: r.RemoteGroupUuid,
-			})
+		for _, g := range resp.GetGroups() {
+			if g.Uuid != uuid {
+				continue
+			}
+			out := make([]SecurityRule, 0, len(g.Rules))
+			for _, r := range g.Rules {
+				out = append(out, SecurityRule{
+					Direction: r.Direction, Protocol: r.Protocol,
+					PortMin: r.PortMin, PortMax: r.PortMax,
+					RemoteCIDR: r.RemoteCidr, RemoteGroupUUID: r.RemoteGroupUuid,
+				})
+			}
+			return out, nil
 		}
-		return out, nil
+		if resp.GetNextPageToken() == "" {
+			return nil, errors.New("security group not found")
+		}
+		token = resp.GetNextPageToken()
 	}
-	return nil, errors.New("security group not found")
 }
 
 // --- Lookup helpers -------------------------------------------------
@@ -817,7 +851,9 @@ func (c *Client) WatchEvents(ctx context.Context, kindPrefixes []string, project
 }
 
 // UserUUIDByEmail returns the UUID for the given email, or "" if no
-// user matches. Walks ListUsers() ; the user count is small.
+// user matches. Walks ListUsers across pages — the per-request count
+// is small but the dataset may not fit a single page once weft-agent
+// honours its own pagination cap.
 func (c *Client) UserUUIDByEmail(ctx context.Context, email string) (string, error) {
 	rpc, err := c.dial()
 	if err != nil {
@@ -825,20 +861,27 @@ func (c *Client) UserUUIDByEmail(ctx context.Context, email string) (string, err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{})
-	if err != nil {
-		return "", err
-	}
 	want := strings.ToLower(strings.TrimSpace(email))
-	for _, u := range resp.GetUsers() {
-		if strings.EqualFold(u.Email, want) {
-			return u.Uuid, nil
+	token := ""
+	for {
+		resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{PageToken: token})
+		if err != nil {
+			return "", err
 		}
+		for _, u := range resp.GetUsers() {
+			if strings.EqualFold(u.Email, want) {
+				return u.Uuid, nil
+			}
+		}
+		if resp.GetNextPageToken() == "" {
+			return "", nil
+		}
+		token = resp.GetNextPageToken()
 	}
-	return "", nil
 }
 
-// ProjectUUIDByName resolves a project name to its UUID.
+// ProjectUUIDByName resolves a project name to its UUID. Walks the
+// ListProjects pages until a match or exhaustion.
 func (c *Client) ProjectUUIDByName(ctx context.Context, name string) (string, error) {
 	rpc, err := c.dial()
 	if err != nil {
@@ -846,16 +889,22 @@ func (c *Client) ProjectUUIDByName(ctx context.Context, name string) (string, er
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{})
-	if err != nil {
-		return "", err
-	}
-	for _, p := range resp.Projects {
-		if p.Name == name {
-			return p.Uuid, nil
+	token := ""
+	for {
+		resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{PageToken: token})
+		if err != nil {
+			return "", err
 		}
+		for _, p := range resp.Projects {
+			if p.Name == name {
+				return p.Uuid, nil
+			}
+		}
+		if resp.GetNextPageToken() == "" {
+			return "", nil
+		}
+		token = resp.GetNextPageToken()
 	}
-	return "", nil
 }
 
 // --- New RPCs (post-proto-extension) -------------------------------
@@ -874,6 +923,9 @@ func IsUnimplemented(err error) bool {
 
 // ---- Tenants ----
 
+// ListTenants is unique among the List* family : the proto request is
+// empty (cluster cardinality is bounded by the operator's onboarding
+// flow, not user activity). Signature stays (ctx)→rows, no opts.
 func (c *Client) ListTenants(ctx context.Context) (rows []map[string]any, retErr error) {
 	defer c.measured("ListTenants", &retErr)()
 	rpc, err := c.dial()
@@ -1024,17 +1076,19 @@ func (c *Client) SetProjectQuota(ctx context.Context, projectUUID string, q map[
 
 // ---- Shares ----
 
-func (c *Client) ListShares(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListShares(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListShares", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListShares(cctx, &weftv1.ListSharesRequest{Project: project})
+	resp, err := rpc.ListShares(cctx, &weftv1.ListSharesRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetShares()))
 	for _, s := range resp.GetShares() {
@@ -1049,7 +1103,7 @@ func (c *Client) ListShares(ctx context.Context, project string) (rows []map[str
 			"status":   s.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
 func (c *Client) CreateShare(ctx context.Context, project, name string, sizeGB int64, readonly bool, backend string) (uuid string, retErr error) {
@@ -1086,17 +1140,19 @@ func (c *Client) DeleteShare(ctx context.Context, uuid string) (retErr error) {
 
 // ---- Floating IPs ----
 
-func (c *Client) ListFloatingIPs(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+func (c *Client) ListFloatingIPs(ctx context.Context, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
 	defer c.measured("ListFloatingIPs", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListFloatingIPs(cctx, &weftv1.ListFloatingIPsRequest{Project: project})
+	resp, err := rpc.ListFloatingIPs(cctx, &weftv1.ListFloatingIPsRequest{
+		Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]map[string]any, 0, len(resp.GetFloatingIps()))
 	for _, f := range resp.GetFloatingIps() {
@@ -1109,7 +1165,7 @@ func (c *Client) ListFloatingIPs(ctx context.Context, project string) (rows []ma
 			"status":    f.Status,
 		})
 	}
-	return out, nil
+	return out, resp.GetNextPageToken(), nil
 }
 
 func (c *Client) AllocateFloatingIP(ctx context.Context, project, network string) (uuid, address string, retErr error) {
