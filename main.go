@@ -105,14 +105,15 @@ func run() error {
 	}
 
 	deps := server.Deps{
-		Logger:     logger,
-		Static:     static,
-		Live:       live,
-		LiveNet:    liveNet,
-		Auth:       mw,
-		OIDC:       oidcAuth,
-		Metrics:    metrics,
-		DevMode:    cfg.DevMode,
+		Logger:       logger,
+		Static:       static,
+		Live:         live,
+		LiveNet:      liveNet,
+		Auth:         mw,
+		OIDC:         oidcAuth,
+		Metrics:      metrics,
+		DevMode:      cfg.DevMode,
+		PolicyStrict: cfg.PolicyStrict,
 	}
 
 	// Boot announcement before opening the listeners so the journal is

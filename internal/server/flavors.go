@@ -9,7 +9,10 @@
 //
 //	etcd                /weft/catalogue/flavors/<name>     →  JSON
 //	weft-agent          watch the prefix, cache, serve via ListFlavors
-//	                    RPC ; HCL fallback for dev (single-binary).
+//	                    RPC. Embedded etcd (go.etcd.io/etcd/server/v3/
+//	                    embed) in single-node dev mode — same client
+//	                    code paths and same watch semantics as the HA
+//	                    case, no parallel HCL parser.
 //	weft-cli            `weft flavor {create,update,delete}` writes etcd
 //	weft-webui          ← this binary, drops the in-memory seed and
 //	                    becomes a plain consumer of ListFlavors.
