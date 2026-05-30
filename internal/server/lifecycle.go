@@ -265,11 +265,18 @@ func parseRAMtoMB(s string) uint64 {
 //
 // Wire status of the optional fields, today :
 //   - scheduling_rule : captured ; ignored by the wclient call
-//     (proto extension pending). Selector-based rules in
-//     weft-network still match by labels, so this is forward-
-//     compat without breaking anything.
+//     (proto extension pending). The forward semantic — DECIDED — is
+//     "nominal binding wins over selector". When the field arrives
+//     on the VMRecord, weft-network's reconcile loop binds this VM
+//     to the named rule regardless of its labels ; the rule's
+//     selector then only catches VMs that were created without an
+//     explicit binding (discovery path). Pattern : k8s PVC
+//     volumeName-vs-selector. Editing a rule's selector therefore
+//     never dislodges nominally-bound VMs — the property that makes
+//     selectors safe to edit in production.
 //   - network         : captured ; ignored by the wclient call
-//     (proto extension pending). Same forward-compat story.
+//     (proto extension pending). Same nominal-wins-over-discovery
+//     story when the field rides the wire.
 //   - ingress         : best-effort orchestration post-create using
 //     existing endpoints — MapFloatingIP for kind=floating_ip,
 //     SetLoadBalancerBackends for kind=loadbalancer. This is the
