@@ -712,29 +712,40 @@ export const setSSHKeyCatalogue = (k: {
 export const deleteSSHKeyCatalogue = (name: string) =>
   deleteJSON(`/ssh-keys/${encodeURIComponent(name)}`);
 
-// ---- Per-VM SSH keys ----
+// ---- Per-VM SSH-keys assignments ----
 //
-// Runtime-pushable, not baked into a create-time SSHPub blob — the
-// guest's weft-vm-agent subscribes to a NATS subject and re-writes
-// authorized_keys idempotently when this surface adds/removes one.
-// Same Subscriber+ApplyFunc pattern as the mesh / mounts concerns.
+// VMs reference catalogue entries by NAME. The server resolves the
+// name on read so the SPA gets the full VMSSHKey shape (fingerprint,
+// type, public_key, comment) ready to render. Catalogue changes
+// propagate : if the operator deletes a catalogue entry, every VM
+// referencing it loses access on the next host publish.
+//
+// Wire to the in-guest weft-vm-agent (NATS subscriber) is unchanged
+// — only the SPA + host store handle names.
 
 export interface VMSSHKey {
-  fingerprint: string;  // "SHA256:<b64>" — stable identity for DELETE
-  type: string;         // "ssh-ed25519" | "ssh-rsa" | …
-  public_key: string;   // full "<type> <b64> [comment]" line
+  name: string;         // catalogue name (new ; was absent in the raw-blob era)
+  fingerprint: string;
+  type: string;
+  public_key: string;
   comment: string;
-  added_at: string;
+  added_at: string;     // when this VM was assigned the key
 }
 
-export const listVMKeys = (name: string) =>
-  getJSON<VMSSHKey[]>(`/microvms/${encodeURIComponent(name)}/keys`);
+export const listVMKeys = (vmName: string) =>
+  getJSON<VMSSHKey[]>(`/microvms/${encodeURIComponent(vmName)}/keys`);
 
-export const addVMKey = (name: string, publicKey: string) =>
-  postJSON<VMSSHKey>(`/microvms/${encodeURIComponent(name)}/keys`, { public_key: publicKey });
+// Assign one catalogue entry by name (idempotent).
+export const addVMKey = (vmName: string, catalogueName: string) =>
+  postJSON<VMSSHKey>(`/microvms/${encodeURIComponent(vmName)}/keys`, { name: catalogueName });
 
-export const removeVMKey = (name: string, fingerprint: string) =>
-  deleteJSON(`/microvms/${encodeURIComponent(name)}/keys/${encodeURIComponent(fingerprint)}`);
+// Replace the entire assignment set ; used by the multi-select picker.
+export const setVMKeys = (vmName: string, catalogueNames: string[]) =>
+  putJSON<VMSSHKey[]>(`/microvms/${encodeURIComponent(vmName)}/keys`, { names: catalogueNames });
+
+// Remove one assignment by catalogue name.
+export const removeVMKey = (vmName: string, catalogueName: string) =>
+  deleteJSON(`/microvms/${encodeURIComponent(vmName)}/keys/${encodeURIComponent(catalogueName)}`);
 
 // ---- Per-VM properties (host-set annotations) ----
 //
