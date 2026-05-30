@@ -1,9 +1,22 @@
 <script lang="ts">
-  import type { Column, Row } from '../api';
+  import { startVM, stopVM, deleteVM, deleteVolume, deleteNetwork, type Column, type Row } from '../api';
 
-  let { columns, rows }: { columns: Column[]; rows: Row[] } = $props();
+  let {
+    columns,
+    rows,
+    resourceId = '',
+    onChange,
+  }: {
+    columns: Column[];
+    rows: Row[];
+    // Optional : the registry id this table represents (e.g. "microvms",
+    // "volumes"). Used to pick the right live mutator from the row
+    // dropdown. Tables that don't pass it stay read-only.
+    resourceId?: string;
+    // Called after a successful mutation so the parent can refresh.
+    onChange?: () => void;
+  } = $props();
 
-  // Map a status-ish value to a DaisyUI badge colour.
   function statusClass(v: unknown): string {
     switch (String(v).toLowerCase()) {
       case 'active':
@@ -44,7 +57,7 @@
   function cmp(a: unknown, b: unknown): number {
     const ae = isEmpty(a);
     const be = isEmpty(b);
-    if (ae || be) return ae === be ? 0 : ae ? 1 : -1; // empties last
+    if (ae || be) return ae === be ? 0 : ae ? 1 : -1;
     if (typeof a === 'number' && typeof b === 'number') return a - b;
     if (typeof a === 'boolean' && typeof b === 'boolean') return (a ? 1 : 0) - (b ? 1 : 0);
     return String(a).localeCompare(String(b), undefined, { numeric: true });
@@ -55,7 +68,71 @@
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...rows].sort((x, y) => cmp(x[sortKey], y[sortKey]) * dir);
   });
+
+  // ---- row actions ----
+  //
+  // Tables that pass resourceId light up the dropdown with real
+  // mutators. Errors surface as a banner so the operator sees what
+  // went wrong (typically a 503 in mock mode, or a 502 with the gRPC
+  // status text).
+  let actionError = $state('');
+  let busyRow = $state<string | null>(null);
+
+  function rowKey(r: Row): string {
+    return (r.uuid as string) || (r.name as string) || '';
+  }
+
+  async function runAction(action: 'start' | 'stop' | 'delete', r: Row) {
+    actionError = '';
+    const key = rowKey(r);
+    busyRow = key;
+    try {
+      switch (resourceId) {
+        case 'microvms': {
+          const name = r.name as string;
+          if (action === 'start')  await startVM(name);
+          if (action === 'stop')   await stopVM(name);
+          if (action === 'delete') {
+            if (!confirm(`Delete microVM ${name} ? This is irreversible.`)) break;
+            await deleteVM(name);
+          }
+          break;
+        }
+        case 'volumes': {
+          if (action !== 'delete') break;
+          const uuid = r.uuid as string;
+          if (!confirm(`Delete volume ${r.name} ? This is irreversible.`)) break;
+          await deleteVolume(uuid);
+          break;
+        }
+        case 'networks': {
+          if (action !== 'delete') break;
+          const uuid = r.uuid as string;
+          if (!confirm(`Delete network ${r.name} ?`)) break;
+          await deleteNetwork(uuid);
+          break;
+        }
+      }
+      onChange?.();
+    } catch (e) {
+      actionError = String(e);
+    } finally {
+      busyRow = null;
+    }
+  }
+
+  // Which actions does the row dropdown surface, given the resource ?
+  const showStartStop = $derived(resourceId === 'microvms');
+  const showDelete    = $derived(['microvms', 'volumes', 'networks'].includes(resourceId));
+  const liveWired     = $derived(showStartStop || showDelete);
 </script>
+
+{#if actionError}
+  <div class="alert alert-error mb-2 text-sm">
+    {actionError}
+    <button class="ml-auto btn btn-xs btn-ghost" onclick={() => (actionError = '')}>dismiss</button>
+  </div>
+{/if}
 
 <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
   <table class="table table-zebra table-sm">
@@ -76,8 +153,6 @@
     </thead>
     <tbody>
       {#each sorted as r, i (i)}
-        <!-- data-name carries the row's `name` cell so a wrapper can
-             intercept clicks (e.g. TenantsPage drill-down). -->
         <tr class="hover" data-name={typeof r.name === 'string' ? r.name : ''}>
           {#each columns as c (c.key)}
             <td>
@@ -98,11 +173,24 @@
           {/each}
           <td class="text-right">
             <div class="dropdown dropdown-end">
-              <div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
-              <ul class="menu dropdown-content z-10 w-32 rounded-box bg-base-100 p-1 shadow">
-                <li><button>View</button></li>
-                <li><button>Edit</button></li>
-                <li><button class="text-error">Delete</button></li>
+              <div tabindex="0" role="button" class="btn btn-ghost btn-xs">
+                {#if busyRow === rowKey(r)}
+                  <span class="loading loading-spinner loading-xs"></span>
+                {:else}⋯{/if}
+              </div>
+              <ul class="menu dropdown-content z-10 w-36 rounded-box bg-base-100 p-1 shadow">
+                {#if showStartStop}
+                  <li><button onclick={() => runAction('start', r)}>Start</button></li>
+                  <li><button onclick={() => runAction('stop',  r)}>Stop</button></li>
+                {/if}
+                {#if !liveWired}
+                  <li class="disabled px-2 py-1 text-xs text-base-content/50">read-only</li>
+                {/if}
+                {#if showDelete}
+                  <li>
+                    <button class="text-error" onclick={() => runAction('delete', r)}>Delete</button>
+                  </li>
+                {/if}
               </ul>
             </div>
           </td>
