@@ -54,6 +54,7 @@ func mountAPI(mux *http.ServeMux, scope Scope) huma.API {
 	mountSSHKeysCatalogueAPI(api)
 	mountMicroVMMetadataAPI(api)
 	mountMicroVMLifecycleAPI(api)
+	mountNetworkingAPI(api, scope)
 
 	return api
 }

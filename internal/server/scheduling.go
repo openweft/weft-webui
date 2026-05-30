@@ -12,12 +12,9 @@
 package server
 
 import (
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // SchedulingRule is the in-memory shape. The Placement field is the
@@ -187,65 +184,5 @@ func (s *schedulingStore) delete(name string) error {
 // handleCreateSchedulingRule : POST /api/scheduling-rules
 //
 // Body shape (every field optional except Name and Selector) :
-//
-//   { Name, Count, Selector, AZ, Rack, Host, Project }
-//
-// Project defaults to the session's tenant-scoped project when set
-// (so the operator doesn't have to repeat themselves).
-func handleCreateSchedulingRule(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name, Selector, AZ, Rack, Host, Project string
-		Count                                   int
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, errBadReq("invalid body: "+err.Error()))
-		return
-	}
-	if body.Project == "" {
-		_, body.Project = scopeFromRequest(r)
-	}
-	if body.Project == "" {
-		body.Project = "platform"
-	}
-	// Live-first via weft-network ; fall back to the local store on
-	// Unimplemented so the affordance keeps working before the
-	// controller catches up.
-	if liveNet != nil {
-		_, err := liveNet.CreateSchedulingRule(r.Context(), wclient.CreateSchedulingRuleNetOpts{
-			Project: body.Project, Name: body.Name, Count: int32(body.Count),
-			Selector: body.Selector, AZ: body.AZ, Rack: body.Rack, Host: body.Host,
-		})
-		if err == nil {
-			userAction(r, "scheduling-rule.create")
-			writeJSON(w, http.StatusCreated, map[string]any{
-				"name": body.Name, "project": body.Project,
-			})
-			return
-		}
-		if !wclient.IsUnimplemented(err) {
-			writeErr(w, &httpErr{http.StatusBadGateway, "net: " + err.Error()})
-			return
-		}
-	}
-	rule := &SchedulingRule{
-		Name: body.Name, Count: body.Count, Selector: body.Selector,
-		AZ: body.AZ, Rack: body.Rack, Host: body.Host,
-		Project: body.Project,
-	}
-	if err := schedulingDB.create(rule); err != nil {
-		writeErr(w, err)
-		return
-	}
-	userAction(r, "scheduling-rule.create")
-	writeJSON(w, http.StatusCreated, ruleToRow(rule))
-}
-
-// handleDeleteSchedulingRule : DELETE /api/scheduling-rules/{name}
-func handleDeleteSchedulingRule(w http.ResponseWriter, r *http.Request) {
-	if err := schedulingDB.delete(r.PathValue("name")); err != nil {
-		writeErr(w, err)
-		return
-	}
-	userAction(r, "scheduling-rule.delete")
-	w.WriteHeader(http.StatusNoContent)
-}
+// (Scheduling-rule create/delete handlers moved to huma —
+// see api_networking.go.)
