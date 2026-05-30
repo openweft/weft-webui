@@ -44,7 +44,7 @@ func mountVolumesAPI(api huma.API) {
 		Summary:       "Create a volume (live-only)",
 		Tags:          []string{"volumes"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createVolumeInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *createVolumeInput) (*createVolumeOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -59,8 +59,8 @@ func mountVolumesAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "volume.create")
-		return &passthroughOutput{Body: map[string]any{
-			"name": in.Body.Name, "project": project, "size_gib": in.Body.SizeGiB,
+		return &createVolumeOutput{Body: CreateVolumeResp{
+			Name: in.Body.Name, Project: project, SizeGiB: in.Body.SizeGiB,
 		}}, nil
 	})
 
@@ -92,7 +92,7 @@ func mountVolumesAPI(api huma.API) {
 		Summary:     "Attach a volume to a VM (live-only)",
 		Description: "weft-agent keys on VM UUID, not name ; the caller looks up the VM UUID from VMStatus or ListVMs before calling.",
 		Tags:        []string{"volumes"},
-	}, func(ctx context.Context, in *attachVolumeInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *attachVolumeInput) (*attachVolumeOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -103,7 +103,7 @@ func mountVolumesAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "volume.attach")
-		return &passthroughOutput{Body: map[string]string{"volume": in.UUID, "vm": in.Body.VMUUID}}, nil
+		return &attachVolumeOutput{Body: AttachVolumeResp{Volume: in.UUID, VM: in.Body.VMUUID}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -136,7 +136,7 @@ func mountSharesAPI(api huma.API) {
 		Description:   "POSIX (RWX) face of CubeFS. Live-first via weft-agent ; falls back to the mock store on Unimplemented so the dashboard stays useful before the daemon catches up with CreateShare.",
 		Tags:          []string{"shares"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createShareInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *createShareInput) (*createShareOutput, error) {
 		project := in.Body.Project
 		if project == "" {
 			project = resolveProjectOrPlatform(ctx, "")
@@ -156,10 +156,10 @@ func mountSharesAPI(api huma.API) {
 			uuid, err := live.CreateShare(ctx, project, in.Body.Name, in.Body.SizeGB, in.Body.ReadOnly, in.Body.Backend)
 			if err == nil {
 				userActionCtx(ctx, "share.create")
-				return &passthroughOutput{Body: map[string]any{
-					"name": in.Body.Name, "project": project, "uuid": uuid,
-					"size_gb": in.Body.SizeGB, "readonly": in.Body.ReadOnly,
-					"status": "provisioning",
+				return &createShareOutput{Body: CreateShareResp{
+					Name: in.Body.Name, Project: project, UUID: uuid,
+					SizeGB: in.Body.SizeGB, ReadOnly: in.Body.ReadOnly,
+					Status: "provisioning",
 				}}, nil
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -174,7 +174,11 @@ func mountSharesAPI(api huma.API) {
 			return nil, hideHTTPErr(err)
 		}
 		userActionCtx(ctx, "share.create")
-		return &passthroughOutput{Body: shareToRow(sh)}, nil
+		return &createShareOutput{Body: CreateShareResp{
+			Name: sh.Name, Project: sh.Project,
+			SizeGB: sh.SizeGB, ReadOnly: sh.ReadOnly,
+			Status: "provisioning",
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -566,3 +570,37 @@ type setBucketPolicyInput struct {
 	Name string `path:"name" doc:"Bucket name" minLength:"3" maxLength:"63"`
 	Body BucketPolicy
 }
+
+// ---- typed create-response shapes --------------------------------
+
+// CreateVolumeResp echoes the parameters the volume was minted with.
+// The agent's actual record (with UUID, status, …) shows up via
+// the volumes listing after creation.
+type CreateVolumeResp struct {
+	Name    string `json:"name"`
+	Project string `json:"project"`
+	SizeGiB int64  `json:"size_gib"`
+}
+
+// AttachVolumeResp acknowledges a volume-to-VM attach. Both fields
+// are UUIDs ; the caller already knows which VM it asked for, but
+// echoing keeps the response self-describing for log dumps.
+type AttachVolumeResp struct {
+	Volume string `json:"volume"`
+	VM     string `json:"vm"`
+}
+
+// CreateShareResp covers both the live + mem fallback. UUID is empty
+// on the fallback path ; Status is always 'provisioning' for create.
+type CreateShareResp struct {
+	Name     string `json:"name"`
+	Project  string `json:"project"`
+	UUID     string `json:"uuid,omitempty"`
+	SizeGB   int64  `json:"size_gb"`
+	ReadOnly bool   `json:"read_only"`
+	Status   string `json:"status"`
+}
+
+type createVolumeOutput struct{ Body CreateVolumeResp }
+type attachVolumeOutput struct{ Body AttachVolumeResp }
+type createShareOutput  struct{ Body CreateShareResp }

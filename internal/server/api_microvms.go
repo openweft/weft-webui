@@ -350,12 +350,19 @@ type createVMInput struct {
 	}
 }
 
+// CreateVMResp is what /api/microvms POST returns : the VM's name +
+// resolved project, plus best-effort warnings from the post-create
+// orchestration (ingress setup, provisioning property writes). The
+// VM itself is created regardless ; warnings list the follow-ups
+// the operator can retry.
+type CreateVMResp struct {
+	Name     string   `json:"name"`
+	Project  string   `json:"project"`
+	Warnings []string `json:"warnings,omitempty" doc:"Best-effort post-create steps that didn't complete cleanly. The VM itself is created ; these are follow-ups the operator can retry."`
+}
+
 type createVMOutput struct {
-	Body struct {
-		Name     string   `json:"name"`
-		Project  string   `json:"project"`
-		Warnings []string `json:"warnings,omitempty" doc:"Best-effort post-create steps that didn't complete cleanly. The VM itself is created ; these are follow-ups the operator can retry."`
-	}
+	Body CreateVMResp
 }
 
 // passthroughOutput is the response shape for endpoints that

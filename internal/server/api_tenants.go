@@ -43,7 +43,7 @@ func mountTenantsAdminAPI(api huma.API) {
 		Description:   "Live-first via weft-agent ; falls back to the mock store on Unimplemented so the affordance keeps working before the daemon catches up.",
 		Tags:          []string{"tenants"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createTenantInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *createTenantInput) (*createTenantOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !isClusterAdmin(u) {
 			return nil, huma.Error403Forbidden("cluster admin required")
@@ -51,7 +51,7 @@ func mountTenantsAdminAPI(api huma.API) {
 		if live != nil {
 			uuid, err := live.CreateTenant(ctx, in.Body.Name, in.Body.Domain)
 			if err == nil {
-				return &passthroughOutput{Body: map[string]string{"name": in.Body.Name, "uuid": uuid}}, nil
+				return &createTenantOutput{Body: CreateTenantResp{Name: in.Body.Name, UUID: uuid}}, nil
 			}
 			if !wclient.IsUnimplemented(err) {
 				return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -60,7 +60,7 @@ func mountTenantsAdminAPI(api huma.API) {
 		if err := tenantsDB.createTenant(in.Body.Name, in.Body.Domain); err != nil {
 			return nil, hideHTTPErr(err)
 		}
-		return &passthroughOutput{Body: map[string]string{"name": in.Body.Name}}, nil
+		return &createTenantOutput{Body: CreateTenantResp{Name: in.Body.Name}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -69,7 +69,7 @@ func mountTenantsAdminAPI(api huma.API) {
 		Path:        "/api/tenants/{name}/admins",
 		Summary:     "Elect a tenant admin (cluster admin)",
 		Tags:        []string{"tenants"},
-	}, func(ctx context.Context, in *addTenantAdminInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *addTenantAdminInput) (*emailOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !isClusterAdmin(u) {
 			return nil, huma.Error403Forbidden("cluster admin required")
@@ -77,7 +77,7 @@ func mountTenantsAdminAPI(api huma.API) {
 		if live != nil {
 			if uuid := liveLookupTenantUUID(ctx, in.Name); uuid != "" {
 				if err := live.AddTenantAdmin(ctx, uuid, in.Body.Email); err == nil {
-					return &passthroughOutput{Body: map[string]string{"email": in.Body.Email}}, nil
+					return &emailOutput{Body: EmailResp{Email: in.Body.Email}}, nil
 				} else if !wclient.IsUnimplemented(err) {
 					return nil, huma.Error502BadGateway("live: " + err.Error())
 				}
@@ -86,9 +86,25 @@ func mountTenantsAdminAPI(api huma.API) {
 		if err := tenantsDB.addTenantAdmin(in.Name, in.Body.Email); err != nil {
 			return nil, hideHTTPErr(err)
 		}
-		return &passthroughOutput{Body: map[string]string{"email": in.Body.Email}}, nil
+		return &emailOutput{Body: EmailResp{Email: in.Body.Email}}, nil
 	})
 }
+
+// CreateTenantResp echoes the new tenant's name + uuid. UUID is empty
+// when the daemon didn't acknowledge it (Unimplemented fallback) ;
+// callers treat it as cosmetic.
+type CreateTenantResp struct {
+	Name string `json:"name"`
+	UUID string `json:"uuid,omitempty"`
+}
+type createTenantOutput struct{ Body CreateTenantResp }
+
+// EmailResp is the minimal acknowledgement for endpoints that just
+// confirm a membership grant — add-tenant-admin and similar.
+type EmailResp struct {
+	Email string `json:"email"`
+}
+type emailOutput struct{ Body EmailResp }
 
 // ---- Tenant-admin (delegated) ------------------------------------
 
@@ -100,7 +116,7 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		Summary:       "Add a project to a tenant (tenant admin)",
 		Tags:          []string{"tenants", "projects"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *addTenantProjectInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *addTenantProjectInput) (*tenantProjectOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !tenantsDB.isTenantAdmin(u, in.Name) {
 			return nil, huma.Error403Forbidden("tenant admin required")
@@ -121,8 +137,8 @@ func mountTenantsDelegatedAPI(api huma.API) {
 			tenantsDB.setProjectUUID(p.Name, liveUUID)
 			p.UUID = liveUUID
 		}
-		return &passthroughOutput{Body: map[string]any{
-			"name": p.Name, "uuid": p.UUID, "tenant": p.Tenant, "created": p.Created,
+		return &tenantProjectOutput{Body: TenantProjectResp{
+			Name: p.Name, UUID: p.UUID, Tenant: p.Tenant, Created: p.Created,
 		}}, nil
 	})
 
@@ -132,7 +148,7 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		Path:        "/api/tenants/{name}/members",
 		Summary:     "Add a member to a tenant (tenant admin)",
 		Tags:        []string{"tenants"},
-	}, func(ctx context.Context, in *addTenantMemberInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *addTenantMemberInput) (*memberOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !tenantsDB.isTenantAdmin(u, in.Name) {
 			return nil, huma.Error403Forbidden("tenant admin required")
@@ -140,7 +156,7 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		if live != nil {
 			if uuid := liveLookupTenantUUID(ctx, in.Name); uuid != "" {
 				if err := live.AddTenantMember(ctx, uuid, in.Body.Email, in.Body.Groups); err == nil {
-					return &passthroughOutput{Body: map[string]any{"email": in.Body.Email, "groups": in.Body.Groups}}, nil
+					return &memberOutput{Body: MemberResp{Email: in.Body.Email, Groups: in.Body.Groups}}, nil
 				} else if !wclient.IsUnimplemented(err) {
 					return nil, huma.Error502BadGateway("live: " + err.Error())
 				}
@@ -149,7 +165,7 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		if err := tenantsDB.addMember(in.Name, in.Body.Email, in.Body.Groups); err != nil {
 			return nil, hideHTTPErr(err)
 		}
-		return &passthroughOutput{Body: map[string]any{"email": in.Body.Email, "groups": in.Body.Groups}}, nil
+		return &memberOutput{Body: MemberResp{Email: in.Body.Email, Groups: in.Body.Groups}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -159,7 +175,7 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		Summary:     "Grant a per-project role to a user (tenant admin)",
 		Description: "The role string is webui-side metadata for now (weft-agent has membership but no per-project role enum yet) ; we mirror it on the store and also call AddProjectMember so weft-agent sees the membership.",
 		Tags:        []string{"projects"},
-	}, func(ctx context.Context, in *grantProjectRoleInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *grantProjectRoleInput) (*roleOutput, error) {
 		u := auth.UserFromContext(ctx)
 		tenant, ok := tenantsDB.projectTenant(in.Name)
 		if !ok {
@@ -190,9 +206,35 @@ func mountTenantsDelegatedAPI(api huma.API) {
 		if err := tenantsDB.grantRole(in.Name, in.Body.Email, in.Body.Role); err != nil {
 			return nil, hideHTTPErr(err)
 		}
-		return &passthroughOutput{Body: map[string]string{"email": in.Body.Email, "role": in.Body.Role}}, nil
+		return &roleOutput{Body: RoleResp{Email: in.Body.Email, Role: in.Body.Role}}, nil
 	})
 }
+
+// TenantProjectResp is what add-tenant-project echoes : the new
+// project's name + UUID (from weft-agent if live, mock store
+// otherwise) + the tenant it lives under + its creation timestamp.
+type TenantProjectResp struct {
+	Name    string `json:"name"`
+	UUID    string `json:"uuid"`
+	Tenant  string `json:"tenant"`
+	Created string `json:"created"`
+}
+type tenantProjectOutput struct{ Body TenantProjectResp }
+
+// MemberResp is the typed shape add-tenant-member returns : the
+// email that was just granted access + the groups it joined.
+type MemberResp struct {
+	Email  string   `json:"email"`
+	Groups []string `json:"groups"`
+}
+type memberOutput struct{ Body MemberResp }
+
+// RoleResp is the per-project role grant acknowledgement.
+type RoleResp struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+type roleOutput struct{ Body RoleResp }
 
 // ---- Read (detail + quotas) --------------------------------------
 

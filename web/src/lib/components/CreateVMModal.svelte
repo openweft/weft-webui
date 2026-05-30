@@ -162,7 +162,7 @@
           source_ref: provRef.trim(),
           script: scriptBody,
         } : undefined,
-      }) as { name: string; project: string; warnings?: string[] };
+      });
       warnings = res.warnings ?? [];
       onCreated();
       // Surface warnings if any — otherwise close immediately.
