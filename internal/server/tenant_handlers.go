@@ -177,3 +177,93 @@ func emailOf(u *auth.User) string {
 	}
 	return u.Email
 }
+
+// --- Quotas ----------------------------------------------------------
+
+// handleGetTenantQuota : GET /api/tenants/{name}/quota
+// Returns {cap, allocated, remaining{dim → {used,cap,free}}}.
+func handleGetTenantQuota(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+	if !tenantsDB.isMember(u, name) {
+		writeErr(w, errNotFound("tenant"))
+		return
+	}
+	v, ok := tenantsDB.tenantQuotaView(name)
+	if !ok {
+		writeErr(w, errNotFound("tenant"))
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// handleSetTenantQuota : PUT /api/tenants/{name}/quota  {<Quotas>}
+// Cluster-admin only. The handler rejects a cap that's below current
+// allocation so a tenant admin doesn't end up with negative remaining.
+func handleSetTenantQuota(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
+	if !isClusterAdmin(u) {
+		writeErr(w, errForbidden("cluster admin required"))
+		return
+	}
+	var body Quotas
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.setTenantQuota(r.PathValue("name"), body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, _ := tenantsDB.tenantQuotaView(r.PathValue("name"))
+	writeJSON(w, http.StatusOK, v)
+}
+
+// handleGetProjectQuota : GET /api/projects/{name}/quota
+func handleGetProjectQuota(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+	tenant, ok := tenantsDB.projectTenant(name)
+	if !ok {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	if !tenantsDB.isMember(u, tenant) {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	v, ok := tenantsDB.projectQuotaView(name)
+	if !ok {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// handleSetProjectQuota : PUT /api/projects/{name}/quota  {<Quotas>}
+// Tenant-admin of the project's tenant (cluster admins pass implicitly).
+// Validated against the tenant cap : sum(other projects) + new ≤ cap.
+func handleSetProjectQuota(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	u := auth.UserFromContext(r.Context())
+	tenant, ok := tenantsDB.projectTenant(name)
+	if !ok {
+		writeErr(w, errNotFound("project"))
+		return
+	}
+	if !tenantsDB.isTenantAdmin(u, tenant) {
+		writeErr(w, errForbidden("tenant admin required"))
+		return
+	}
+	var body Quotas
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := tenantsDB.setProjectQuota(name, body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, _ := tenantsDB.projectQuotaView(name)
+	writeJSON(w, http.StatusOK, v)
+}
