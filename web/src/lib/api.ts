@@ -17,8 +17,21 @@ export interface ResourceMeta {
 
 export type Row = Record<string, unknown>;
 
+// 401 from any API call means the session is missing/expired. We send
+// the user through the OIDC login flow and ask the backend to bounce
+// them back to the page they were on. Done at the api-helper layer so
+// every caller (Sidebar, Overview, tables, …) inherits the behaviour.
+function handleUnauthorised(): never {
+  const back = encodeURIComponent(location.pathname + location.search + location.hash);
+  location.assign(`/api/auth/login?return_to=${back}`);
+  // Throw so callers awaiting the promise don't try to use the empty
+  // body ; the redirect is happening on the next tick.
+  throw new Error('unauthenticated');
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`, { headers: { Accept: 'application/json' } });
+  if (res.status === 401) handleUnauthorised();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
@@ -129,7 +142,37 @@ export const getQuotas = () => getJSON<Quota[]>('/quotas');
 
 async function postForm(path: string, form: FormData): Promise<Row> {
   const res = await fetch(path, { method: 'POST', body: form });
+  if (res.status === 401) handleUnauthorised();
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((body as { error?: string }).error ?? `${res.status} ${res.statusText}`);
   return body as Row;
+}
+
+// ---- Auth / current user ----
+
+export interface Me {
+  sub: string;
+  email: string;
+  name: string;
+  groups: string[];
+  project: string;
+  initials: string;
+  dev: boolean;
+}
+
+export const getMe = () => getJSON<Me>('/me');
+
+export async function setProject(project: string): Promise<void> {
+  const res = await fetch('/api/session/project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
+  });
+  if (res.status === 401) handleUnauthorised();
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  location.assign('/');
 }
