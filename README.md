@@ -36,15 +36,25 @@ instances, flavors, and hosts.
 ## Run
 
 ```sh
-# One-off build + serve (SPA + API on http://localhost:8080)
+# One-off build + serve : user UI on :8080 only (admin port disabled)
 task run
-# → open http://localhost:8080
+# → http://localhost:8080
+
+# Both UIs at once — user :8080 + admin 127.0.0.1:8088 (dev mode, no auth)
+task run:dual
+# → user :  http://localhost:8080
+# → admin : http://127.0.0.1:8088
 
 # Live-reload development — two terminals :
-task dev:api      # Go API on :8080
-task dev:web      # Vite dev server on :5173 (proxies /api → :8080)
-# → open http://localhost:5173
+task dev:api          # user-only API on :8080
+task dev:api:dual     # both APIs (user :8080, admin 127.0.0.1:8088)
+task dev:web          # Vite dev server on :5173 (proxies /api → :8080)
+# → open http://localhost:5173 (user UI through Vite)
 ```
+
+The admin UI is the same SPA — it just sees more sidebar entries and
+mounts `/metrics` because the backend returned the admin-scoped resource
+catalogue.
 
 Without `task`:
 

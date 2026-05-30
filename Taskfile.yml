@@ -25,13 +25,30 @@ tasks:
       - go build -o {{.BIN}} .
 
   run:
-    desc: Build the frontend and run the server (serves SPA + API on :8080)
+    desc: Build the frontend and run the user-UI on :8080 (admin port disabled)
     deps: [build-web]
     cmds:
       - go run . {{.CLI_ARGS}}
 
+  run:dual:
+    desc: Build + run BOTH UIs — user :8080, admin 127.0.0.1:8088 (dev mode, no auth)
+    deps: [build-web]
+    env:
+      WEBUI_DEV_MODE: "true"
+      WEBUI_ADMIN_ADDR: "127.0.0.1:8088"
+    cmds:
+      - go run . {{.CLI_ARGS}}
+
   dev:api:
-    desc: Run only the Go API (no SPA build) on :8080
+    desc: Run only the Go API on :8080 (no SPA build, no admin)
+    cmds:
+      - go run . {{.CLI_ARGS}}
+
+  dev:api:dual:
+    desc: API-only dev with BOTH listeners (user :8080, admin 127.0.0.1:8088)
+    env:
+      WEBUI_DEV_MODE: "true"
+      WEBUI_ADMIN_ADDR: "127.0.0.1:8088"
     cmds:
       - go run . {{.CLI_ARGS}}
 
