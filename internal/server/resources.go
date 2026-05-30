@@ -12,6 +12,23 @@ type Column struct {
 	Label string `json:"label"`
 }
 
+// Scope marks which persona is allowed to see a resource. Most types
+// are visible to both ; cluster-wide ones (Hosts, Users, Tenants) are
+// admin-only and never reach the user-facing port.
+type Scope uint8
+
+const (
+	ScopeUser  Scope = 1 << iota // visible on the user UI (project-scoped)
+	ScopeAdmin                   // visible on the admin UI (cluster-wide)
+)
+
+// ScopeBoth is the default for project-scoped resources : the user
+// sees their own, the admin sees a global view (vzd applies the filter).
+const ScopeBoth = ScopeUser | ScopeAdmin
+
+// Has reports whether s grants p.
+func (s Scope) Has(p Scope) bool { return s&p != 0 }
+
 // Resource is one Weft object type surfaced in the UI.
 type Resource struct {
 	ID      string           `json:"id"`      // url slug, e.g. "floating-ips"
@@ -19,6 +36,18 @@ type Resource struct {
 	Section string           `json:"section"` // grouping, e.g. "Network"
 	Columns []Column         `json:"columns"`
 	Rows    []map[string]any `json:"-"` // served separately via /api/resources/{id}
+	// Scope defaults to ScopeBoth (zero value treated as ScopeBoth via
+	// resolveScope). Set explicitly to ScopeAdmin for cluster-only types.
+	Scope Scope `json:"-"`
+}
+
+// resolveScope treats the zero value as ScopeBoth so existing entries
+// don't have to set a field.
+func resolveScope(s Scope) Scope {
+	if s == 0 {
+		return ScopeBoth
+	}
+	return s
 }
 
 func cols(pairs ...string) []Column {
@@ -41,7 +70,7 @@ func row(pairs ...any) map[string]any {
 var registry = []Resource{
 	// ---------- Identity ----------
 	{
-		ID: "tenants", Label: "Tenants", Section: "Identity",
+		ID: "tenants", Label: "Tenants", Section: "Identity", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "domain", "Domain", "projects", "Projects", "status", "Status"),
 		Rows: []map[string]any{
 			row("name", "acme", "domain", "acme.example", "projects", 4, "status", "active"),
@@ -63,7 +92,7 @@ var registry = []Resource{
 	{
 		// Mirrors UserInfo (display_name → name, email, oidc_issuer → issuer,
 		// groups, last_seen). The ResourceTable bolds the "name" key.
-		ID: "users", Label: "Users", Section: "Identity",
+		ID: "users", Label: "Users", Section: "Identity", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer", "groups", "Groups", "last_seen", "Last seen"),
 		Rows: []map[string]any{
 			row("name", "Yannick", "email", "yann@acme.example", "issuer", "dex", "groups", "admins, developers", "last_seen", "2026-05-27"),
@@ -72,7 +101,7 @@ var registry = []Resource{
 		},
 	},
 	{
-		ID: "groups", Label: "Groups", Section: "Identity",
+		ID: "groups", Label: "Groups", Section: "Identity", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "description", "Description", "members", "Members"),
 		Rows: []map[string]any{
 			row("name", "admins", "description", "Platform operators", "members", 3),
@@ -207,7 +236,7 @@ var registry = []Resource{
 		// hypervisor, state → status, last_seen). cpu/ram aren't on the
 		// HostInfo proto — they live with the host's runtime stats and
 		// would come from a separate RPC ; dropped from this view.
-		ID: "hosts", Label: "Hosts", Section: "Admin",
+		ID: "hosts", Label: "Hosts", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "arch", "Arch", "hypervisor", "Hypervisor", "status", "Status", "last_seen", "Last seen"),
 		Rows: []map[string]any{
 			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "hypervisor", "apple-vz", "status", "active", "last_seen", "2026-05-27"),

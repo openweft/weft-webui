@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/openweft/weft-webui/internal/telemetry"
 )
 
 // withSecurityHeaders sets a conservative set of defensive HTTP
@@ -84,6 +86,27 @@ func requestIDFromContext(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// withMetrics records request count + duration histograms for every
+// handled request. persona ("user" / "admin") lets dashboards split
+// the two listeners ; the route label is normalised so that high-card
+// path parameters (resource id, bucket name) don't blow the TSDB.
+//
+// Skips itself when rec is nil so the package stays testable without
+// a real registry.
+func withMetrics(rec *telemetry.Recorder, persona string, next http.Handler) http.Handler {
+	if rec == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.HTTPInflight.Inc()
+		defer rec.HTTPInflight.Dec()
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sr, r)
+		rec.ObserveHTTP(persona, r.Method, telemetry.RouteLabel(r.Method, r.URL.Path), sr.status, time.Since(start))
+	})
 }
 
 func withLogging(logger *slog.Logger, next http.Handler) http.Handler {

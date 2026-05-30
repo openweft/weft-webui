@@ -47,6 +47,10 @@ type OIDC struct {
 	provider  *oidc.Provider
 	session   *SessionStore
 	stateName string
+
+	// OnLogin is called with "success" or "failure" after each
+	// callback exchange. Hook for the telemetry recorder ; nil is OK.
+	OnLogin func(result string)
 }
 
 // NewOIDC reaches out to the IdP for its discovery document and builds
@@ -136,6 +140,14 @@ func (o *OIDC) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 // CallbackHandler implements GET /api/auth/callback.
 func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
+	// Record outcome on every exit so dashboards see failures distinctly.
+	result := "failure"
+	defer func() {
+		if o.OnLogin != nil {
+			o.OnLogin(result)
+		}
+	}()
+
 	blob, err := o.readStateCookie(r)
 	if err != nil {
 		http.Error(w, "auth: missing or invalid state cookie", http.StatusBadRequest)
@@ -209,6 +221,7 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	result = "success"
 	http.Redirect(w, r, blob.ReturnTo, http.StatusFound)
 }
 

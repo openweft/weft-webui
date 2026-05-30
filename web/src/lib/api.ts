@@ -160,6 +160,19 @@ export interface Me {
   dev: boolean;
 }
 
+// isAdminUI is a cheap heuristic : the admin handler surfaces "Hosts"
+// (resource id `hosts`) in /api/resources ; the user handler doesn't.
+// Awaited once at startup so the Topbar can switch its label without
+// the server needing to ship a separate /api/persona endpoint.
+export async function isAdminUI(): Promise<boolean> {
+  try {
+    const rs = await getResources();
+    return rs.some((r) => r.id === 'hosts' || r.id === 'tenants');
+  } catch {
+    return false;
+  }
+}
+
 export const getMe = () => getJSON<Me>('/me');
 
 export async function setProject(project: string): Promise<void> {

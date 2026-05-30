@@ -17,10 +17,12 @@ import (
 	"time"
 
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/telemetry"
 	vzclient "github.com/openweft/weft-client"
 	vzdv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func tsDate(unixNs int64) string {
@@ -33,17 +35,43 @@ func tsDate(unixNs int64) string {
 // Client is a lazily-dialed gRPC client to a local (or SSH-tunneled) weft
 // daemon. Safe for concurrent use — every method acquires the connection on
 // first call and reuses it for the lifetime of the process.
+//
+// Metrics is optional ; when set, every call is timed and counted
+// (weft_webui_grpc_*). nil means "no telemetry" — same code path,
+// zero allocations on the hot loop.
 type Client struct {
-	socket string
-	mu     sync.Mutex
-	conn   *grpc.ClientConn
-	rpc    vzdv1.VzdServiceClient
+	socket  string
+	mu      sync.Mutex
+	conn    *grpc.ClientConn
+	rpc     vzdv1.VzdServiceClient
+	Metrics *telemetry.Recorder
 }
 
 // New builds a client that will dial socket on the first RPC. socket follows
 // the weft-client convention : a unix path (e.g. ~/.vzd/vzd.sock) or an
 // ssh:// URL routed through the SSH transport.
 func New(socket string) *Client { return &Client{socket: socket} }
+
+// measured returns a deferable closure that records the call's
+// duration + canonical status when the method returns. Use as :
+//
+//	defer c.measured("ListProjects", &retErr)()
+//
+// The pointer is the only way to read the final named-return value
+// from a defer ; passing it directly captures the zero value.
+func (c *Client) measured(method string, errPtr *error) func() {
+	if c.Metrics == nil {
+		return func() {}
+	}
+	start := time.Now()
+	return func() {
+		st := "ok"
+		if errPtr != nil && *errPtr != nil {
+			st = status.Code(*errPtr).String()
+		}
+		c.Metrics.ObserveGRPC(method, st, time.Since(start))
+	}
+}
 
 func (c *Client) dial() (vzdv1.VzdServiceClient, error) {
 	c.mu.Lock()
@@ -103,7 +131,8 @@ func rpcCtx(parent context.Context) (context.Context, context.CancelFunc) {
 // frontend already declares for that resource. Mock rows share the same
 // shape (see internal/server/resources.go), so the table renders either.
 
-func (c *Client) ListProjects(ctx context.Context) ([]map[string]any, error) {
+func (c *Client) ListProjects(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListProjects", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -128,7 +157,8 @@ func (c *Client) ListProjects(ctx context.Context) ([]map[string]any, error) {
 	return out, nil
 }
 
-func (c *Client) ListVMs(ctx context.Context, project string) ([]map[string]any, error) {
+func (c *Client) ListVMs(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListVMs", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -155,7 +185,8 @@ func (c *Client) ListVMs(ctx context.Context, project string) ([]map[string]any,
 	return out, nil
 }
 
-func (c *Client) ListNetworks(ctx context.Context, project string) ([]map[string]any, error) {
+func (c *Client) ListNetworks(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListNetworks", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -179,7 +210,8 @@ func (c *Client) ListNetworks(ctx context.Context, project string) ([]map[string
 	return out, nil
 }
 
-func (c *Client) ListHosts(ctx context.Context, az string) ([]map[string]any, error) {
+func (c *Client) ListHosts(ctx context.Context, az string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListHosts", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -205,7 +237,8 @@ func (c *Client) ListHosts(ctx context.Context, az string) ([]map[string]any, er
 	return out, nil
 }
 
-func (c *Client) ListVolumes(ctx context.Context, project string) ([]map[string]any, error) {
+func (c *Client) ListVolumes(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListVolumes", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -230,7 +263,8 @@ func (c *Client) ListVolumes(ctx context.Context, project string) ([]map[string]
 	return out, nil
 }
 
-func (c *Client) ListUsers(ctx context.Context) ([]map[string]any, error) {
+func (c *Client) ListUsers(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListUsers", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err
@@ -254,7 +288,8 @@ func (c *Client) ListUsers(ctx context.Context) ([]map[string]any, error) {
 	return out, nil
 }
 
-func (c *Client) ListSecurityGroups(ctx context.Context, project string) ([]map[string]any, error) {
+func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListSecurityGroups", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
 		return nil, err

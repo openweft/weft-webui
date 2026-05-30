@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getMe, setProject, logout, type Me } from '../api';
+  import { getMe, setProject, logout, isAdminUI, type Me } from '../api';
 
   let { title }: { title: string } = $props();
 
@@ -17,6 +17,7 @@
   // to a placeholder while the request is in flight so the header
   // doesn't jump.
   let me = $state<Me | null>(null);
+  let admin = $state(false);
   let project = $state('');
   const projects = ['team-alpha', 'team-beta', 'research']; // until ListProjects exposes scoped lists
 
@@ -27,6 +28,11 @@
         project = u.project || projects[0];
       })
       .catch(() => { /* api.ts already triggered the login redirect */ });
+    isAdminUI().then((v) => { admin = v; });
+  });
+
+  $effect(() => {
+    document.title = admin ? 'Weft Admin' : 'Weft';
   });
 
   async function chooseProject(p: string) {
@@ -39,6 +45,9 @@
 <header class="flex h-16 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100 px-6">
   <h1 class="text-base font-semibold">{title}</h1>
 
+  {#if admin}
+    <span class="badge badge-error badge-sm uppercase tracking-wide">admin</span>
+  {/if}
   {#if me?.dev}
     <span class="badge badge-warning badge-sm">dev</span>
   {/if}
