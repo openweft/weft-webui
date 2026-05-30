@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/openweft/weft-client v0.0.0
+	github.com/openweft/weft-network-proto v0.0.0
 	github.com/openweft/weft-proto v0.0.0
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/oauth2 v0.36.0
@@ -45,5 +46,6 @@ replace (
 	github.com/grpc-transports/ssh => ../../grpc-transports/ssh
 	github.com/grpc-transports/wireguard => ../../grpc-transports/wireguard
 	github.com/openweft/weft-client => ../weft-client
+	github.com/openweft/weft-network-proto => ../weft-network-proto
 	github.com/openweft/weft-proto => ../weft-proto
 )
