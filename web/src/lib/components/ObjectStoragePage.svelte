@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getRows, getMe, createBucket, deleteBucket, type Me, type Row } from '../api';
   import FileBrowser from './FileBrowser.svelte';
+  import BucketPolicyModal from './BucketPolicyModal.svelte';
 
   let buckets = $state<Row[]>([]);
   let selected = $state<string>('');
@@ -23,6 +24,7 @@
   let current = $derived(buckets.find((b) => String(b.name) === selected));
 
   let createOpen = $state(false);
+  let policyOpen = $state(false);
   let bucketDialog: HTMLDialogElement;
   let newName = $state('');
   let creating = $state(false);
@@ -113,7 +115,10 @@
           <span>· {current.size}</span>
           {#if current.created}<span class="text-base-content/50">· created {current.created}</span>{/if}
           {#if canCreate}
-            <button class="ml-auto btn btn-xs btn-ghost text-error" onclick={delSelected}>
+            <button class="ml-auto btn btn-xs btn-ghost" onclick={() => (policyOpen = true)}>
+              Policy
+            </button>
+            <button class="btn btn-xs btn-ghost text-error" onclick={delSelected}>
               Delete
             </button>
           {/if}
@@ -125,6 +130,10 @@
     {/if}
   </section>
 </div>
+
+{#if selected}
+  <BucketPolicyModal bucket={selected} bind:open={policyOpen} />
+{/if}
 
 <dialog class="modal" bind:this={bucketDialog} onclose={() => (createOpen = false)}>
   <div class="modal-box max-w-md">

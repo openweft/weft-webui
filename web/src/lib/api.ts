@@ -142,6 +142,39 @@ export async function deleteBucket(name: string): Promise<void> {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
+// ---- Bucket access policy ----
+//
+// Trimmed AWS-style policy : flat statement list, one principal +
+// action + resource each. The server's vocabulary is closed (the
+// values below are the only ones accepted) ; widening the SPA editor
+// goes hand-in-hand with the server's validPolicyActions map.
+
+export type PolicyEffect = 'Allow' | 'Deny';
+export type PolicyAction =
+  | 's3:GetObject'
+  | 's3:PutObject'
+  | 's3:DeleteObject'
+  | 's3:ListBucket';
+
+export interface PolicyStatement {
+  effect: PolicyEffect;
+  principal: string; // OIDC sub or "*"
+  action: PolicyAction;
+  resource: string;  // "*" | "prefix/*" | exact key
+}
+
+export interface BucketPolicy {
+  version: string;
+  statements: PolicyStatement[];
+}
+
+export const getBucketPolicy = (name: string) =>
+  getJSON<BucketPolicy>(`/buckets/${encodeURIComponent(name)}/policy`);
+
+export async function setBucketPolicy(name: string, p: BucketPolicy): Promise<BucketPolicy> {
+  return putJSON<BucketPolicy>(`/buckets/${encodeURIComponent(name)}/policy`, p);
+}
+
 // ---- Network topology (mesh map) ----
 
 export interface TopoNetwork {
