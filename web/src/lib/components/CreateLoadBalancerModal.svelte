@@ -67,7 +67,7 @@
     <h3 class="text-lg font-bold">New load balancer</h3>
     <p class="text-sm text-base-content/60">
       In project <span class="font-mono">{project || '—'}</span>.
-      Envoy data plane on the per-DC infra microVMs, programmed by weft-network.
+      Caddy data plane embedded in each host's weft-agent, programmed by weft-network.
     </p>
 
     <div class="mt-4 grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr]">

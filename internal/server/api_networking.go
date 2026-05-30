@@ -869,7 +869,7 @@ func mountNetworkTopologyAPI(api huma.API) {
 		addRows("instances", "instance")
 		for _, name := range []string{
 			"etcd", "nats", "dex", "weft", "cubefs",
-			"weft-network", "envoy-dca", "envoy-dcb", "envoy-dcc",
+			"weft-network",
 			"otel-collector", "victoriametrics", "perses",
 		} {
 			nodes = append(nodes, TopoNode{
