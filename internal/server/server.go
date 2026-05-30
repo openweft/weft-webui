@@ -129,6 +129,14 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/tenants/{name}/members", handleAddTenantMember)
 	mux.HandleFunc("POST /api/projects/{name}/roles", handleGrantProjectRole)
 
+	// Quotas. Reads are member-gated ; writes are role-gated inside
+	// the handler (PUT /api/tenants/.../quota → cluster_admin ;
+	// PUT /api/projects/.../quota → tenant_admin).
+	mux.HandleFunc("GET /api/tenants/{name}/quota", handleGetTenantQuota)
+	mux.HandleFunc("PUT /api/tenants/{name}/quota", handleSetTenantQuota)
+	mux.HandleFunc("GET /api/projects/{name}/quota", handleGetProjectQuota)
+	mux.HandleFunc("PUT /api/projects/{name}/quota", handleSetProjectQuota)
+
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
 	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
