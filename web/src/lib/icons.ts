@@ -29,6 +29,8 @@ const QUOTA_ICONS: Record<string, string> = {
   image: `<rect x="3" y="5" width="18" height="14" rx="2" ${stroke}/><circle cx="8.5" cy="10" r="1.5" ${stroke}/><path d="m4 17 5-4 4 3 3-2 4 3" ${stroke}/>`,
   // GPU : card + fan motif, distinct from cpu (chip lattice).
   gpu: `<rect x="3" y="7" width="18" height="10" rx="1.5" ${stroke}/><circle cx="8" cy="12" r="2.4" ${stroke}/><path d="M8 9.6v4.8M5.6 12h4.8" ${stroke}/><path d="M14 11h4M14 13h4" ${stroke}/>`,
+  // Share : folder with arrow-out, distinct from volume (cylinder).
+  share: `<path d="M3 7h6l2 2h10v9H3z" stroke-linejoin="round" ${stroke}/><path d="M14 13.5 17 11l-3-2.5M11 11h6" stroke-linejoin="round" stroke-linecap="round" ${stroke}/>`,
 };
 
 export function quotaIcon(icon: string): string {
