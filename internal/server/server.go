@@ -42,6 +42,9 @@ func New(logger *slog.Logger, static fs.FS) http.Handler {
 	// --- Network topology (mesh map) ---
 	mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
 
+	// --- Quotas (overview) ---
+	mux.HandleFunc("GET /api/quotas", handleQuotas)
+
 	// --- SPA (everything else) ---
 	mux.Handle("/", spaHandler(static))
 
