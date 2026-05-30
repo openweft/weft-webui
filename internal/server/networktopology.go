@@ -32,7 +32,7 @@ func handleNetworkTopology(w http.ResponseWriter, r *http.Request) {
 	// service).
 	//
 	// Networking control plane :
-	//   weft-network  — bespoke controller, watches vzd events, reconciles
+	//   weft-network  — bespoke controller, watches weft-agent events, reconciles
 	//                   LoadBalancer/Router/Network into Envoy xDS +
 	//                   WireGuard configs. One per DC (HA via etcd leader).
 	//   envoy-dc{a,b,c} — data plane LBs, programmed by weft-network.

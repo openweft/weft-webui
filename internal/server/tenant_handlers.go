@@ -68,8 +68,8 @@ func handleAddTenantAdmin(w http.ResponseWriter, r *http.Request) {
 //
 //   - mock : tenantsDB.addProject mints a UUID, tracks the tenant ↔
 //            project mapping in-memory.
-//   - live : vzd's CreateProject is the source of truth ; we still
-//            need the tenant ↔ project mapping locally because vzd
+//   - live : weft-agent's CreateProject is the source of truth ; we still
+//            need the tenant ↔ project mapping locally because weft-agent
 //            has no tenant model yet, so we run the mock path with
 //            the daemon-issued UUID injected.
 func handleAddTenantProject(w http.ResponseWriter, r *http.Request) {
@@ -134,9 +134,9 @@ func handleAddTenantMember(w http.ResponseWriter, r *http.Request) {
 
 // handleGrantProjectRole : POST /api/projects/{name}/roles  {email, role}
 //
-// The role string is webui-side metadata for now (vzd has membership
+// The role string is webui-side metadata for now (weft-agent has membership
 // but no per-project role enum yet) — we mirror it on the store and,
-// when live, also call AddProjectMember so vzd sees the membership.
+// when live, also call AddProjectMember so weft-agent sees the membership.
 // Email→user UUID and name→project UUID resolutions go through the
 // daemon so the lookups match what other clients see.
 func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +165,7 @@ func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if projUUID == "" {
-			writeErr(w, errNotFound("project (not in vzd)"))
+			writeErr(w, errNotFound("project (not in weft-agent)"))
 			return
 		}
 		userUUID, err := live.UserUUIDByEmail(r.Context(), body.Email)
@@ -174,7 +174,7 @@ func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if userUUID == "" {
-			writeErr(w, errBadReq("user not found in vzd: "+body.Email))
+			writeErr(w, errBadReq("user not found in weft-agent: "+body.Email))
 			return
 		}
 		if err := live.AddProjectMember(r.Context(), projUUID, userUUID); err != nil {

@@ -23,7 +23,7 @@ const (
 )
 
 // ScopeBoth is the default for project-scoped resources : the user
-// sees their own, the admin sees a global view (vzd applies the filter).
+// sees their own, the admin sees a global view (weft-agent applies the filter).
 const ScopeBoth = ScopeUser | ScopeAdmin
 
 // Has reports whether s grants p.
@@ -82,9 +82,9 @@ var registry = []Resource{
 			"status", "Status"),
 	},
 	{
-		// Mirrors the vzd ProjectInfo proto (name/uuid/created) so live
+		// Mirrors the weft-agent ProjectInfo proto (name/uuid/created) so live
 		// and mock data share one shape ; see internal/wclient.ListProjects.
-		// The tenant column is the webui's addition — vzd carries the
+		// The tenant column is the webui's addition — weft-agent carries the
 		// tenant UUID on the project proto.
 		ID: "projects", Label: "Projects", Section: "Identity",
 		Columns: cols("name", "Name", "tenant", "Tenant", "uuid", "UUID", "created", "Created"),

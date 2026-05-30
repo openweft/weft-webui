@@ -13,7 +13,7 @@ import "context"
 
 // User is what middleware injects into the request context after
 // validating a session cookie. AccessToken is the OIDC access token,
-// suitable for forwarding to vzd over gRPC. IDToken is kept so that
+// suitable for forwarding to weft-agent over gRPC. IDToken is kept so that
 // the frontend can introspect groups / claims via /api/me if needed.
 type User struct {
 	Subject     string   `json:"sub"`

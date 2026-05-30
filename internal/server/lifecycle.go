@@ -1,5 +1,5 @@
 // lifecycle.go — row-action handlers (Start/Stop/Delete) wired
-// straight to vzd. These exist so the SPA's ResourceTable dropdown
+// straight to weft-agent. These exist so the SPA's ResourceTable dropdown
 // can do something real beyond viewing a row.
 //
 // All mutators require a live gRPC client : without --weft-socket the
@@ -8,9 +8,9 @@
 // silently.
 //
 // Auth model :
-//   - GET / list paths already filter by the session's bearer (vzd
+//   - GET / list paths already filter by the session's bearer (weft-agent
 //     enforces RBAC).
-//   - Mutations here trust vzd : if the daemon refuses, we proxy the
+//   - Mutations here trust weft-agent : if the daemon refuses, we proxy the
 //     gRPC status code through as a 4xx.
 package server
 

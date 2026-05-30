@@ -1,7 +1,7 @@
 // tenants.go — in-memory model for tenants + their projects, members
 // and per-project role assignments.
 //
-// This is the source-of-truth for the mock identity layer. When vzd
+// This is the source-of-truth for the mock identity layer. When weft-agent
 // grows the matching RPCs (CreateTenant, AddTenantMember, GrantRole, …)
 // the same shapes will go on the wire ; until then the dashboard
 // mutates this store and the rows for Tenants / Projects / Users /
@@ -543,7 +543,7 @@ func (s *tenantStore) addMember(tenant, email string, groups []string) error {
 }
 
 // grantRole assigns one role to one user on one project. Role values
-// are free-form here ; the server will validate against vzd's enum once
+// are free-form here ; the server will validate against weft-agent's enum once
 // wired.
 func (s *tenantStore) grantRole(projectName, email, role string) error {
 	email = strings.TrimSpace(strings.ToLower(email))
@@ -802,7 +802,7 @@ func (s *tenantStore) isMember(u *auth.User, tenant string) bool {
 }
 
 // setProjectUUID overrides the pseudo-UUID minted by addProject with
-// the real one returned by vzd's CreateProject. Idempotent — calling
+// the real one returned by weft-agent's CreateProject. Idempotent — calling
 // with a missing project is a no-op.
 func (s *tenantStore) setProjectUUID(name, uuid string) {
 	s.mu.Lock()
@@ -937,7 +937,7 @@ func contains(s []string, v string) bool {
 }
 
 // pseudoUUID returns a deterministic UUID-shaped string derived from
-// seed. Mock store only — vzd assigns the real ones. Two FNV-64 hashes
+// seed. Mock store only — weft-agent assigns the real ones. Two FNV-64 hashes
 // with different offsets fill the 32 hex nibbles, matched against the
 // 8-4-4-4-12 layout so the value looks like a real UUID in the UI.
 func pseudoUUID(seed string) string {
