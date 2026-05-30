@@ -678,6 +678,40 @@ export const getVMTimings = (name: string) => getJSON<VMTimingEvent[]>(`/microvm
 export const getVMLogs    = (name: string, tail = 65536) =>
   getJSON<VMLogs>(`/microvms/${encodeURIComponent(name)}/logs?tail=${tail}`);
 
+// ---- SSH-keys catalogue ----
+//
+// Named, reusable SSH public keys. VMs reference them by name. Source
+// tracks provenance ("manual" / "github" / "gitlab" / "forgejo") for
+// future import + refresh flows.
+
+export interface SSHKeyEntry {
+  name: string;
+  public_key: string;
+  description: string;
+  source: string;
+  source_account: string;
+  fingerprint: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export const listSSHKeyCatalogue = () =>
+  getJSON<SSHKeyEntry[]>('/ssh-keys');
+
+export const getSSHKeyCatalogue = (name: string) =>
+  getJSON<SSHKeyEntry>(`/ssh-keys/${encodeURIComponent(name)}`);
+
+export const setSSHKeyCatalogue = (k: {
+  name: string;
+  public_key: string;
+  description?: string;
+  source?: string;
+  source_account?: string;
+}) => postJSON<SSHKeyEntry>('/ssh-keys', k);
+
+export const deleteSSHKeyCatalogue = (name: string) =>
+  deleteJSON(`/ssh-keys/${encodeURIComponent(name)}`);
+
 // ---- Per-VM SSH keys ----
 //
 // Runtime-pushable, not baked into a create-time SSHPub blob — the

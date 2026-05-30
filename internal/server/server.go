@@ -258,6 +258,17 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		mux.HandleFunc("DELETE /api/scripts/{name}", handleDeleteScript)
 	}
 
+	// SSH-keys catalogue. Named keys defined ONCE here ; per-VM
+	// attribution picks them by name. Same split as flavors / scripts :
+	// read on both ports, write on admin only. Import from gh / gl /
+	// forgejo lands as a follow-on commit on this catalogue.
+	mux.HandleFunc("GET /api/ssh-keys", handleListSSHKeyCatalogue)
+	mux.HandleFunc("GET /api/ssh-keys/{name}", handleGetSSHKeyCatalogue)
+	if scope == ScopeAdmin {
+		mux.HandleFunc("POST /api/ssh-keys", handleSetSSHKeyCatalogue)
+		mux.HandleFunc("DELETE /api/ssh-keys/{name}", handleDeleteSSHKeyCatalogue)
+	}
+
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
 	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
@@ -475,6 +486,9 @@ func rowCount(res *Resource) int {
 	case "scripts":
 		ss, _ := scriptsCatalogue.List(context.Background())
 		return len(ss)
+	case "ssh-keys":
+		ks, _ := sshKeysCatalogue.List(context.Background())
+		return len(ks)
 	case "buckets":
 		return bucketsCount()
 	case "topology":
@@ -551,6 +565,9 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		// Same indirection as flavors. See scripts.go for the etcd
 		// migration plan.
 		writePage(w, r, scriptRows(r.Context()))
+		return
+	case "ssh-keys":
+		writePage(w, r, sshKeyRows(r.Context()))
 		return
 	case "buckets":
 		writePage(w, r, bucketSummaries())
