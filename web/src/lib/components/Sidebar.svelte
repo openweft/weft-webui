@@ -4,6 +4,37 @@
 
   let { grouped, active }: { grouped: { section: string; items: ResourceMeta[] }[]; active: string } =
     $props();
+
+  // Per-section collapse state. Persisted in localStorage so the
+  // operator's choice survives navigation and reloads. The key is the
+  // section name ; missing-key = expanded (default).
+  let collapsed = $state<Record<string, boolean>>(loadCollapse());
+
+  function loadCollapse(): Record<string, boolean> {
+    try {
+      const raw = localStorage.getItem('weft-sidebar-collapse');
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch { return {}; }
+  }
+  function persist() {
+    localStorage.setItem('weft-sidebar-collapse', JSON.stringify(collapsed));
+  }
+
+  function toggle(section: string) {
+    collapsed = { ...collapsed, [section]: !collapsed[section] };
+    persist();
+  }
+
+  // If the active resource is in a collapsed section, auto-expand it
+  // so the operator's selection isn't hidden after a hash-link reload.
+  $effect(() => {
+    for (const g of grouped) {
+      if (g.items.some((r) => r.id === active) && collapsed[g.section]) {
+        collapsed = { ...collapsed, [g.section]: false };
+        persist();
+      }
+    }
+  });
 </script>
 
 <aside class="flex h-full w-64 shrink-0 flex-col border-r border-base-300 bg-base-100">
@@ -25,18 +56,32 @@
 
     {#each grouped as group (group.section)}
       <ul class="menu menu-sm w-full gap-0.5">
-        <li class="menu-title flex flex-row items-center gap-2 pt-3">
-          <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70">{@html sectionIcon(group.section)}</svg>
-          {group.section}
+        <li class="pt-3">
+          <button
+            type="button"
+            class="flex w-full flex-row items-center gap-2 text-xs font-semibold uppercase tracking-wide text-base-content/60 hover:text-base-content"
+            onclick={() => toggle(group.section)}
+            aria-expanded={!collapsed[group.section]}
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70">{@html sectionIcon(group.section)}</svg>
+            <span class="grow text-left">{group.section}</span>
+            <svg viewBox="0 0 24 24" class="h-3 w-3 opacity-60 transition-transform"
+              class:rotate-[-90deg]={collapsed[group.section]}
+              fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </li>
-        {#each group.items as r (r.id)}
-          <li>
-            <a href={`#/${r.id}`} class:menu-active={active === r.id}>
-              <span class="truncate">{r.label}</span>
-              <span class="badge badge-xs badge-ghost ml-auto">{r.count}</span>
-            </a>
-          </li>
-        {/each}
+        {#if !collapsed[group.section]}
+          {#each group.items as r (r.id)}
+            <li>
+              <a href={`#/${r.id}`} class:menu-active={active === r.id}>
+                <span class="truncate">{r.label}</span>
+                <span class="badge badge-xs badge-ghost ml-auto">{r.count}</span>
+              </a>
+            </li>
+          {/each}
+        {/if}
       </ul>
     {/each}
   </nav>
