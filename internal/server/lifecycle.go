@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
@@ -272,10 +273,16 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name, Image, Flavor                                string
-		SchedulingRule, Network                            string
-		IngressKind                                        string // "none" | "floating_ip" | "loadbalancer"
-		IngressFloatingIP, IngressLoadBalancer             string
+		Name, Image, Flavor                    string
+		SchedulingRule, Network                string
+		IngressKind                            string // "none" | "floating_ip" | "loadbalancer"
+		IngressFloatingIP, IngressLoadBalancer string
+		Provisioning                           *struct {
+			SourceKind string `json:"source_kind"` // "none" | "git" | "oci"
+			SourceURL  string `json:"source_url"`
+			SourceRef  string `json:"source_ref"`
+			Script     string `json:"script"`
+		}
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
@@ -361,11 +368,62 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		warnings = append(warnings, "unknown ingress kind: "+body.IngressKind)
 	}
 
+	// First-boot provisioning : write the requested source + script as
+	// guest-readable properties on the new VM. The in-guest weft-vm-agent
+	// reads weft.boot/* on its first boot, pulls (git clone / oras pull
+	// + extract), and runs the script via mvdan.cc/sh/v3 in the payload's
+	// CWD. The "weft.boot/" prefix is reserved — operators set their
+	// own provisioning out-of-band by editing the VM's Properties tab
+	// directly if they want to override.
+	if body.Provisioning != nil {
+		p := body.Provisioning
+		switch p.SourceKind {
+		case "", "none":
+			// Only a script ; still legitimate (no payload, just run the lines).
+			if strings.TrimSpace(p.Script) != "" {
+				writeBootProperty(body.Name, "weft.boot/script", p.Script)
+			}
+		case "git", "oci":
+			writeBootProperty(body.Name, "weft.boot/source.kind", p.SourceKind)
+			writeBootProperty(body.Name, "weft.boot/source.url", p.SourceURL)
+			if p.SourceRef != "" {
+				writeBootProperty(body.Name, "weft.boot/source.ref", p.SourceRef)
+			}
+			if strings.TrimSpace(p.Script) != "" {
+				writeBootProperty(body.Name, "weft.boot/script", p.Script)
+			}
+		default:
+			warnings = append(warnings, "unknown provisioning source kind: "+p.SourceKind)
+		}
+	}
+
 	out := map[string]any{"name": body.Name, "project": project}
 	if len(warnings) > 0 {
 		out["warnings"] = warnings
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// writeBootProperty stamps one reserved weft.boot/* property on the
+// newly-created VM. Always guest-readable — the in-guest weft-vm-agent
+// is the consumer ; host-only would defeat the purpose. Goes through
+// the same per-VM Properties store as the operator-set ones (see
+// vm_metadata.go) so the drawer's Properties tab shows them too.
+func writeBootProperty(vmName, key, value string) {
+	vmPropsMu.Lock()
+	defer vmPropsMu.Unlock()
+	now := time.Now().UTC().Format(time.RFC3339)
+	props := vmProps[vmName]
+	for i, p := range props {
+		if p.Key == key {
+			props[i] = VMProperty{Key: key, Value: value, GuestReadable: true, UpdatedAt: now}
+			vmProps[vmName] = props
+			return
+		}
+	}
+	vmProps[vmName] = append(props, VMProperty{
+		Key: key, Value: value, GuestReadable: true, UpdatedAt: now,
+	})
 }
 
 // --- Volume / Network mutators -------------------------------------
