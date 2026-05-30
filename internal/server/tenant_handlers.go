@@ -63,6 +63,15 @@ func handleAddTenantAdmin(w http.ResponseWriter, r *http.Request) {
 // --- Tenant admin (delegated) ----------------------------------------
 
 // handleAddTenantProject : POST /api/tenants/{name}/projects  {name}
+//
+// Two paths interleave :
+//
+//   - mock : tenantsDB.addProject mints a UUID, tracks the tenant ↔
+//            project mapping in-memory.
+//   - live : vzd's CreateProject is the source of truth ; we still
+//            need the tenant ↔ project mapping locally because vzd
+//            has no tenant model yet, so we run the mock path with
+//            the daemon-issued UUID injected.
 func handleAddTenantProject(w http.ResponseWriter, r *http.Request) {
 	tenant := r.PathValue("name")
 	u := auth.UserFromContext(r.Context())
@@ -75,10 +84,25 @@ func handleAddTenantProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
 	}
+
+	var liveUUID string
+	if live != nil {
+		uuid, err := live.CreateProject(r.Context(), body.Name)
+		if err != nil {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+			return
+		}
+		liveUUID = uuid
+	}
+
 	p, err := tenantsDB.addProject(tenant, body.Name)
 	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	if liveUUID != "" {
+		tenantsDB.setProjectUUID(p.Name, liveUUID)
+		p.UUID = liveUUID
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"name": p.Name, "uuid": p.UUID, "tenant": p.Tenant, "created": p.Created,
@@ -109,13 +133,16 @@ func handleAddTenantMember(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGrantProjectRole : POST /api/projects/{name}/roles  {email, role}
+//
+// The role string is webui-side metadata for now (vzd has membership
+// but no per-project role enum yet) — we mirror it on the store and,
+// when live, also call AddProjectMember so vzd sees the membership.
+// Email→user UUID and name→project UUID resolutions go through the
+// daemon so the lookups match what other clients see.
 func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
 	projectName := r.PathValue("name")
 	u := auth.UserFromContext(r.Context())
 
-	// The handler doesn't know the tenant until it looks up the
-	// project ; do the lookup, then run the auth check on the
-	// resolved tenant.
 	tenant, ok := tenantsDB.projectTenant(projectName)
 	if !ok {
 		writeErr(w, errNotFound("project"))
@@ -130,6 +157,32 @@ func handleGrantProjectRole(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
 		return
 	}
+
+	if live != nil {
+		projUUID, err := live.ProjectUUIDByName(r.Context(), projectName)
+		if err != nil {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: lookup project: " + err.Error()})
+			return
+		}
+		if projUUID == "" {
+			writeErr(w, errNotFound("project (not in vzd)"))
+			return
+		}
+		userUUID, err := live.UserUUIDByEmail(r.Context(), body.Email)
+		if err != nil {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: lookup user: " + err.Error()})
+			return
+		}
+		if userUUID == "" {
+			writeErr(w, errBadReq("user not found in vzd: "+body.Email))
+			return
+		}
+		if err := live.AddProjectMember(r.Context(), projUUID, userUUID); err != nil {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+			return
+		}
+	}
+
 	if err := tenantsDB.grantRole(projectName, body.Email, body.Role); err != nil {
 		writeErr(w, err)
 		return

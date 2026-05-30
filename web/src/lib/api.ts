@@ -338,6 +338,48 @@ export const setTenantQuota = (name: string, q: Quotas) =>
 export const setProjectQuota = (name: string, q: Quotas) =>
   putJSON<ProjectQuotaView>(`/projects/${encodeURIComponent(name)}/quota`, q);
 
+// ---- Resource lifecycle (live gRPC) ----
+//
+// Each helper hits a /api/<kind>/... route that is wired straight to
+// vzd ; a 503 means "no live daemon" (the operator launched in mock
+// mode), a 502 means the daemon refused the call. Both surface via
+// the thrown Error message so the UI can show them in a toast.
+
+async function deleteJSON(path: string): Promise<void> {
+  const res = await fetch(`/api${path}`, { method: 'DELETE' });
+  if (res.status === 401) handleUnauthorised();
+  if (res.status === 204) return;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `${res.status} ${res.statusText}`);
+}
+
+// VM lifecycle. Project is implied by the session scope ; an
+// unscoped call (no tenant/project selected) returns 400.
+export const startVM  = (name: string) => postJSON<{ name: string }>(`/microvms/${encodeURIComponent(name)}/start`, {});
+export const stopVM   = (name: string) => postJSON<{ name: string }>(`/microvms/${encodeURIComponent(name)}/stop`,  {});
+export const deleteVM = (name: string) => deleteJSON(`/microvms/${encodeURIComponent(name)}`);
+
+export interface CreateVMBody {
+  Name: string;
+  Image: string;
+  CPU: number;
+  MemMB: number;
+  DiskGB: number;
+  SSHPub?: string;
+}
+export const createVM = (b: CreateVMBody) => postJSON<{ name: string; project: string }>('/microvms', b);
+
+export interface CreateVolumeBody {
+  Name: string;
+  SizeGiB: number;
+  Format?: string;
+}
+export const createVolume = (b: CreateVolumeBody) =>
+  postJSON<{ name: string; project: string; size_gib: number }>('/volumes', b);
+export const deleteVolume = (uuid: string) => deleteJSON(`/volumes/${encodeURIComponent(uuid)}`);
+
+export const deleteNetwork = (uuid: string) => deleteJSON(`/networks/${encodeURIComponent(uuid)}`);
+
 // Quota dimension metadata for UI labels + units. Order matters : it
 // drives the visual layout. Mirrors internal/server/tenants.go.
 export interface QuotaDimMeta {

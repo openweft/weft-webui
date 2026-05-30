@@ -312,3 +312,269 @@ func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows [
 	}
 	return out, nil
 }
+
+// --- Mutators -------------------------------------------------------
+//
+// Every mutator threads the bearer token through outgoing metadata
+// (so vzd applies the caller's RBAC) and is wrapped in c.measured for
+// the gRPC histograms. Return shapes are deliberately thin — handlers
+// surface the action's success/failure ; the SPA refreshes the row set
+// afterwards.
+
+// CreateProject creates a new project in vzd and returns its UUID.
+// The webui's tenant model wraps this : the handler updates its
+// tenant↔project mapping after the call succeeds.
+func (c *Client) CreateProject(ctx context.Context, name string) (uuid string, retErr error) {
+	defer c.measured("CreateProject", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateProject(cctx, &vzdv1.CreateProjectRequest{Name: name})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Project == nil {
+		return "", errors.New("nil CreateProject response")
+	}
+	return resp.Project.Uuid, nil
+}
+
+// DeleteProject removes a project. The caller must already own / have
+// admin on it ; vzd refuses otherwise.
+func (c *Client) DeleteProject(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteProject", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteProject(cctx, &vzdv1.DeleteProjectRequest{Uuid: uuid})
+	return err
+}
+
+// ListProjectMembers returns the user UUIDs that have a role on the
+// project (any role).
+func (c *Client) ListProjectMembers(ctx context.Context, projectUUID string) (uuids []string, retErr error) {
+	defer c.measured("ListProjectMembers", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListProjectMembers(cctx, &vzdv1.ListProjectMembersRequest{ProjectUuid: projectUUID})
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetUserUuids(), nil
+}
+
+// AddProjectMember grants a user access to a project. Both sides are
+// UUID-keyed in vzd ; the handler resolves email→UUID upstream.
+func (c *Client) AddProjectMember(ctx context.Context, projectUUID, userUUID string) (retErr error) {
+	defer c.measured("AddProjectMember", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.AddProjectMember(cctx, &vzdv1.AddProjectMemberRequest{
+		ProjectUuid: projectUUID, UserUuid: userUUID,
+	})
+	return err
+}
+
+// RemoveProjectMember revokes a user's access.
+func (c *Client) RemoveProjectMember(ctx context.Context, projectUUID, userUUID string) (retErr error) {
+	defer c.measured("RemoveProjectMember", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RemoveProjectMember(cctx, &vzdv1.RemoveProjectMemberRequest{
+		ProjectUuid: projectUUID, UserUuid: userUUID,
+	})
+	return err
+}
+
+// CreateVM creates a new microVM. The proto carries name/image/cpu/
+// mem/disk/sshPub/project ; flavor mapping (tenant view) is the
+// webui's responsibility.
+type CreateVMOpts struct {
+	Name, Image, Project, SSHPubKey string
+	CPU                             uint32
+	MemMB, DiskGB                   uint64
+}
+
+func (c *Client) CreateVM(ctx context.Context, o CreateVMOpts) (retErr error) {
+	defer c.measured("CreateVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.CreateVM(cctx, &vzdv1.CreateVMRequest{
+		Name: o.Name, Image: o.Image, Project: o.Project,
+		Cpu: o.CPU, MemMb: o.MemMB, DiskGb: o.DiskGB, SshPub: o.SSHPubKey,
+	})
+	return err
+}
+
+// StartVM / StopVM / DeleteVM share the same three-field request
+// shape (name + project + optional host UUID). The webui doesn't pin
+// a host today — vzd's scheduler picks one.
+func (c *Client) StartVM(ctx context.Context, name, project string) (retErr error) {
+	defer c.measured("StartVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.StartVM(cctx, &vzdv1.StartVMRequest{Name: name, Project: project})
+	return err
+}
+
+func (c *Client) StopVM(ctx context.Context, name, project string) (retErr error) {
+	defer c.measured("StopVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.StopVM(cctx, &vzdv1.StopVMRequest{Name: name, Project: project})
+	return err
+}
+
+func (c *Client) DeleteVM(ctx context.Context, name, project string) (retErr error) {
+	defer c.measured("DeleteVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVM(cctx, &vzdv1.DeleteVMRequest{Name: name, Project: project})
+	return err
+}
+
+// CreateNetwork / DeleteNetwork.
+type CreateNetworkOpts struct {
+	Project, Name, CIDR, Gateway, Type string
+	DNSServers                         []string
+}
+
+func (c *Client) CreateNetwork(ctx context.Context, o CreateNetworkOpts) (retErr error) {
+	defer c.measured("CreateNetwork", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.CreateNetwork(cctx, &vzdv1.CreateNetworkRequest{
+		Project: o.Project, Name: o.Name, Cidr: o.CIDR, Gateway: o.Gateway,
+		DnsServers: o.DNSServers, Type: o.Type,
+	})
+	return err
+}
+
+func (c *Client) DeleteNetwork(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteNetwork", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteNetwork(cctx, &vzdv1.DeleteNetworkRequest{Uuid: uuid})
+	return err
+}
+
+// CreateVolume / DeleteVolume.
+func (c *Client) CreateVolume(ctx context.Context, project, name string, sizeGiB int64, format string) (retErr error) {
+	defer c.measured("CreateVolume", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.CreateVolume(cctx, &vzdv1.CreateVolumeRequest{
+		Project: project, Name: name, SizeGib: sizeGiB, Format: format,
+	})
+	return err
+}
+
+func (c *Client) DeleteVolume(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteVolume", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVolume(cctx, &vzdv1.DeleteVolumeRequest{Uuid: uuid})
+	return err
+}
+
+// --- Lookup helpers -------------------------------------------------
+//
+// vzd's mutation RPCs key by UUID (project, user, network, volume).
+// The SPA works in human names ; these helpers walk the matching list
+// once per request to resolve.
+//
+// They're intentionally not cached at this layer : the daemon is
+// authoritative, and a stale lookup that referenced a renamed entity
+// would 400 down the line anyway.
+
+// UserUUIDByEmail returns the UUID for the given email, or "" if no
+// user matches. Walks ListUsers() ; the user count is small.
+func (c *Client) UserUUIDByEmail(ctx context.Context, email string) (string, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListUsers(cctx, &vzdv1.ListUsersRequest{})
+	if err != nil {
+		return "", err
+	}
+	want := strings.ToLower(strings.TrimSpace(email))
+	for _, u := range resp.GetUsers() {
+		if strings.EqualFold(u.Email, want) {
+			return u.Uuid, nil
+		}
+	}
+	return "", nil
+}
+
+// ProjectUUIDByName resolves a project name to its UUID.
+func (c *Client) ProjectUUIDByName(ctx context.Context, name string) (string, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListProjects(cctx, &vzdv1.ListProjectsRequest{})
+	if err != nil {
+		return "", err
+	}
+	for _, p := range resp.Projects {
+		if p.Name == name {
+			return p.Uuid, nil
+		}
+	}
+	return "", nil
+}

@@ -9,16 +9,20 @@
   let error = $state('');
   let query = $state('');
 
-  // Re-fetch whenever the selected resource changes.
-  $effect(() => {
+  function refresh() {
     const id = meta.id;
     loading = true;
     error = '';
-    query = '';
     getRows(id)
       .then((r) => (rows = r))
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
+  }
+
+  // Re-fetch whenever the selected resource changes.
+  $effect(() => {
+    query = '';
+    refresh();
   });
 
   let filtered = $derived(
@@ -57,6 +61,7 @@
   {:else if error}
     <div class="alert alert-error">{error}</div>
   {:else}
-    <ResourceTable columns={meta.columns} rows={filtered} />
+    <ResourceTable columns={meta.columns} rows={filtered}
+      resourceId={meta.id} onChange={refresh} />
   {/if}
 </div>

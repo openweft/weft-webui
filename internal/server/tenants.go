@@ -801,6 +801,17 @@ func (s *tenantStore) isMember(u *auth.User, tenant string) bool {
 	return ok
 }
 
+// setProjectUUID overrides the pseudo-UUID minted by addProject with
+// the real one returned by vzd's CreateProject. Idempotent — calling
+// with a missing project is a no-op.
+func (s *tenantStore) setProjectUUID(name, uuid string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.projects[name]; ok {
+		p.UUID = uuid
+	}
+}
+
 // projectTenant returns the tenant a project belongs to.
 func (s *tenantStore) projectTenant(name string) (string, bool) {
 	s.mu.RLock()

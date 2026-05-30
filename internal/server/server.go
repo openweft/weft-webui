@@ -29,6 +29,11 @@ import (
 // applies its own RBAC based on the forwarded bearer.
 var live *wclient.Client
 
+// metrics mirrors the Recorder from Deps so the mutation handlers
+// (lifecycle.go) can record per-user action counters without having
+// the struct threaded through every signature.
+var metrics *telemetry.Recorder
+
 // activePersona stores the persona served by the current handler so
 // per-request helpers can branch on it without threading a parameter
 // through every signature. Both handlers register themselves before
@@ -83,6 +88,7 @@ func NewAdmin(d Deps) http.Handler {
 // /metrics is mounted on this listener.
 func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.Handler {
 	live = d.Live
+	metrics = d.Metrics
 	mux := http.NewServeMux()
 
 	// --- Public routes (no auth) ---
@@ -136,6 +142,18 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("PUT /api/tenants/{name}/quota", handleSetTenantQuota)
 	mux.HandleFunc("GET /api/projects/{name}/quota", handleGetProjectQuota)
 	mux.HandleFunc("PUT /api/projects/{name}/quota", handleSetProjectQuota)
+
+	// --- Resource lifecycle (live gRPC only) ---------------------
+	// Row-action / create-modal endpoints. Each handler short-circuits
+	// to 503 when no daemon is wired, so a mock-mode operator can't
+	// silently mutate something that isn't there.
+	mux.HandleFunc("POST /api/microvms", handleCreateVM)
+	mux.HandleFunc("POST /api/microvms/{name}/start", handleStartVM)
+	mux.HandleFunc("POST /api/microvms/{name}/stop", handleStopVM)
+	mux.HandleFunc("DELETE /api/microvms/{name}", handleDeleteVM)
+	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
+	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
+	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
 
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
