@@ -292,22 +292,84 @@ func scopedResourceRows(scope Scope) http.HandlerFunc {
 }
 
 func scopedSummary(scope Scope) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		type item struct {
 			ID    string `json:"id"`
 			Label string `json:"label"`
 			Count int    `json:"count"`
 		}
+		tenant, project := scopeFromRequest(r)
 		out := make([]item, 0, len(registry))
 		for i := range registry {
 			res := &registry[i]
 			if !resolveScope(res.Scope).Has(scope) {
 				continue
 			}
-			out = append(out, item{ID: res.ID, Label: res.Label, Count: rowCount(res)})
+			out = append(out, item{ID: res.ID, Label: res.Label, Count: scopedRowCount(res, tenant, project)})
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// scopedRowCount returns the count of rows visible under the session
+// scope (tenant + project). When both are empty the cluster-wide count
+// is returned. For resources without a project column the global
+// count stands — the static catalogue (flavors, security-rules,
+// hosts) is the same in every scope.
+func scopedRowCount(res *Resource, tenant, project string) int {
+	if tenant == "" && project == "" {
+		return rowCount(res)
+	}
+	switch res.ID {
+	case "tenants":
+		// Tenants is membership-filtered ; here we approximate by
+		// "is THIS tenant visible?". One when the scope's tenant
+		// is the row, zero otherwise. Cluster-wide stays at rowCount.
+		if tenant != "" {
+			if _, ok := tenantsDB.tenantDetail(tenant); ok {
+				return 1
+			}
+			return 0
+		}
+		return rowCount(res)
+	case "projects":
+		return len(tenantsDB.listProjects("", tenant))
+	case "shares":
+		if project != "" {
+			return len(sharesDB.list(project))
+		}
+		return len(sharesDB.listByTenant(tenant))
+	case "scheduling-rules":
+		return len(schedulingDB.list(project))
+	}
+	// Generic path : count rows whose `project` cell falls in the
+	// scope. Rows with no project column count as-is — they're
+	// either cluster-wide (hosts, flavors) or non-project-scoped
+	// (security-rules grouped by SG name).
+	tenantProjects := map[string]struct{}{}
+	if tenant != "" {
+		for _, p := range tenantsDB.projectsInTenant(tenant) {
+			tenantProjects[p] = struct{}{}
+		}
+	}
+	n := 0
+	for _, row := range res.Rows {
+		rp, ok := row["project"].(string)
+		if !ok || rp == "" {
+			n++
+			continue
+		}
+		if project != "" {
+			if rp == project {
+				n++
+			}
+			continue
+		}
+		if _, in := tenantProjects[rp]; in {
+			n++
+		}
+	}
+	return n
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -346,7 +408,10 @@ func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]a
 	writeJSON(w, http.StatusOK, rows)
 }
 
-// rowCount returns the live count for a resource.
+// rowCount returns the live count for a resource (cluster-wide).
+// Store-backed resources delegate to their store ; everything else
+// counts inline rows. Used by /api/resources metadata + the no-scope
+// summary path.
 func rowCount(res *Resource) int {
 	switch res.ID {
 	case "registry":
@@ -355,6 +420,18 @@ func rowCount(res *Resource) int {
 		return bucketsCount()
 	case "topology":
 		return len(resourceByID["networks"].Rows)
+	case "tenants":
+		return len(tenantsDB.listTenants(""))
+	case "projects":
+		return len(tenantsDB.listProjects("", ""))
+	case "users":
+		return len(tenantsDB.listUsers())
+	case "groups":
+		return len(tenantsDB.listGroups())
+	case "shares":
+		return len(sharesDB.list(""))
+	case "scheduling-rules":
+		return len(schedulingDB.list(""))
 	}
 	return len(res.Rows)
 }
