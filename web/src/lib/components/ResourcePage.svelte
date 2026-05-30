@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { getRows, type ResourceMeta, type Row } from '../api';
+  import { lastEvents, eventToResource } from '../events';
   import ResourceTable from './ResourceTable.svelte';
   import CreateVMModal from './CreateVMModal.svelte';
   import CreateVolumeModal from './CreateVolumeModal.svelte';
@@ -32,6 +34,39 @@
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
   }
+
+  // Auto-refresh on live events that target the currently rendered
+  // resource. Debounced 400ms so a burst of events (e.g. start-vm
+  // emits 3-4 phase transitions) collapses into one refetch.
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSeen = 0;
+  let unsubscribe: () => void;
+  function scheduleRefresh() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refresh();
+    }, 400);
+  }
+  onMount(() => {
+    lastSeen = 0; // start fresh per mount
+    unsubscribe = lastEvents.subscribe((all) => {
+      // New events arrived at index 0 ; everything from 0..(len-lastSeen)
+      // is new since our last check.
+      const newCount = all.length - lastSeen;
+      lastSeen = all.length;
+      for (let i = 0; i < newCount; i++) {
+        if (eventToResource(all[i].kind) === meta.id) {
+          scheduleRefresh();
+          return; // one trigger per burst is enough
+        }
+      }
+    });
+  });
+  onDestroy(() => {
+    unsubscribe?.();
+    if (refreshTimer) clearTimeout(refreshTimer);
+  });
 
   // Re-fetch whenever the selected resource changes.
   $effect(() => {

@@ -48,3 +48,52 @@ export function stopEventsStream() {
   es = null;
   eventsConnection.set('idle');
 }
+
+// eventToResource maps a platform-event kind to the resource id whose
+// table should refresh when it lands. nil → unrelated event (just
+// surface as a toast). The match is by prefix on the canonical
+// `<noun>.<verb>` shape weft-agent uses.
+const KIND_TO_RESOURCE: { prefix: string; id: string }[] = [
+  { prefix: 'vm.',               id: 'microvms' },
+  { prefix: 'microvm.',          id: 'microvms' },
+  { prefix: 'volume.',           id: 'volumes' },
+  { prefix: 'network.',          id: 'networks' },
+  { prefix: 'security-group.',   id: 'security-groups' },
+  { prefix: 'lb.',               id: 'loadbalancers' },
+  { prefix: 'loadbalancer.',     id: 'loadbalancers' },
+  { prefix: 'router.',           id: 'routers' },
+  { prefix: 'dns.zone.',         id: 'dns-zones' },
+  { prefix: 'dns.record.',       id: 'dns-records' },
+  { prefix: 'dns.',              id: 'dns-records' },
+  { prefix: 'floating-ip.',      id: 'floating-ips' },
+  { prefix: 'fip.',              id: 'floating-ips' },
+  { prefix: 'scheduling-rule.',  id: 'scheduling-rules' },
+  { prefix: 'tenant.',           id: 'tenants' },
+  { prefix: 'project.',          id: 'projects' },
+  { prefix: 'user.',             id: 'users' },
+  { prefix: 'share.',            id: 'shares' },
+  { prefix: 'host.',             id: 'hosts' },
+];
+
+export function eventToResource(kind: string): string | null {
+  for (const m of KIND_TO_RESOURCE) {
+    if (kind.startsWith(m.prefix)) return m.id;
+  }
+  return null;
+}
+
+// openScopedEvents : independent EventSource, NOT the singleton.
+// Used by drawer components that want a per-subject stream alongside
+// the global toast feed. Caller is responsible for close().
+export function openScopedEvents(opts: { kindPrefix?: string; subject?: string; project?: string }): {
+  source: EventSource;
+  close: () => void;
+} {
+  const params = new URLSearchParams();
+  if (opts.kindPrefix) params.append('kind', opts.kindPrefix);
+  if (opts.subject) params.set('subject', opts.subject);
+  if (opts.project) params.set('project', opts.project);
+  const url = `/api/events${params.toString() ? `?${params}` : ''}`;
+  const source = new EventSource(url);
+  return { source, close: () => source.close() };
+}
