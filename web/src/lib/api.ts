@@ -159,20 +159,17 @@ export interface Me {
   project: string;
   initials: string;
   dev: boolean;
+  // cluster_admin : OIDC group claim "admin"/"admins" — SUPERADMIN.
+  // tenant_admin  : present in at least one Tenant.Admins set —
+  //                 ADMIN (delegated, scoped to the user's tenants).
+  // Both flags can be true ; the SPA shows SUPERADMIN preferentially.
+  cluster_admin: boolean;
+  tenant_admin: boolean;
 }
 
-// isAdminUI is a cheap heuristic : the admin handler surfaces "Hosts"
-// (resource id `hosts`) in /api/resources ; the user handler doesn't.
-// Awaited once at startup so the Topbar can switch its label without
-// the server needing to ship a separate /api/persona endpoint.
-export async function isAdminUI(): Promise<boolean> {
-  try {
-    const rs = await getResources();
-    return rs.some((r) => r.id === 'hosts' || r.id === 'tenants');
-  } catch {
-    return false;
-  }
-}
+// (isAdminUI used to be a heuristic based on which resources the
+// listener surfaces. /api/me now carries cluster_admin / tenant_admin
+// flags directly — use those instead.)
 
 export const getMe = () => getJSON<Me>('/me');
 

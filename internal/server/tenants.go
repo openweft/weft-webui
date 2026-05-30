@@ -461,6 +461,30 @@ func isClusterAdmin(u *auth.User) bool {
 	return false
 }
 
+// isAnyTenantAdmin reports whether u is the admin of at least one
+// tenant (any group named "admins" is implicit). Cluster admins are
+// NOT promoted to a "yes" here — the caller decides how to combine
+// the two roles. We want a clean separation between
+//
+//   - cluster_admin : group claim "admin"/"admins" on the OIDC token
+//   - tenant_admin  : at least one Tenant.Admins[u.Email] hit
+//
+// so the SPA can show a "SUPERADMIN" badge for the former and a
+// plain "ADMIN" badge for the latter without conflating the two.
+func (s *tenantStore) isAnyTenantAdmin(email string) bool {
+	if email == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, t := range s.tenants {
+		if _, ok := t.Admins[email]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // isMember reports whether u is in the tenant's member set (any group).
 // Cluster admins pass implicitly so they can read every tenant detail.
 func (s *tenantStore) isMember(u *auth.User, tenant string) bool {
