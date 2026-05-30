@@ -17,6 +17,9 @@ type Quota struct {
 var quotas = []Quota{
 	{ID: "vcpus", Label: "vCPUs", Icon: "cpu", Used: 28, Limit: 64, Unit: ""},
 	{ID: "memory", Label: "Memory", Icon: "ram", Used: 200, Limit: 256, Unit: "GB"},
+	// GPUs counted in physical cards (not vGPUs) ; matches the
+	// notation on Flavors + Hosts ("1×A100-40G" → consumes 1 card).
+	{ID: "gpus", Label: "GPUs", Icon: "gpu", Used: 3, Limit: 6, Unit: ""},
 	{ID: "microvms", Label: "microVMs", Icon: "microvm", Used: 51, Limit: 80, Unit: ""},
 	{ID: "instances", Label: "Instances", Icon: "vm", Used: 2, Limit: 10, Unit: ""},
 	{ID: "volumes", Label: "Volumes", Icon: "volume", Used: 7, Limit: 20, Unit: ""},

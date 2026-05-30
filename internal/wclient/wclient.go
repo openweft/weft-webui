@@ -19,7 +19,7 @@ import (
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/telemetry"
 	vzclient "github.com/openweft/weft-client"
-	vzdv1 "github.com/openweft/weft-proto"
+	weftv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -44,7 +44,7 @@ type Client struct {
 	socket  string
 	mu      sync.Mutex
 	conn    *grpc.ClientConn
-	rpc     vzdv1.VzdServiceClient
+	rpc     weftv1.WeftAgentClient
 	Metrics *telemetry.Recorder
 }
 
@@ -75,7 +75,7 @@ func (c *Client) measured(method string, errPtr *error) func() {
 	}
 }
 
-func (c *Client) dial() (vzdv1.VzdServiceClient, error) {
+func (c *Client) dial() (weftv1.WeftAgentClient, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.rpc != nil {
@@ -141,7 +141,7 @@ func (c *Client) ListProjects(ctx context.Context) (rows []map[string]any, retEr
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListProjects(cctx, &vzdv1.ListProjectsRequest{})
+	resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (c *Client) ListVMs(ctx context.Context, project string) (rows []map[string
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListVMs(cctx, &vzdv1.ListVMsRequest{Project: project})
+	resp, err := rpc.ListVMs(cctx, &weftv1.ListVMsRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func (c *Client) ListNetworks(ctx context.Context, project string) (rows []map[s
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListNetworks(cctx, &vzdv1.ListNetworksRequest{Project: project})
+	resp, err := rpc.ListNetworks(cctx, &weftv1.ListNetworksRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (c *Client) ListHosts(ctx context.Context, az string) (rows []map[string]an
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListHosts(cctx, &vzdv1.ListHostsRequest{Az: az})
+	resp, err := rpc.ListHosts(cctx, &weftv1.ListHostsRequest{Az: az})
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (c *Client) ListVolumes(ctx context.Context, project string) (rows []map[st
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListVolumes(cctx, &vzdv1.ListVolumesRequest{Project: project})
+	resp, err := rpc.ListVolumes(cctx, &weftv1.ListVolumesRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (c *Client) ListUsers(ctx context.Context) (rows []map[string]any, retErr e
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListUsers(cctx, &vzdv1.ListUsersRequest{})
+	resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows [
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListSecurityGroups(cctx, &vzdv1.ListSecurityGroupsRequest{Project: project})
+	resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (c *Client) CreateProject(ctx context.Context, name string) (uuid string, r
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.CreateProject(cctx, &vzdv1.CreateProjectRequest{Name: name})
+	resp, err := rpc.CreateProject(cctx, &weftv1.CreateProjectRequest{Name: name})
 	if err != nil {
 		return "", err
 	}
@@ -355,7 +355,7 @@ func (c *Client) DeleteProject(ctx context.Context, uuid string) (retErr error) 
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteProject(cctx, &vzdv1.DeleteProjectRequest{Uuid: uuid})
+	_, err = rpc.DeleteProject(cctx, &weftv1.DeleteProjectRequest{Uuid: uuid})
 	return err
 }
 
@@ -369,7 +369,7 @@ func (c *Client) ListProjectMembers(ctx context.Context, projectUUID string) (uu
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListProjectMembers(cctx, &vzdv1.ListProjectMembersRequest{ProjectUuid: projectUUID})
+	resp, err := rpc.ListProjectMembers(cctx, &weftv1.ListProjectMembersRequest{ProjectUuid: projectUUID})
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ func (c *Client) AddProjectMember(ctx context.Context, projectUUID, userUUID str
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.AddProjectMember(cctx, &vzdv1.AddProjectMemberRequest{
+	_, err = rpc.AddProjectMember(cctx, &weftv1.AddProjectMemberRequest{
 		ProjectUuid: projectUUID, UserUuid: userUUID,
 	})
 	return err
@@ -401,7 +401,7 @@ func (c *Client) RemoveProjectMember(ctx context.Context, projectUUID, userUUID 
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.RemoveProjectMember(cctx, &vzdv1.RemoveProjectMemberRequest{
+	_, err = rpc.RemoveProjectMember(cctx, &weftv1.RemoveProjectMemberRequest{
 		ProjectUuid: projectUUID, UserUuid: userUUID,
 	})
 	return err
@@ -424,7 +424,7 @@ func (c *Client) CreateVM(ctx context.Context, o CreateVMOpts) (retErr error) {
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.CreateVM(cctx, &vzdv1.CreateVMRequest{
+	_, err = rpc.CreateVM(cctx, &weftv1.CreateVMRequest{
 		Name: o.Name, Image: o.Image, Project: o.Project,
 		Cpu: o.CPU, MemMb: o.MemMB, DiskGb: o.DiskGB, SshPub: o.SSHPubKey,
 	})
@@ -442,7 +442,7 @@ func (c *Client) StartVM(ctx context.Context, name, project string) (retErr erro
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.StartVM(cctx, &vzdv1.StartVMRequest{Name: name, Project: project})
+	_, err = rpc.StartVM(cctx, &weftv1.StartVMRequest{Name: name, Project: project})
 	return err
 }
 
@@ -454,7 +454,7 @@ func (c *Client) StopVM(ctx context.Context, name, project string) (retErr error
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.StopVM(cctx, &vzdv1.StopVMRequest{Name: name, Project: project})
+	_, err = rpc.StopVM(cctx, &weftv1.StopVMRequest{Name: name, Project: project})
 	return err
 }
 
@@ -466,7 +466,7 @@ func (c *Client) DeleteVM(ctx context.Context, name, project string) (retErr err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteVM(cctx, &vzdv1.DeleteVMRequest{Name: name, Project: project})
+	_, err = rpc.DeleteVM(cctx, &weftv1.DeleteVMRequest{Name: name, Project: project})
 	return err
 }
 
@@ -481,7 +481,7 @@ func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[s
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.VMStatus(cctx, &vzdv1.VMStatusRequest{Name: name, Project: project})
+	resp, err := rpc.VMStatus(cctx, &weftv1.VMStatusRequest{Name: name, Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (c *Client) AttachVolume(ctx context.Context, volumeUUID, vmUUID string) (r
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.AttachVolume(cctx, &vzdv1.AttachVolumeRequest{Uuid: volumeUUID, VmUuid: vmUUID})
+	_, err = rpc.AttachVolume(cctx, &weftv1.AttachVolumeRequest{Uuid: volumeUUID, VmUuid: vmUUID})
 	return err
 }
 
@@ -525,7 +525,7 @@ func (c *Client) DetachVolume(ctx context.Context, volumeUUID string) (retErr er
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DetachVolume(cctx, &vzdv1.DetachVolumeRequest{Uuid: volumeUUID})
+	_, err = rpc.DetachVolume(cctx, &weftv1.DetachVolumeRequest{Uuid: volumeUUID})
 	return err
 }
 
@@ -541,7 +541,7 @@ func (c *Client) VMTimings(ctx context.Context, name, project string) (events []
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.VMTimings(cctx, &vzdv1.VMTimingsRequest{Name: name, Project: project})
+	resp, err := rpc.VMTimings(cctx, &weftv1.VMTimingsRequest{Name: name, Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +566,7 @@ func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.VMLogs(cctx, &vzdv1.VMLogsRequest{Name: name, Project: project, TailBytes: tailBytes})
+	resp, err := rpc.VMLogs(cctx, &weftv1.VMLogsRequest{Name: name, Project: project, TailBytes: tailBytes})
 	if err != nil {
 		return nil, err
 	}
@@ -590,7 +590,7 @@ func (c *Client) CreateNetwork(ctx context.Context, o CreateNetworkOpts) (retErr
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.CreateNetwork(cctx, &vzdv1.CreateNetworkRequest{
+	_, err = rpc.CreateNetwork(cctx, &weftv1.CreateNetworkRequest{
 		Project: o.Project, Name: o.Name, Cidr: o.CIDR, Gateway: o.Gateway,
 		DnsServers: o.DNSServers, Type: o.Type,
 	})
@@ -605,7 +605,7 @@ func (c *Client) DeleteNetwork(ctx context.Context, uuid string) (retErr error) 
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteNetwork(cctx, &vzdv1.DeleteNetworkRequest{Uuid: uuid})
+	_, err = rpc.DeleteNetwork(cctx, &weftv1.DeleteNetworkRequest{Uuid: uuid})
 	return err
 }
 
@@ -618,7 +618,7 @@ func (c *Client) CreateVolume(ctx context.Context, project, name string, sizeGiB
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.CreateVolume(cctx, &vzdv1.CreateVolumeRequest{
+	_, err = rpc.CreateVolume(cctx, &weftv1.CreateVolumeRequest{
 		Project: project, Name: name, SizeGib: sizeGiB, Format: format,
 	})
 	return err
@@ -632,13 +632,13 @@ func (c *Client) DeleteVolume(ctx context.Context, uuid string) (retErr error) {
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteVolume(cctx, &vzdv1.DeleteVolumeRequest{Uuid: uuid})
+	_, err = rpc.DeleteVolume(cctx, &weftv1.DeleteVolumeRequest{Uuid: uuid})
 	return err
 }
 
 // SecurityRule mirrors the proto's per-rule shape but exposed as a
 // public type so handlers can decode the SPA's payload without
-// touching the vzdv1 alias.
+// touching the weftv1 alias.
 type SecurityRule struct {
 	Direction       string `json:"direction"` // "ingress" | "egress"
 	Protocol        string `json:"protocol"`  // "tcp" | "udp" | "icmp" | "any"
@@ -664,15 +664,15 @@ func (c *Client) CreateSecurityGroup(ctx context.Context, o CreateSecurityGroupO
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	rules := make([]*vzdv1.SecurityRule, 0, len(o.Rules))
+	rules := make([]*weftv1.SecurityRule, 0, len(o.Rules))
 	for _, r := range o.Rules {
-		rules = append(rules, &vzdv1.SecurityRule{
+		rules = append(rules, &weftv1.SecurityRule{
 			Direction: r.Direction, Protocol: r.Protocol,
 			PortMin: r.PortMin, PortMax: r.PortMax,
 			RemoteCidr: r.RemoteCIDR, RemoteGroupUuid: r.RemoteGroupUUID,
 		})
 	}
-	resp, err := rpc.CreateSecurityGroup(cctx, &vzdv1.CreateSecurityGroupRequest{
+	resp, err := rpc.CreateSecurityGroup(cctx, &weftv1.CreateSecurityGroupRequest{
 		Project: o.Project, Name: o.Name, Description: o.Description, Rules: rules,
 	})
 	if err != nil {
@@ -692,7 +692,7 @@ func (c *Client) DeleteSecurityGroup(ctx context.Context, uuid string) (retErr e
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteSecurityGroup(cctx, &vzdv1.DeleteSecurityGroupRequest{Uuid: uuid})
+	_, err = rpc.DeleteSecurityGroup(cctx, &weftv1.DeleteSecurityGroupRequest{Uuid: uuid})
 	return err
 }
 
@@ -707,15 +707,15 @@ func (c *Client) SetSecurityGroupRules(ctx context.Context, uuid string, rules [
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	protoRules := make([]*vzdv1.SecurityRule, 0, len(rules))
+	protoRules := make([]*weftv1.SecurityRule, 0, len(rules))
 	for _, r := range rules {
-		protoRules = append(protoRules, &vzdv1.SecurityRule{
+		protoRules = append(protoRules, &weftv1.SecurityRule{
 			Direction: r.Direction, Protocol: r.Protocol,
 			PortMin: r.PortMin, PortMax: r.PortMax,
 			RemoteCidr: r.RemoteCIDR, RemoteGroupUuid: r.RemoteGroupUUID,
 		})
 	}
-	_, err = rpc.SetSecurityGroupRules(cctx, &vzdv1.SetSecurityGroupRulesRequest{
+	_, err = rpc.SetSecurityGroupRules(cctx, &weftv1.SetSecurityGroupRulesRequest{
 		Uuid: uuid, Rules: protoRules,
 	})
 	return err
@@ -732,7 +732,7 @@ func (c *Client) GetSecurityGroup(ctx context.Context, uuid string) (rules []Sec
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListSecurityGroups(cctx, &vzdv1.ListSecurityGroupsRequest{})
+	resp, err := rpc.ListSecurityGroups(cctx, &weftv1.ListSecurityGroupsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -786,7 +786,7 @@ func (c *Client) WatchEvents(ctx context.Context, kindPrefixes []string, project
 		return nil, err
 	}
 	streamCtx, cancel := context.WithCancel(withBearer(ctx))
-	stream, err := rpc.WatchEvents(streamCtx, &vzdv1.WatchEventsRequest{
+	stream, err := rpc.WatchEvents(streamCtx, &weftv1.WatchEventsRequest{
 		KindPrefix: kindPrefixes, Project: project, Subject: subject,
 	})
 	if err != nil {
@@ -825,7 +825,7 @@ func (c *Client) UserUUIDByEmail(ctx context.Context, email string) (string, err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListUsers(cctx, &vzdv1.ListUsersRequest{})
+	resp, err := rpc.ListUsers(cctx, &weftv1.ListUsersRequest{})
 	if err != nil {
 		return "", err
 	}
@@ -846,7 +846,7 @@ func (c *Client) ProjectUUIDByName(ctx context.Context, name string) (string, er
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListProjects(cctx, &vzdv1.ListProjectsRequest{})
+	resp, err := rpc.ListProjects(cctx, &weftv1.ListProjectsRequest{})
 	if err != nil {
 		return "", err
 	}
@@ -882,7 +882,7 @@ func (c *Client) ListTenants(ctx context.Context) (rows []map[string]any, retErr
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListTenants(cctx, &vzdv1.ListTenantsRequest{})
+	resp, err := rpc.ListTenants(cctx, &weftv1.ListTenantsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -909,7 +909,7 @@ func (c *Client) CreateTenant(ctx context.Context, name, domain string) (uuid st
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.CreateTenant(cctx, &vzdv1.CreateTenantRequest{Name: name, Domain: domain})
+	resp, err := rpc.CreateTenant(cctx, &weftv1.CreateTenantRequest{Name: name, Domain: domain})
 	if err != nil {
 		return "", err
 	}
@@ -927,7 +927,7 @@ func (c *Client) AddTenantAdmin(ctx context.Context, tenantUUID, email string) (
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.AddTenantAdmin(cctx, &vzdv1.AddTenantAdminRequest{
+	_, err = rpc.AddTenantAdmin(cctx, &weftv1.AddTenantAdminRequest{
 		TenantUuid: tenantUUID, Email: email,
 	})
 	return err
@@ -941,7 +941,7 @@ func (c *Client) AddTenantMember(ctx context.Context, tenantUUID, email string, 
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.AddTenantMember(cctx, &vzdv1.AddTenantMemberRequest{
+	_, err = rpc.AddTenantMember(cctx, &weftv1.AddTenantMemberRequest{
 		TenantUuid: tenantUUID, Email: email, Groups: groups,
 	})
 	return err
@@ -949,11 +949,11 @@ func (c *Client) AddTenantMember(ctx context.Context, tenantUUID, email string, 
 
 // ---- Quotas ----
 //
-// The webui's Quotas struct doesn't depend on vzdv1 ; the
+// The webui's Quotas struct doesn't depend on weftv1 ; the
 // translation table here keeps the two shapes from drifting.
 
-func quotasToProto(in map[string]int) *vzdv1.Quotas {
-	return &vzdv1.Quotas{
+func quotasToProto(in map[string]int) *weftv1.Quotas {
+	return &weftv1.Quotas{
 		Vcpu: int32(in["vcpu"]), RamGib: int32(in["ram_gib"]),
 		Volumes: int32(in["volumes"]), VolumesGib: int32(in["volumes_gib"]),
 		Shares: int32(in["shares"]), SharesGib: int32(in["shares_gib"]),
@@ -964,7 +964,7 @@ func quotasToProto(in map[string]int) *vzdv1.Quotas {
 	}
 }
 
-func quotasFromProto(q *vzdv1.Quotas) map[string]int {
+func quotasFromProto(q *weftv1.Quotas) map[string]int {
 	if q == nil {
 		return nil
 	}
@@ -987,7 +987,7 @@ func (c *Client) GetTenantQuota(ctx context.Context, tenantUUID string) (cap, al
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.GetTenantQuota(cctx, &vzdv1.GetTenantQuotaRequest{TenantUuid: tenantUUID})
+	resp, err := rpc.GetTenantQuota(cctx, &weftv1.GetTenantQuotaRequest{TenantUuid: tenantUUID})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1002,7 +1002,7 @@ func (c *Client) SetTenantQuota(ctx context.Context, tenantUUID string, cap map[
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.SetTenantQuota(cctx, &vzdv1.SetTenantQuotaRequest{
+	_, err = rpc.SetTenantQuota(cctx, &weftv1.SetTenantQuotaRequest{
 		TenantUuid: tenantUUID, Cap: quotasToProto(cap),
 	})
 	return err
@@ -1016,7 +1016,7 @@ func (c *Client) SetProjectQuota(ctx context.Context, projectUUID string, q map[
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.SetProjectQuota(cctx, &vzdv1.SetProjectQuotaRequest{
+	_, err = rpc.SetProjectQuota(cctx, &weftv1.SetProjectQuotaRequest{
 		ProjectUuid: projectUUID, Quota: quotasToProto(q),
 	})
 	return err
@@ -1032,7 +1032,7 @@ func (c *Client) ListShares(ctx context.Context, project string) (rows []map[str
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListShares(cctx, &vzdv1.ListSharesRequest{Project: project})
+	resp, err := rpc.ListShares(cctx, &weftv1.ListSharesRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -1060,7 +1060,7 @@ func (c *Client) CreateShare(ctx context.Context, project, name string, sizeGB i
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.CreateShare(cctx, &vzdv1.CreateShareRequest{
+	resp, err := rpc.CreateShare(cctx, &weftv1.CreateShareRequest{
 		Project: project, Name: name, SizeGb: sizeGB, Readonly: readonly, Backend: backend,
 	})
 	if err != nil {
@@ -1080,7 +1080,7 @@ func (c *Client) DeleteShare(ctx context.Context, uuid string) (retErr error) {
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.DeleteShare(cctx, &vzdv1.DeleteShareRequest{Uuid: uuid})
+	_, err = rpc.DeleteShare(cctx, &weftv1.DeleteShareRequest{Uuid: uuid})
 	return err
 }
 
@@ -1094,7 +1094,7 @@ func (c *Client) ListFloatingIPs(ctx context.Context, project string) (rows []ma
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.ListFloatingIPs(cctx, &vzdv1.ListFloatingIPsRequest{Project: project})
+	resp, err := rpc.ListFloatingIPs(cctx, &weftv1.ListFloatingIPsRequest{Project: project})
 	if err != nil {
 		return nil, err
 	}
@@ -1120,7 +1120,7 @@ func (c *Client) AllocateFloatingIP(ctx context.Context, project, network string
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	resp, err := rpc.AllocateFloatingIP(cctx, &vzdv1.AllocateFloatingIPRequest{Project: project, Network: network})
+	resp, err := rpc.AllocateFloatingIP(cctx, &weftv1.AllocateFloatingIPRequest{Project: project, Network: network})
 	if err != nil {
 		return "", "", err
 	}
@@ -1138,7 +1138,7 @@ func (c *Client) ReleaseFloatingIP(ctx context.Context, uuid string) (retErr err
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.ReleaseFloatingIP(cctx, &vzdv1.ReleaseFloatingIPRequest{Uuid: uuid})
+	_, err = rpc.ReleaseFloatingIP(cctx, &weftv1.ReleaseFloatingIPRequest{Uuid: uuid})
 	return err
 }
 
@@ -1150,7 +1150,7 @@ func (c *Client) MapFloatingIP(ctx context.Context, uuid, targetKind, targetName
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.MapFloatingIP(cctx, &vzdv1.MapFloatingIPRequest{
+	_, err = rpc.MapFloatingIP(cctx, &weftv1.MapFloatingIPRequest{
 		Uuid: uuid, TargetKind: targetKind, TargetName: targetName,
 	})
 	return err
@@ -1164,6 +1164,6 @@ func (c *Client) UnmapFloatingIP(ctx context.Context, uuid string) (retErr error
 	}
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
-	_, err = rpc.UnmapFloatingIP(cctx, &vzdv1.UnmapFloatingIPRequest{Uuid: uuid})
+	_, err = rpc.UnmapFloatingIP(cctx, &weftv1.UnmapFloatingIPRequest{Uuid: uuid})
 	return err
 }

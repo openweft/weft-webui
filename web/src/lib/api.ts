@@ -292,6 +292,7 @@ export const grantProjectRole = (project: string, email: string, role: string) =
 export interface Quotas {
   vcpu: number;
   ram_gib: number;
+  gpus: number;
   volumes: number;
   volumes_gib: number;
   shares: number;
@@ -563,6 +564,7 @@ export interface QuotaDimMeta {
 export const QUOTA_DIMS: QuotaDimMeta[] = [
   { key: 'vcpu',         label: 'vCPU' },
   { key: 'ram_gib',      label: 'RAM',       unit: 'GiB' },
+  { key: 'gpus',         label: 'GPUs' },
   { key: 'volumes',      label: 'Volumes' },
   { key: 'volumes_gib',  label: 'Volume capacity', unit: 'GiB' },
   { key: 'shares',       label: 'Shares' },
