@@ -207,32 +207,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
 	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)
 	mux.HandleFunc("POST /api/volumes/{uuid}/detach", handleDetachVolume)
-	mux.HandleFunc("POST /api/networks", handleCreateNetwork)
-	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
-	mux.HandleFunc("POST /api/security-groups", handleCreateSecurityGroup)
-	mux.HandleFunc("DELETE /api/security-groups/{uuid}", handleDeleteSecurityGroup)
-	mux.HandleFunc("GET /api/security-groups/{uuid}/rules", handleGetSecurityGroupRules)
-	mux.HandleFunc("PUT /api/security-groups/{uuid}/rules", handleSetSecurityGroupRules)
-	mux.HandleFunc("POST /api/floating-ips", handleAllocateFloatingIP)
-	mux.HandleFunc("DELETE /api/floating-ips/{uuid}", handleReleaseFloatingIP)
-	mux.HandleFunc("POST /api/floating-ips/{uuid}/map", handleMapFloatingIP)
-	mux.HandleFunc("POST /api/floating-ips/{uuid}/unmap", handleUnmapFloatingIP)
-
-	// Scheduling rules (live-first via weft-network ; mock store
-	// fallback on Unimplemented).
-	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)
-	mux.HandleFunc("DELETE /api/scheduling-rules/{name}", handleDeleteSchedulingRule)
-
-	// Routers / Load Balancers / DNS — weft-network territory.
-	mux.HandleFunc("POST /api/routers", handleCreateRouter)
-	mux.HandleFunc("DELETE /api/routers/{uuid}", handleDeleteRouter)
-	mux.HandleFunc("POST /api/loadbalancers", handleCreateLoadBalancer)
-	mux.HandleFunc("DELETE /api/loadbalancers/{uuid}", handleDeleteLoadBalancer)
-	mux.HandleFunc("PUT /api/loadbalancers/{uuid}/backends", handleSetLoadBalancerBackends)
-	mux.HandleFunc("POST /api/dns-zones", handleCreateDNSZone)
-	mux.HandleFunc("DELETE /api/dns-zones/{uuid}", handleDeleteDNSZone)
-	mux.HandleFunc("POST /api/dns-records", handleCreateDNSRecord)
-	mux.HandleFunc("DELETE /api/dns-records/{uuid}", handleDeleteDNSRecord)
+	// (Networks, SGs, floating-IPs, routers, LBs, DNS, scheduling
+	// rules all moved to huma — see api_networking.go.)
 
 	// Shares (mock store ; tenant-admin gated inside the handler).
 	mux.HandleFunc("POST /api/shares", handleCreateShare)
@@ -260,9 +236,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// for every node so it's admin-only ; the user listener returns
 	// 404 so a stale SPA build never accidentally reveals which host
 	// runs a VM.
-	if scope == ScopeAdmin {
-		mux.HandleFunc("GET /api/network-topology", handleNetworkTopology)
-	} else {
+	if scope != ScopeAdmin {
+		// User listener returns 404 on /api/network-topology so a stale
+		// SPA build never accidentally reveals host placement. The
+		// admin listener gets the typed huma op in api_networking.go.
 		mux.HandleFunc("GET /api/network-topology", notFound)
 	}
 	mux.HandleFunc("GET /api/quotas", handleQuotas)
