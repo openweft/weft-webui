@@ -37,7 +37,39 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export const getResources = () => getJSON<ResourceMeta[]>('/resources');
-export const getRows = (id: string) => getJSON<Row[]>(`/resources/${id}`);
+
+// /api/resources/:id now returns a {rows, next, total} envelope. Most
+// callers don't care about the cursor (modals, search palette, drawers
+// that snapshot once) — `getRows` keeps the array-only contract by
+// unwrapping. The table component uses `getRowsPage` directly so it can
+// surface "Load more" + the running total.
+export interface Page<T> {
+  rows: T[];
+  next: string;  // empty when no further page
+  total: number; // total rows on the server-side slice (post-filter)
+}
+
+export interface PageOpts {
+  limit?: number;
+  pageToken?: string;
+}
+
+export async function getRowsPage(id: string, opts: PageOpts = {}): Promise<Page<Row>> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set('limit', String(opts.limit));
+  if (opts.pageToken) q.set('page_token', opts.pageToken);
+  const qs = q.toString();
+  return getJSON<Page<Row>>(`/resources/${id}${qs ? `?${qs}` : ''}`);
+}
+
+// Convenience wrapper for the dozen callers that only want the rows.
+// Asks for the maximum page size (1000) ; today's mock datasets fit
+// in one page, and a follow-on PR can move noisy callers to the paged
+// API as their tables grow.
+export async function getRows(id: string): Promise<Row[]> {
+  const p = await getRowsPage(id, { limit: 1000 });
+  return p.rows;
+}
 
 // Flavors catalogue — separate endpoint because the sidebar entry is
 // admin-only (so a user UI can't reach /api/resources/flavors) but
