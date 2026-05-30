@@ -153,7 +153,12 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("DELETE /api/microvms/{name}", handleDeleteVM)
 	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
+	mux.HandleFunc("POST /api/networks", handleCreateNetwork)
 	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
+
+	// Scheduling rules (mock store ; no daemon RPC yet).
+	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)
+	mux.HandleFunc("DELETE /api/scheduling-rules/{name}", handleDeleteSchedulingRule)
 
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
@@ -366,6 +371,15 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	case "groups":
 		// Store-only (weft-agent has no ListGroups yet).
 		writeJSON(w, http.StatusOK, tenantsDB.listGroups())
+		return
+	case "scheduling-rules":
+		// Store-only (weft-agent has no ListSchedulingRules yet). Project
+		// filter mirrors the topbar scope ; cluster admin sees all.
+		filter := ""
+		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
+			_, filter = scopeFromRequest(r)
+		}
+		writeJSON(w, http.StatusOK, schedulingDB.list(filter))
 		return
 	case "projects":
 		if live != nil {

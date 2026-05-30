@@ -3,6 +3,8 @@
   import ResourceTable from './ResourceTable.svelte';
   import CreateVMModal from './CreateVMModal.svelte';
   import CreateVolumeModal from './CreateVolumeModal.svelte';
+  import CreateNetworkModal from './CreateNetworkModal.svelte';
+  import CreateSchedulingRuleModal from './CreateSchedulingRuleModal.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -41,9 +43,14 @@
   // active. Everything else keeps it disabled with a hint — clicking
   // a stub button used to do nothing, now it's at least honest.
   let createOpen = $state(false);
-  const creatable = ['microvms', 'volumes'];
+  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules'];
   let canCreate = $derived(creatable.includes(meta.id));
-  let createLabel = $derived(meta.label.replace(/s$/, '').replace('microVMs', 'microVM'));
+  let createLabel = $derived(
+    meta.label
+      .replace(/s$/, '')
+      .replace('microVMs', 'microVM')
+      .replace('Scheduling Rule', 'rule'),
+  );
 </script>
 
 <div class="flex items-center gap-3">
@@ -90,4 +97,8 @@
   <CreateVMModal bind:open={createOpen} onCreated={refresh} />
 {:else if meta.id === 'volumes'}
   <CreateVolumeModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'networks'}
+  <CreateNetworkModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'scheduling-rules'}
+  <CreateSchedulingRuleModal bind:open={createOpen} onCreated={refresh} />
 {/if}

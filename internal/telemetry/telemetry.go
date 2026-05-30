@@ -241,6 +241,12 @@ func RouteLabel(method, path string) string {
 		return method + " /api/volumes"
 	case prefix(path, "/api/networks/"):
 		return method + " /api/networks/:uuid"
+	case path == "/api/networks":
+		return method + " /api/networks"
+	case prefix(path, "/api/scheduling-rules/"):
+		return method + " /api/scheduling-rules/:name"
+	case path == "/api/scheduling-rules":
+		return method + " /api/scheduling-rules"
 	case prefix(path, "/api/buckets/") && suffix(path, "/objects"):
 		return method + " /api/buckets/:name/objects"
 	case prefix(path, "/api/buckets/") && suffix(path, "/object"):
