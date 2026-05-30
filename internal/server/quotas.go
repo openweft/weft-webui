@@ -1,10 +1,12 @@
+// quotas.go — types + seed values + dimension list for the quota
+// views. The /api/quotas handler moved to api_tenants.go (huma) ;
+// this file keeps just the data the typed op consumes.
 package server
 
-import "net/http"
-
-// Quotas — per-project resource limits shown on the overview. Mock values
-// chosen to exercise all four consumption bands (green / yellow / orange /
-// red). Wiring to the real quota system swaps the slice for a lookup.
+// Quota — per-project resource limit shown on the overview. Mock
+// values are chosen to exercise all four consumption bands (green /
+// yellow / orange / red). Wiring to the real quota system swaps the
+// slice for a lookup.
 type Quota struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
@@ -51,36 +53,4 @@ var tenantQuotaDims = []struct {
 	{"buckets_gib", "Object storage", "bucket", "GiB", func(q Quotas) int { return q.BucketsGiB }},
 	{"registry_gib", "Registry", "image", "GiB", func(q Quotas) int { return q.RegistryGiB }},
 	{"floating_ips", "Floating IPs", "ip", "", func(q Quotas) int { return q.FloatingIPs }},
-}
-
-// handleQuotas — scope-aware.
-//
-// When the session carries a tenant scope, return THAT tenant's
-// quotas (cap + allocated) mapped to the same Quota[] shape the
-// global path uses. The Overview already knows how to render the
-// progress bars ; it doesn't need to know which path served them.
-//
-// When no scope is set (cluster admin "all tenants" view), serve the
-// static global quotas as before. A project-only scope is treated the
-// same way as tenant-only at this layer — the per-project quotas
-// editor in TenantsPage already handles that view.
-func handleQuotas(w http.ResponseWriter, r *http.Request) {
-	tenant, _ := scopeFromRequest(r)
-	if tenant != "" {
-		if view, ok := tenantsDB.tenantQuotaView(tenant); ok {
-			cap, _ := view["cap"].(Quotas)
-			alloc, _ := view["allocated"].(Quotas)
-			out := make([]Quota, 0, len(tenantQuotaDims))
-			for _, d := range tenantQuotaDims {
-				out = append(out, Quota{
-					ID: d.ID, Label: d.Label, Icon: d.Icon, Unit: d.Unit,
-					Used:  d.Get(alloc),
-					Limit: d.Get(cap),
-				})
-			}
-			writeJSON(w, http.StatusOK, out)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, quotas)
 }
