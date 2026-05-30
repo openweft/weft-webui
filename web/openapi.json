@@ -1889,6 +1889,132 @@
         ],
         "type": "object"
       },
+      "ObjectDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ObjectDetail.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "modified": {
+            "type": "string"
+          },
+          "previewable": {
+            "type": "boolean"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sizeHuman": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "size",
+          "sizeHuman",
+          "modified",
+          "contentType",
+          "previewable",
+          "content"
+        ],
+        "type": "object"
+      },
+      "ObjectEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "modified": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sizeHuman": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "key",
+          "size",
+          "sizeHuman",
+          "modified",
+          "contentType"
+        ],
+        "type": "object"
+      },
+      "ObjectListing": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ObjectListing.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "share": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix",
+          "folders",
+          "objects"
+        ],
+        "type": "object"
+      },
       "OkBody": {
         "additionalProperties": false,
         "properties": {
@@ -1914,9 +2040,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "enum": [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject",
+              "s3:ListBucket"
+            ],
             "type": "string"
           },
           "effect": {
+            "enum": [
+              "Allow",
+              "Deny"
+            ],
             "type": "string"
           },
           "principal": {
@@ -3023,7 +3159,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectDetail"
+                }
               }
             },
             "description": "OK"
@@ -3076,7 +3214,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectListing"
+                }
               }
             },
             "description": "OK"
@@ -3195,7 +3335,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BucketPolicy"
+                }
               }
             },
             "description": "OK"
@@ -3247,7 +3389,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BucketPolicy"
+                }
               }
             },
             "description": "OK"
@@ -6133,7 +6277,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectDetail"
+                }
               }
             },
             "description": "OK"
@@ -6186,7 +6332,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectListing"
+                }
               }
             },
             "description": "OK"

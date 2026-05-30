@@ -218,7 +218,7 @@ func mountSharesStorageAPI(api huma.API) {
 		Path:        "/api/shares/{name}/objects",
 		Summary:     "List the share's objects under ?prefix",
 		Tags:        []string{"shares"},
-	}, func(_ context.Context, in *listShareObjectsInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *listShareObjectsInput) (*objectListingOutput, error) {
 		sharesMu.Lock()
 		defer sharesMu.Unlock()
 		objs, ok := shareFiles[in.Name]
@@ -226,8 +226,8 @@ func mountSharesStorageAPI(api huma.API) {
 			return nil, huma.Error404NotFound("no such share")
 		}
 		folders, entries := listEntries(objs, in.Prefix)
-		return &passthroughOutput{Body: map[string]any{
-			"share": in.Name, "prefix": in.Prefix, "folders": folders, "objects": entries,
+		return &objectListingOutput{Body: ObjectListing{
+			Share: in.Name, Prefix: in.Prefix, Folders: folders, Objects: entries,
 		}}, nil
 	})
 
@@ -237,7 +237,7 @@ func mountSharesStorageAPI(api huma.API) {
 		Path:        "/api/shares/{name}/object",
 		Summary:     "Get one share object's metadata + preview",
 		Tags:        []string{"shares"},
-	}, func(_ context.Context, in *getShareObjectInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *getShareObjectInput) (*objectDetailOutput, error) {
 		sharesMu.Lock()
 		defer sharesMu.Unlock()
 		objs, ok := shareFiles[in.Name]
@@ -245,7 +245,7 @@ func mountSharesStorageAPI(api huma.API) {
 			return nil, huma.Error404NotFound("no such share")
 		}
 		if d, ok := objectDetail(objs, in.Key); ok {
-			return &passthroughOutput{Body: d}, nil
+			return &objectDetailOutput{Body: *d}, nil
 		}
 		return nil, huma.Error404NotFound("no such object")
 	})
@@ -324,16 +324,16 @@ func mountBucketsAPI(api huma.API) {
 		Path:        "/api/buckets/{name}/policy",
 		Summary:     "Get a bucket's IAM policy (empty {Statements:[]} when none)",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *bucketNameInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *bucketNameInput) (*bucketPolicyOutput, error) {
 		bucketsMu.Lock()
 		defer bucketsMu.Unlock()
 		if findBucket(in.Name) == nil {
 			return nil, huma.Error404NotFound("no such bucket")
 		}
 		if p, ok := policies[in.Name]; ok && p != nil {
-			return &passthroughOutput{Body: p}, nil
+			return &bucketPolicyOutput{Body: *p}, nil
 		}
-		return &passthroughOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
+		return &bucketPolicyOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -343,7 +343,7 @@ func mountBucketsAPI(api huma.API) {
 		Summary:     "Atomically set a bucket's policy",
 		Description: "An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *setBucketPolicyInput) (*passthroughOutput, error) {
+	}, func(_ context.Context, in *setBucketPolicyInput) (*bucketPolicyOutput, error) {
 		body := in.Body
 		for i, s := range body.Statements {
 			if !validPolicyEffects[s.Effect] {
@@ -363,13 +363,13 @@ func mountBucketsAPI(api huma.API) {
 		}
 		if len(body.Statements) == 0 {
 			delete(policies, in.Name)
-			return &passthroughOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
+			return &bucketPolicyOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
 		}
 		if body.Version == "" {
 			body.Version = "2012-10-17"
 		}
 		policies[in.Name] = &body
-		return &passthroughOutput{Body: body}, nil
+		return &bucketPolicyOutput{Body: body}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -378,7 +378,7 @@ func mountBucketsAPI(api huma.API) {
 		Path:        "/api/buckets/{name}/objects",
 		Summary:     "List bucket objects (s3:ListBucket gate)",
 		Tags:        []string{"buckets"},
-	}, func(ctx context.Context, in *listShareObjectsInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *listShareObjectsInput) (*objectListingOutput, error) {
 		if err := requirePolicyCtx(ctx, in.Name, "s3:ListBucket", ""); err != nil {
 			return nil, err
 		}
@@ -389,8 +389,8 @@ func mountBucketsAPI(api huma.API) {
 			return nil, huma.Error404NotFound("no such bucket")
 		}
 		folders, objects := listEntries(b.Objects, in.Prefix)
-		return &passthroughOutput{Body: map[string]any{
-			"bucket": b.Name, "prefix": in.Prefix, "folders": folders, "objects": objects,
+		return &objectListingOutput{Body: ObjectListing{
+			Bucket: b.Name, Prefix: in.Prefix, Folders: folders, Objects: objects,
 		}}, nil
 	})
 
@@ -400,7 +400,7 @@ func mountBucketsAPI(api huma.API) {
 		Path:        "/api/buckets/{name}/object",
 		Summary:     "Get one bucket object (s3:GetObject gate)",
 		Tags:        []string{"buckets"},
-	}, func(ctx context.Context, in *getShareObjectInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *getShareObjectInput) (*objectDetailOutput, error) {
 		if err := requirePolicyCtx(ctx, in.Name, "s3:GetObject", in.Key); err != nil {
 			return nil, err
 		}
@@ -411,7 +411,7 @@ func mountBucketsAPI(api huma.API) {
 			return nil, huma.Error404NotFound("no such bucket")
 		}
 		if d, ok := objectDetail(b.Objects, in.Key); ok {
-			return &passthroughOutput{Body: d}, nil
+			return &objectDetailOutput{Body: *d}, nil
 		}
 		return nil, huma.Error404NotFound("no such object")
 	})
@@ -617,3 +617,12 @@ type DeletedNameResp struct {
 	Deleted string `json:"deleted"`
 }
 type deletedNameOutput struct{ Body DeletedNameResp }
+
+// objectListingOutput / objectDetailOutput / bucketPolicyOutput
+// surface the typed shapes from objectstorage.go in the OpenAPI.
+// One listing/detail/policy struct serves both buckets and shares
+// (the Go side differentiates with the optional Bucket / Share
+// fields ; the SPA already keys on the URL).
+type objectListingOutput struct{ Body ObjectListing }
+type objectDetailOutput  struct{ Body ObjectDetail }
+type bucketPolicyOutput  struct{ Body BucketPolicy }

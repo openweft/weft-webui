@@ -28,6 +28,8 @@ import {
   type APITenantDetail, type APITenantMember, type APITenantProjectEntry,
   type APITenantGroup, type APITenantQuotaView, type APIProjectQuotaView,
   type APIQuotas,
+  type APIObjectEntry, type APIObjectListing, type APIObjectDetail,
+  type APIBucketPolicy, type APIPolicyStatement,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -194,17 +196,20 @@ function handleUnauthorised(): never {
 
 export type StorageKind = 'buckets' | 'shares';
 
-export interface ObjectEntry {
-  name: string; key: string; size: number;
-  sizeHuman: string; modified: string; contentType: string;
-}
-export interface ObjectListing {
-  prefix: string; folders: string[]; objects: ObjectEntry[];
-}
-export interface ObjectDetail {
-  key: string; size: number; sizeHuman: string; modified: string;
-  contentType: string; previewable: boolean; content: string;
-}
+// Types now come from api.gen.ts. Coerce nullable arrays at the
+// helper boundary so the SPA never has to ternary-guard.
+export type ObjectEntry = APIObjectEntry;
+export type ObjectListing = Omit<APIObjectListing, 'folders' | 'objects'> & {
+  folders: string[];
+  objects: ObjectEntry[];
+};
+export type ObjectDetail = APIObjectDetail;
+
+const coerceListing = (data: APIObjectListing): ObjectListing => ({
+  ...data,
+  folders: data.folders ?? [],
+  objects: data.objects ?? [],
+});
 
 export const browse = async (kind: StorageKind, container: string, prefix = ''): Promise<ObjectListing> => {
   if (kind === 'buckets') {
@@ -212,13 +217,13 @@ export const browse = async (kind: StorageKind, container: string, prefix = ''):
       params: { path: { name: container }, query: { prefix } },
     });
     if (error) throwErr(error);
-    return data as unknown as ObjectListing;
+    return coerceListing(data);
   }
   const { data, error } = await client.GET('/api/shares/{name}/objects', {
     params: { path: { name: container }, query: { prefix } },
   });
   if (error) throwErr(error);
-  return data as unknown as ObjectListing;
+  return coerceListing(data);
 };
 
 export const readEntry = async (kind: StorageKind, container: string, key: string): Promise<ObjectDetail> => {
@@ -227,13 +232,13 @@ export const readEntry = async (kind: StorageKind, container: string, key: strin
       params: { path: { name: container }, query: { key } },
     });
     if (error) throwErr(error);
-    return data as unknown as ObjectDetail;
+    return data;
   }
   const { data, error } = await client.GET('/api/shares/{name}/object', {
     params: { path: { name: container }, query: { key } },
   });
   if (error) throwErr(error);
-  return data as unknown as ObjectDetail;
+  return data;
 };
 
 export async function uploadEntries(kind: StorageKind, container: string, form: FormData): Promise<Row> {
@@ -271,20 +276,20 @@ export async function deleteBucket(name: string): Promise<void> {
   if (error) throwErr(error);
 }
 
-export type PolicyEffect = 'Allow' | 'Deny';
-export type PolicyAction =
-  | 's3:GetObject' | 's3:PutObject' | 's3:DeleteObject' | 's3:ListBucket';
-export interface PolicyStatement {
-  effect: PolicyEffect; principal: string; action: PolicyAction; resource: string;
-}
-export interface BucketPolicy { version: string; statements: PolicyStatement[] }
+// Types from api.gen.ts. Effect / Action carry their narrow enums
+// because the Go PolicyStatement struct has 'enum:' tags (server-
+// side validation against the closed vocabulary).
+export type PolicyEffect = PolicyStatement['effect'];
+export type PolicyAction = PolicyStatement['action'];
+export type PolicyStatement = APIPolicyStatement;
+export type BucketPolicy = Omit<APIBucketPolicy, 'statements'> & { statements: PolicyStatement[] };
 
 export const getBucketPolicy = async (name: string): Promise<BucketPolicy> => {
   const { data, error } = await client.GET('/api/buckets/{name}/policy', {
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as BucketPolicy;
+  return { ...data, statements: data.statements ?? [] };
 };
 
 export async function setBucketPolicy(name: string, p: BucketPolicy): Promise<BucketPolicy> {
@@ -293,7 +298,7 @@ export async function setBucketPolicy(name: string, p: BucketPolicy): Promise<Bu
     body: p,
   });
   if (error) throwErr(error);
-  return data as unknown as BucketPolicy;
+  return { ...data, statements: data.statements ?? [] };
 }
 
 // ---- Network topology ---------------------------------------------
