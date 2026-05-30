@@ -143,8 +143,9 @@
         (activeConflict!.resources ?? []).includes(r),
       ).join(', ');
       const msg = `"${activeConflict.name}" already provides ${overlapping}. `
-        + `Installing "${selected.name}" alongside it can lead to inconsistent state — `
-        + `the recommended workflow is to migrate data, then uninstall the previous backend.\n\n`
+        + `Two plugins serving the same resource is supported but only meaningful in specific patterns `
+        + `(e.g. versitygw S3 surface on top of a CubeFS POSIX backend). `
+        + `If you meant to switch backends, the recommended path is migrate data, then uninstall the previous one.\n\n`
         + `Continue installing "${selected.name}" anyway?`;
       if (!confirm(msg)) return;
     }
@@ -323,7 +324,7 @@
             {/each}
           </ul>
           <p class="mt-2 text-xs text-base-content/50">
-            These resource IDs become visible in the sidebar once the plugin is installed + enabled. Multiple plugins can contribute the same resource (e.g. envoy-lb / caddy-lb both expose <code>loadbalancers</code>) — installing any of them opens the gate.
+            These resource IDs become visible in the sidebar once the plugin is installed + enabled. Multiple plugins can contribute the same resource (e.g. cubefs-storage / ceph-storage both expose <code>shares</code> + <code>buckets</code>) — installing any of them opens the gate.
           </p>
         {/if}
       </div>
@@ -343,7 +344,7 @@
                   <span class="font-medium text-sm">{alt.name}</span>
                   <span class="text-xs text-base-content/50">v{alt.version} · {alt.vendor}</span>
                   <span class="ml-auto flex items-center gap-1">
-                    <span class="text-xs text-base-content/50">shares: <code class="font-mono">{shared.join(', ')}</code></span>
+                    <span class="text-xs text-base-content/50">overlaps on <code class="font-mono">{shared.join(', ')}</code></span>
                     <span class="badge badge-xs {ab.class}">{ab.label}</span>
                   </span>
                 </button>

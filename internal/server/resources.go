@@ -453,14 +453,14 @@ var registry = []Resource{
 	},
 	{
 		// Load balancers : programmable L4/L7 in front of microVMs and
-		// instances. Backed by Envoy on dedicated infra microVMs (one per
-		// DC : envoy-dca / envoy-dcb / envoy-dcc, picked via SRV — same
-		// shape as the weft agent endpoints).
+		// instances. The data plane is Caddy embedded in weft-agent
+		// (sub-module weft-agent/proxy/) — one Caddy per host, no
+		// separate infra microVM, no plugin.
 		//
-		// controller is the weft-network instance that currently owns the
-		// xDS stream for this LB (etcd-elected leader). When the leader
-		// fails over a replica takes the column ; the data-plane Envoys
-		// don't notice.
+		// controller is the weft-network instance that currently owns
+		// the reconcile stream for this LB (etcd-elected leader). When
+		// the leader fails over a replica takes the column ; the local
+		// Caddys keep serving from their last applied config.
 		ID: "loadbalancers", Label: "Load Balancers", Section: "Network",
 		Columns: cols("name", "Name", "mode", "Mode", "address", "VIP",
 			"port", "Port", "backends", "Backends", "az", "AZ",

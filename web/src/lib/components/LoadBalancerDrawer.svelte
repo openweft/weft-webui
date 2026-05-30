@@ -68,8 +68,9 @@
   $effect(() => { uuid; loadCandidates(); });
 
   // Per-LB event subscription. weft-network emits lb.backends.changed
-  // when its reconciler diffs the xDS state ; we refresh the
-  // candidates list (a microVM may have come up or gone away).
+  // when its reconciler updates Caddy via the weft-agent admin API ;
+  // we refresh the candidates list (a microVM may have come up or
+  // gone away).
   // The snapshot stays unchanged so the dirty-tracking still
   // reflects what THIS operator typed.
   let scopedClose: (() => void) | null = null;
@@ -146,7 +147,8 @@
     </div>
     <p class="text-xs text-base-content/60">
       microVMs receiving traffic from this LB. The reconciler diffs
-      against the live xDS state and pushes only the deltas to Envoy.
+      against each weft-agent's last applied Caddy config and pushes
+      only the deltas via the local admin API.
     </p>
 
     {#if backends.length > 0}

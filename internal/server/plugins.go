@@ -117,6 +117,15 @@ func seedPlugins() map[string]*Plugin {
 			InstallStatus: "available",
 			Enabled:       false,
 		},
+		"versitygw-buckets": {
+			ID: "versitygw-buckets", Name: "VersityGW S3 Gateway",
+			Vendor: "Versity Software", Version: "1.0.13",
+			Description: "VersityGW (Apache 2.0) — high-performance S3 gateway in Go ; surfaces an S3 API on top of any POSIX-mounted backend (CubeFS / Ceph / local). Pair with cubefs-storage or ceph-storage when you want their shares but a separate S3 surface — versitygw delegates the actual storage to the underlying POSIX tree.",
+			Section:   "Storage",
+			Resources: []string{"buckets"},
+			InstallStatus: "available",
+			Enabled:       false,
+		},
 
 		// ---- Registry backends — gate registries ----
 		"zot-registry": {
@@ -140,33 +149,12 @@ func seedPlugins() map[string]*Plugin {
 			Enabled:       false,
 		},
 
-		// Load-balancing is provided by a plugin too — pick Envoy
-		// (high-perf, gRPC + xDS) or Caddy (built-in auto-HTTPS via
-		// ACME). The dashboard exposes the Load Balancers section
-		// only when one of these two is installed. Seeded as
-		// installed+enabled by default so existing seed LB rows
-		// stay visible during the migration ; an operator who wants
-		// to switch flavours uninstalls one + installs the other.
-		"envoy-lb": {
-			ID: "envoy-lb", Name: "Envoy Load Balancer",
-			Vendor: "openweft", Version: "1.32.0",
-			Description: "Layer-4/7 load balancing with Envoy. gRPC + HTTP/3 native, xDS-driven config, per-listener TLS. Ideal for high-throughput east-west traffic.",
-			Section:   "Network",
-			Resources: []string{"loadbalancers"},
-			InstallStatus: "installed",
-			Enabled:       true,
-			InstalledAt:   "2026-04-01T10:00:00Z",
-			InstalledBy:   "alice@weft.local",
-		},
-		"caddy-lb": {
-			ID: "caddy-lb", Name: "Caddy Load Balancer",
-			Vendor: "openweft", Version: "2.8.0",
-			Description: "Layer-7 load balancing with Caddy. Built-in auto-HTTPS via ACME, HTTP/2 + HTTP/3, ergonomic config. Ideal for public ingress without a separate cert-manager.",
-			Section:   "Network",
-			Resources: []string{"loadbalancers"},
-			InstallStatus: "available",
-			Enabled:       false,
-		},
+		// NOTE — load-balancing is NOT a plugin. weft-agent embeds
+		// Caddy directly (sub-module weft-agent/proxy/) ; no Envoy,
+		// no separate binary, no install flow. `loadbalancers` is
+		// a built-in resource — it stays visible in the sidebar
+		// regardless of plugin state (isResourceGateOpen returns
+		// true because no plugin lists it). Decided 2026-05-30.
 	}
 }
 
@@ -210,7 +198,7 @@ func mutatePlugin(id string, f func(*Plugin)) (*Plugin, bool) {
 // plugin declares it in its Resources slice ; in that case the gate
 // is open as soon as ANY contributing plugin is installed+enabled
 // (lets the operator pick between alternative implementations, e.g.
-// envoy-lb vs caddy-lb both contribute "loadbalancers"). A resource
+// cubefs-storage vs ceph-storage both contribute "shares"). A resource
 // no plugin contributes to is built-in — always open.
 func isResourceGateOpen(resourceID string) bool {
 	pluginsMu.Lock()

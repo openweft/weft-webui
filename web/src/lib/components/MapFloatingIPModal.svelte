@@ -58,7 +58,7 @@
     {#if fip}
       <p class="text-sm text-base-content/60">
         Wire <span class="font-mono">{fip.address}</span> to a microVM
-        or load-balancer VIP. weft-network programs the NAT / Envoy
+        or load-balancer VIP. weft-network programs the NAT / Caddy
         listener accordingly.
       </p>
     {/if}
