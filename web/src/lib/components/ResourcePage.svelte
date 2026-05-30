@@ -5,6 +5,7 @@
   import CreateVolumeModal from './CreateVolumeModal.svelte';
   import CreateNetworkModal from './CreateNetworkModal.svelte';
   import CreateSchedulingRuleModal from './CreateSchedulingRuleModal.svelte';
+  import CreateSecurityGroupModal from './CreateSecurityGroupModal.svelte';
   import MicroVMDrawer from './MicroVMDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
@@ -75,13 +76,14 @@
   function handleSelect(row: Row) {
     if (meta.id === 'microvms') selectedRow = row;
   }
-  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules'];
+  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups'];
   let canCreate = $derived(creatable.includes(meta.id));
   let createLabel = $derived(
     meta.label
       .replace(/s$/, '')
       .replace('microVMs', 'microVM')
-      .replace('Scheduling Rule', 'rule'),
+      .replace('Scheduling Rule', 'rule')
+      .replace('Security Group', 'SG'),
   );
 </script>
 
@@ -142,6 +144,8 @@
   <CreateNetworkModal bind:open={createOpen} onCreated={refresh} />
 {:else if meta.id === 'scheduling-rules'}
   <CreateSchedulingRuleModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'security-groups'}
+  <CreateSecurityGroupModal bind:open={createOpen} onCreated={refresh} />
 {/if}
 
 {#if meta.id === 'microvms' && selectedRow}

@@ -424,6 +424,26 @@ export const createShare = (b: CreateShareBody) => postJSON<Row>('/shares', b);
 export const deleteShare = (name: string) =>
   deleteJSON(`/shares/${encodeURIComponent(name)}`);
 
+// ---- Security groups ----
+
+export interface SecurityRule {
+  direction: 'ingress' | 'egress';
+  protocol: 'tcp' | 'udp' | 'icmp' | 'any';
+  port_min: number;
+  port_max: number;
+  remote_cidr: string;
+  remote_group_uuid: string;
+}
+export interface CreateSecurityGroupBody {
+  Name: string;
+  Description?: string;
+  Rules: SecurityRule[];
+}
+export const createSecurityGroup = (b: CreateSecurityGroupBody) =>
+  postJSON<{ name: string; project: string; uuid: string; rules: number }>('/security-groups', b);
+export const deleteSecurityGroup = (uuid: string) =>
+  deleteJSON(`/security-groups/${encodeURIComponent(uuid)}`);
+
 // ---- microVM inspect (status / timings / logs) ----
 
 export interface VMStatus {

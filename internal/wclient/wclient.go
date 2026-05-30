@@ -606,6 +606,66 @@ func (c *Client) DeleteVolume(ctx context.Context, uuid string) (retErr error) {
 	return err
 }
 
+// SecurityRule mirrors the proto's per-rule shape but exposed as a
+// public type so handlers can decode the SPA's payload without
+// touching the vzdv1 alias.
+type SecurityRule struct {
+	Direction       string `json:"direction"` // "ingress" | "egress"
+	Protocol        string `json:"protocol"`  // "tcp" | "udp" | "icmp" | "any"
+	PortMin         int32  `json:"port_min"`
+	PortMax         int32  `json:"port_max"`
+	RemoteCIDR      string `json:"remote_cidr"`
+	RemoteGroupUUID string `json:"remote_group_uuid"`
+}
+
+// CreateSecurityGroupOpts groups the proto's create fields with a
+// JSON-friendly rules slice. The handler accepts the same shape from
+// the SPA's POST body.
+type CreateSecurityGroupOpts struct {
+	Project, Name, Description string
+	Rules                      []SecurityRule
+}
+
+func (c *Client) CreateSecurityGroup(ctx context.Context, o CreateSecurityGroupOpts) (uuid string, retErr error) {
+	defer c.measured("CreateSecurityGroup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	rules := make([]*vzdv1.SecurityRule, 0, len(o.Rules))
+	for _, r := range o.Rules {
+		rules = append(rules, &vzdv1.SecurityRule{
+			Direction: r.Direction, Protocol: r.Protocol,
+			PortMin: r.PortMin, PortMax: r.PortMax,
+			RemoteCidr: r.RemoteCIDR, RemoteGroupUuid: r.RemoteGroupUUID,
+		})
+	}
+	resp, err := rpc.CreateSecurityGroup(cctx, &vzdv1.CreateSecurityGroupRequest{
+		Project: o.Project, Name: o.Name, Description: o.Description, Rules: rules,
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Group == nil {
+		return "", errors.New("nil CreateSecurityGroup response")
+	}
+	return resp.Group.Uuid, nil
+}
+
+func (c *Client) DeleteSecurityGroup(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteSecurityGroup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteSecurityGroup(cctx, &vzdv1.DeleteSecurityGroupRequest{Uuid: uuid})
+	return err
+}
+
 // --- Lookup helpers -------------------------------------------------
 //
 // weft-agent's mutation RPCs key by UUID (project, user, network, volume).

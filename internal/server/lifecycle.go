@@ -302,6 +302,65 @@ func handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"name": body.Name, "project": project, "cidr": body.CIDR})
 }
 
+// --- Security groups -----------------------------------------------
+
+// handleCreateSecurityGroup : POST /api/security-groups
+//
+// Body : { Name, Description, Rules:[{direction,protocol,port_min,
+//          port_max,remote_cidr,remote_group_uuid}] }
+// Project comes from the session scope.
+func handleCreateSecurityGroup(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct {
+		Name, Description string
+		Rules             []wclient.SecurityRule
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.Name == "" {
+		writeErr(w, errBadReq("name is required"))
+		return
+	}
+	uuid, cerr := live.CreateSecurityGroup(r.Context(), wclient.CreateSecurityGroupOpts{
+		Project: project, Name: body.Name, Description: body.Description, Rules: body.Rules,
+	})
+	if cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	userAction(r, "security-group.create")
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"name": body.Name, "project": project, "uuid": uuid, "rules": len(body.Rules),
+	})
+}
+
+// handleDeleteSecurityGroup : DELETE /api/security-groups/{uuid}
+func handleDeleteSecurityGroup(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		writeErr(w, errBadReq("uuid is required"))
+		return
+	}
+	if err := live.DeleteSecurityGroup(r.Context(), uuid); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "security-group.delete")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleDeleteNetwork(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
 		return
