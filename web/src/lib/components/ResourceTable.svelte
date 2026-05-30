@@ -58,6 +58,20 @@
   const isBool = (v: unknown) => typeof v === 'boolean';
   const isEmpty = (v: unknown) => v === '' || v === null || v === undefined;
 
+  // DNS records carry a `source` column distinguishing operator-edited
+  // records (`static`) from records reconciled by weft-network from
+  // the VM / LB tables (`auto`). Render it as a coloured chip so the
+  // operator can tell at a glance which rows they shouldn't bother
+  // editing.
+  const isSource = (key: string) => key === 'source';
+  function sourceClass(v: unknown): string {
+    switch (String(v).toLowerCase()) {
+      case 'static': return 'badge-ghost';
+      case 'auto':   return 'badge-info';
+      default:       return 'badge-ghost';
+    }
+  }
+
   // ---- click-to-sort ----
   let sortKey = $state('');
   let sortDir = $state<'asc' | 'desc'>('asc');
@@ -265,6 +279,8 @@
             <td>
               {#if isStatus(c.key)}
                 <span class="badge badge-sm {statusClass(r[c.key])}">{r[c.key]}</span>
+              {:else if isSource(c.key)}
+                <span class="badge badge-sm {sourceClass(r[c.key])}">{r[c.key]}</span>
               {:else if isBool(r[c.key])}
                 <span class="badge badge-sm {r[c.key] ? 'badge-success' : 'badge-ghost'}">
                   {r[c.key] ? 'yes' : 'no'}

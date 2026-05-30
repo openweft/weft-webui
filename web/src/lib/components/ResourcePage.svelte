@@ -14,6 +14,7 @@
   import CreateDNSRecordModal from './CreateDNSRecordModal.svelte';
   import MicroVMDrawer from './MicroVMDrawer.svelte';
   import SecurityGroupDrawer from './SecurityGroupDrawer.svelte';
+  import LoadBalancerDrawer from './LoadBalancerDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -81,7 +82,7 @@
   // RPCs land (volumes → VolumeInfo, networks → NetworkInfo, …).
   let selectedRow = $state<Row | null>(null);
   // selectableDrawer : resources that open a detail drawer on row click.
-  const selectableDrawer = ['microvms', 'security-groups'];
+  const selectableDrawer = ['microvms', 'security-groups', 'loadbalancers'];
   function handleSelect(row: Row) {
     if (selectableDrawer.includes(meta.id)) selectedRow = row;
   }
@@ -204,6 +205,12 @@
   />
 {:else if meta.id === 'security-groups' && selectedRow}
   <SecurityGroupDrawer
+    row={selectedRow}
+    onClose={() => (selectedRow = null)}
+    onChanged={refresh}
+  />
+{:else if meta.id === 'loadbalancers' && selectedRow}
+  <LoadBalancerDrawer
     row={selectedRow}
     onClose={() => (selectedRow = null)}
     onChanged={refresh}
