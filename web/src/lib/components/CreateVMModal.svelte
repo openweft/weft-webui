@@ -217,30 +217,35 @@
 
     <!-- Scheduling policy + private network -->
     <div class="mt-4 grid gap-3 sm:grid-cols-2">
-      <label class="form-control">
+      <div class="form-control">
         <span class="label-text text-xs">Scheduling policy</span>
-        <select class="select select-sm select-bordered" bind:value={schedulingRule}>
-          <option value="">(none — scheduler picks any host)</option>
-          {#each rules as r (r.uuid ?? r.name)}
-            <option value={String(r.name)}>
-              {r.name} · {r.count ?? '0/0'} · {r.placement ?? 'any'}{r.selector ? ' · sel: ' + r.selector : ''}
-            </option>
-          {/each}
-        </select>
+        <Combobox
+          items={rules}
+          bind:value={schedulingRule}
+          getId={(r) => String(r.name)}
+          getLabel={(r) => String(r.name)}
+          getSub={(r) =>
+            `${r.count ?? '0/0'} · ${r.placement ?? 'any'}` +
+            (r.selector ? ` · sel: ${r.selector}` : '')
+          }
+          placeholder="Type to filter rules… (empty = no constraint)"
+        />
         <span class="mt-1 text-xs text-base-content/50">
           ready/desired · placement · selector — the rule's selector
           must match the VM's labels for this VM to count toward it.
         </span>
-      </label>
-      <label class="form-control">
+      </div>
+      <div class="form-control">
         <span class="label-text text-xs">Private network</span>
-        <select class="select select-sm select-bordered" bind:value={network}>
-          <option value="">(project default)</option>
-          {#each networks as n (n.uuid ?? n.name)}
-            <option value={String(n.name)}>{n.name} — {n.cidr ?? ''}</option>
-          {/each}
-        </select>
-      </label>
+        <Combobox
+          items={networks}
+          bind:value={network}
+          getId={(n) => String(n.name)}
+          getLabel={(n) => String(n.name)}
+          getSub={(n) => String(n.cidr ?? '')}
+          placeholder="Type to filter networks… (empty = project default)"
+        />
+      </div>
     </div>
 
     <!-- Public ingress -->
@@ -262,35 +267,40 @@
       </div>
 
       {#if ingressKind === 'floating_ip'}
-        <label class="form-control mt-2">
+        <div class="form-control mt-2">
           <span class="label-text text-xs">Pick a free Floating IP</span>
-          <select class="select select-sm select-bordered" bind:value={ingressFIP}>
-            <option value="">— select —</option>
-            {#each freeFIPs as f (f.uuid)}
-              <option value={String(f.uuid)}>{f.address} ({f.network})</option>
-            {/each}
-          </select>
+          <Combobox
+            items={freeFIPs}
+            bind:value={ingressFIP}
+            getId={(f) => String(f.uuid)}
+            getLabel={(f) => String(f.address)}
+            getSub={(f) => `network ${f.network}`}
+            placeholder="Type to filter free FIPs…"
+            disabled={freeFIPs.length === 0}
+          />
           {#if freeFIPs.length === 0}
             <span class="mt-1 text-xs text-warning">
               No free Floating IP in this project. Allocate one from the
               Floating IPs page first ; the modal can't allocate here yet.
             </span>
           {/if}
-        </label>
+        </div>
       {:else if ingressKind === 'loadbalancer'}
-        <label class="form-control mt-2">
+        <div class="form-control mt-2">
           <span class="label-text text-xs">Pick the load balancer</span>
-          <select class="select select-sm select-bordered" bind:value={ingressLB}>
-            <option value="">— select —</option>
-            {#each lbs as lb (lb.uuid)}
-              <option value={String(lb.uuid)}>{lb.name} — {lb.mode}:{lb.port}</option>
-            {/each}
-          </select>
+          <Combobox
+            items={lbs}
+            bind:value={ingressLB}
+            getId={(lb) => String(lb.uuid)}
+            getLabel={(lb) => String(lb.name)}
+            getSub={(lb) => `${lb.mode}:${lb.port}`}
+            placeholder="Type to filter load balancers…"
+          />
           <span class="mt-1 text-xs text-base-content/50">
             The VM is appended to the LB's backend pool. The LB itself
             already carries (or will carry) the Floating IP.
           </span>
-        </label>
+        </div>
       {/if}
     </fieldset>
 

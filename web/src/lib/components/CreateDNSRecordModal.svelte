@@ -5,6 +5,7 @@
   // (operator-managed) ; `auto` records are minted by weft-network's
   // reconciler, never by hand from this modal.
   import { createDNSRecord, getRows, type Row } from '../api';
+  import Combobox from './Combobox.svelte';
 
   let {
     open = $bindable(false),
@@ -69,14 +70,17 @@
       by weft-network from VMs / LBs are created elsewhere.
     </p>
 
-    <label class="form-control mt-4">
+    <div class="form-control mt-4">
       <span class="label-text text-xs">Zone</span>
-      <select class="select select-sm select-bordered" bind:value={zoneUUID}>
-        {#each zones as z (z.uuid)}
-          <option value={z.uuid}>{z.name}</option>
-        {/each}
-      </select>
-    </label>
+      <Combobox
+        items={zones}
+        bind:value={zoneUUID}
+        getId={(z) => String(z.uuid)}
+        getLabel={(z) => String(z.name)}
+        getSub={(z) => (z.role ? `role ${z.role}` : '')}
+        placeholder="Type to filter zones…"
+      />
+    </div>
 
     <div class="mt-3 grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
       <label class="form-control">
