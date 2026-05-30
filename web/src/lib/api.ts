@@ -712,6 +712,19 @@ export const setSSHKeyCatalogue = (k: {
 export const deleteSSHKeyCatalogue = (name: string) =>
   deleteJSON(`/ssh-keys/${encodeURIComponent(name)}`);
 
+// Bulk-import : fetch <provider>/<account>.keys server-side, dedupe
+// against existing fingerprints, store new entries as
+// <provider>:<account>/<index>. forgejoBase is required for forgejo.
+export interface ImportSSHKeysResult {
+  added: number;
+  skipped_existing: number;
+  total_seen: number;
+  names: string[];
+}
+
+export const importSSHKeys = (b: { provider: 'github' | 'gitlab' | 'forgejo'; account: string; forgejo_base?: string }) =>
+  postJSON<ImportSSHKeysResult>('/ssh-keys/import', b);
+
 // ---- Per-VM SSH-keys assignments ----
 //
 // VMs reference catalogue entries by NAME. The server resolves the

@@ -268,6 +268,11 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	if scope == ScopeAdmin {
 		mux.HandleFunc("POST /api/ssh-keys", handleSetSSHKeyCatalogue)
 		mux.HandleFunc("DELETE /api/ssh-keys/{name}", handleDeleteSSHKeyCatalogue)
+		// Bulk-import from forge accounts. Same admin gate as the
+		// rest of the write surface ; outbound HTTP to the forge
+		// happens server-side so the SPA never speaks to GitHub
+		// from the browser.
+		mux.HandleFunc("POST /api/ssh-keys/import", handleImportSSHKeys)
 	}
 
 	// Object storage (CubeFS S3)
