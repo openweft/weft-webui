@@ -1,5 +1,5 @@
 // Package wclient is the thin adapter between the weft-webui HTTP handlers
-// and the real weft control-plane gRPC API (vzd / weft-client). It hides
+// and the real weft control-plane gRPC API (weft-agent / weft-client). It hides
 // dialing + connection caching, and translates proto messages into the same
 // map[string]any row shape the dashboard's frontend already consumes.
 //
@@ -48,7 +48,8 @@ type Client struct {
 }
 
 // New builds a client that will dial socket on the first RPC. socket follows
-// the weft-client convention : a unix path (e.g. ~/.vzd/vzd.sock) or an
+// the weft-client convention : a unix path (e.g. ~/.vzd/vzd.sock — the
+// legacy default weft-client still ships with) or an
 // ssh:// URL routed through the SSH transport.
 func New(socket string) *Client { return &Client{socket: socket} }
 
@@ -85,7 +86,7 @@ func (c *Client) dial() (vzdv1.VzdServiceClient, error) {
 	// Client() already installs its own bearer interceptor on top — both
 	// stamp `authorization` metadata, and the per-request one wins when
 	// it sets a value (metadata.AppendToOutgoingContext concatenates,
-	// vzd's validator accepts the first valid bearer).
+	// weft-agent's validator accepts the first valid bearer).
 	rpc, conn, err := vzclient.Client(c.socket)
 	if err != nil {
 		return nil, err
@@ -96,12 +97,12 @@ func (c *Client) dial() (vzdv1.VzdServiceClient, error) {
 
 // withBearer derives a new context that carries the signed-in user's
 // access token as gRPC outgoing metadata. No user / no token = the
-// context is returned unchanged ; vzd then sees an unauthenticated
+// context is returned unchanged ; weft-agent then sees an unauthenticated
 // call and decides per its auth-mode whether to reject it.
 //
 // Bypassing this when a token is already present (e.g. a daemon
 // running in dev-mode that ignores auth) keeps the webui usable
-// against a no-auth vzd without crashing on every list call.
+// against a no-auth weft-agent without crashing on every list call.
 func withBearer(ctx context.Context) context.Context {
 	u := auth.UserFromContext(ctx)
 	if u == nil || u.AccessToken == "" {
@@ -316,12 +317,12 @@ func (c *Client) ListSecurityGroups(ctx context.Context, project string) (rows [
 // --- Mutators -------------------------------------------------------
 //
 // Every mutator threads the bearer token through outgoing metadata
-// (so vzd applies the caller's RBAC) and is wrapped in c.measured for
+// (so weft-agent applies the caller's RBAC) and is wrapped in c.measured for
 // the gRPC histograms. Return shapes are deliberately thin — handlers
 // surface the action's success/failure ; the SPA refreshes the row set
 // afterwards.
 
-// CreateProject creates a new project in vzd and returns its UUID.
+// CreateProject creates a new project in weft-agent and returns its UUID.
 // The webui's tenant model wraps this : the handler updates its
 // tenant↔project mapping after the call succeeds.
 func (c *Client) CreateProject(ctx context.Context, name string) (uuid string, retErr error) {
@@ -343,7 +344,7 @@ func (c *Client) CreateProject(ctx context.Context, name string) (uuid string, r
 }
 
 // DeleteProject removes a project. The caller must already own / have
-// admin on it ; vzd refuses otherwise.
+// admin on it ; weft-agent refuses otherwise.
 func (c *Client) DeleteProject(ctx context.Context, uuid string) (retErr error) {
 	defer c.measured("DeleteProject", &retErr)()
 	rpc, err := c.dial()
@@ -374,7 +375,7 @@ func (c *Client) ListProjectMembers(ctx context.Context, projectUUID string) (uu
 }
 
 // AddProjectMember grants a user access to a project. Both sides are
-// UUID-keyed in vzd ; the handler resolves email→UUID upstream.
+// UUID-keyed in weft-agent ; the handler resolves email→UUID upstream.
 func (c *Client) AddProjectMember(ctx context.Context, projectUUID, userUUID string) (retErr error) {
 	defer c.measured("AddProjectMember", &retErr)()
 	rpc, err := c.dial()
@@ -430,7 +431,7 @@ func (c *Client) CreateVM(ctx context.Context, o CreateVMOpts) (retErr error) {
 
 // StartVM / StopVM / DeleteVM share the same three-field request
 // shape (name + project + optional host UUID). The webui doesn't pin
-// a host today — vzd's scheduler picks one.
+// a host today — weft-agent's scheduler picks one.
 func (c *Client) StartVM(ctx context.Context, name, project string) (retErr error) {
 	defer c.measured("StartVM", &retErr)()
 	rpc, err := c.dial()
@@ -529,7 +530,7 @@ func (c *Client) DeleteVolume(ctx context.Context, uuid string) (retErr error) {
 
 // --- Lookup helpers -------------------------------------------------
 //
-// vzd's mutation RPCs key by UUID (project, user, network, volume).
+// weft-agent's mutation RPCs key by UUID (project, user, network, volume).
 // The SPA works in human names ; these helpers walk the matching list
 // once per request to resolve.
 //

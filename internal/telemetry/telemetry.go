@@ -5,7 +5,7 @@
 // Two metric families live here :
 //
 //   - infra        : HTTP request rate / latency / status, gRPC call
-//                    rate / latency to vzd, plus the standard Go
+//                    rate / latency to weft-agent, plus the standard Go
 //                    process + runtime collectors.
 //   - user-flavour : login outcomes, active sessions gauge, per-user
 //                    action counters. Identifying labels are the
@@ -78,12 +78,12 @@ func New(version string) *Recorder {
 
 	r.GRPCCalls = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "weft_webui", Subsystem: "grpc", Name: "calls_total",
-		Help: "gRPC calls to vzd, by method and outcome.",
+		Help: "gRPC calls to weft-agent, by method and outcome.",
 	}, []string{"method", "status"})
 
 	r.GRPCDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "weft_webui", Subsystem: "grpc", Name: "call_duration_seconds",
-		Help:    "Duration of gRPC calls to vzd.",
+		Help:    "Duration of gRPC calls to weft-agent.",
 		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
 	}, []string{"method"})
 

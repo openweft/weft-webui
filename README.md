@@ -85,7 +85,7 @@ automatically.
 ## Live mode
 
 By default the server returns **mock data** for every resource. Point it at a
-running `weft` daemon with `--weft-socket` and any resource that has been
+running `weft agent` daemon with `--weft-socket` and any resource that has been
 wired calls the real gRPC API via [`weft-client`](../weft-client). Unwired
 resources stay on their mock until they are migrated one at a time.
 
@@ -238,7 +238,7 @@ WEBUI_WEFT_SOCKET=/var/run/vzd.sock \
    token + nonce, mints a signed-cookie session, redirects back to `return_to`.
 4. Every protected `/api/*` request now carries the cookie. The bearer token
    from the session is attached to outgoing gRPC metadata for each list call,
-   so `vzd` enforces per-user RBAC.
+   so the `weft-agent` daemon enforces per-user RBAC.
 
 ### Security headers
 

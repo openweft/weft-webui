@@ -25,7 +25,7 @@ import (
 // when the server is launched with a configured socket. Handlers
 // switch on `live != nil` to choose between real and mock data.
 //
-// Both UserHandler and AdminHandler share the same gRPC client — vzd
+// Both UserHandler and AdminHandler share the same gRPC client — weft-agent
 // applies its own RBAC based on the forwarded bearer.
 var live *wclient.Client
 
@@ -313,7 +313,7 @@ func rowCount(res *Resource) int {
 //   - tenant="acme" project="" tenant-aggregate : sum every project of
 //                             the tenant. The mock filters by tenant
 //                             membership ; the live gRPC path will
-//                             accept this when vzd adds the param.
+//                             accept this when weft-agent adds the param.
 //   - tenant="acme" project="X" project-scoped : full filter.
 //
 // Query params (?tenant= / ?project=) override the session for
@@ -333,7 +333,7 @@ func scopeFromRequest(r *http.Request) (tenant, project string) {
 
 // projectFromRequest preserves the old single-return helper for the
 // gRPC client call sites that only know about projects. When the
-// session also carries a tenant, vzd will get it via metadata in a
+// session also carries a tenant, weft-agent will get it via metadata in a
 // future revision ; for now we just pass the project name.
 func projectFromRequest(r *http.Request) string {
 	_, p := scopeFromRequest(r)
@@ -355,7 +355,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, bucketSummaries())
 		return
 	case "tenants":
-		// Store-only (vzd has no ListTenants yet). User listener filters
+		// Store-only (weft-agent has no ListTenants yet). User listener filters
 		// to the caller's tenants ; admin sees all.
 		filter := ""
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
@@ -364,7 +364,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, tenantsDB.listTenants(filter))
 		return
 	case "groups":
-		// Store-only (vzd has no ListGroups yet).
+		// Store-only (weft-agent has no ListGroups yet).
 		writeJSON(w, http.StatusOK, tenantsDB.listGroups())
 		return
 	case "projects":
@@ -432,7 +432,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 //                       tenant (mock aggregate view).
 //   - tenant empty    → no narrowing — cluster admin's "(all)" choice.
 //
-// Live-mode handlers don't go through this path : vzd applies its own
+// Live-mode handlers don't go through this path : weft-agent applies its own
 // filters via the bearer token and the project parameter.
 func applyScopeFilter(rows []map[string]any, r *http.Request) []map[string]any {
 	tenant, project := scopeFromRequest(r)
