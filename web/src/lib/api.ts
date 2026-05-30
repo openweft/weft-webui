@@ -137,12 +137,12 @@ export const deleteScript = async (name: string): Promise<void> => {
 // ---- Flavors catalogue --------------------------------------------
 
 // Flavor catalogue is exposed on both listeners (CreateVMModal picker).
-// The wire shape is {flavors: APIFlavor[]} ; legacy callers expect a
-// bare Row[], so we unwrap here.
-export const getFlavors = async (): Promise<Row[]> => {
+// The wire shape is {flavors: APIFlavor[]} ; the helper unwraps the
+// envelope so callers see a plain array.
+export const getFlavors = async (): Promise<APIFlavor[]> => {
   const { data, error } = await client.GET('/api/flavors');
   if (error) throwErr(error);
-  return (data?.flavors ?? []) as unknown as Row[];
+  return data?.flavors ?? [];
 };
 
 // ---- /api/summary scope-aware counts ------------------------------
