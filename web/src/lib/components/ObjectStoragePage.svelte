@@ -124,7 +124,7 @@
 <div class="flex items-center gap-3">
   <div>
     <h2 class="text-2xl font-bold">Object Storage</h2>
-    <p class="text-sm text-base-content/60">CubeFS S3 · buckets &amp; objects</p>
+    <p class="text-sm text-base-content/60">S3 buckets &amp; objects</p>
   </div>
 </div>
 
