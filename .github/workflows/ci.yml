@@ -7,40 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  go-backend:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: vet
-        env:
-          CGO_ENABLED: "0"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go vet ./...
-
-      - name: build (${{ matrix.goos }}/${{ matrix.goarch }})
-        env:
-          CGO_ENABLED: "0"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build ./...
-
-      - name: test
-        # Tests run on linux/amd64 only; cross-arch execution needs qemu
-        # and the webui is pure-Go so native host coverage suffices.
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: go test -race -count=1 ./...
-
+  # web-frontend builds the SPA and uploads web/dist as an artifact. The
+  # go-backend job downloads it before building because main.go's
+  # //go:embed all:web/dist requires the directory to exist with content
+  # at compile time. Running npm build inside go-backend would be slower
+  # (one build per matrix entry); the artifact-passing pattern is what
+  # most Terraform + Vite projects use.
   web-frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -67,7 +39,60 @@ jobs:
       - name: vite build
         run: npm run build
 
+      - name: upload web/dist for go-backend
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  go-backend:
+    needs: web-frontend
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: download web/dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: vet
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go vet ./...
+
+      - name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+      - name: test
+        # Tests run on linux/amd64 only; cross-arch execution needs qemu
+        # and the webui is pure-Go so native host coverage suffices.
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: go test -race -count=1 ./...
+
   gen-api-drift:
+    # Doesn't strictly need web-frontend's artifact (tools/dump-openapi
+    # doesn't compile main.go's embed), but keeping the dep avoids the
+    # case where a future change makes it transitive without us noticing.
+    needs: web-frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +112,12 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: download web/dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
 
       - name: install web deps
         working-directory: web
