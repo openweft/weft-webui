@@ -1,14 +1,20 @@
 <script lang="ts">
   // SSHKeysPage — table of named SSH keys + right-side drawer for
-  // detail / edit. Replaces the previous master-detail-in-page
-  // layout (didn't scale past a dozen entries — the user flagged it).
+  // detail / edit + three header buttons (New / Edit / Delete) with
+  // semantic colors.
   //
-  // Row click opens SSHKeyDrawer. "+ New key" opens the same drawer
-  // in create-mode. "Import" opens the gh/gl/forgejo modal. Admin
-  // affordances are gated on canEdit (cluster_admin || tenant_admin)
-  // ; non-admins see the table + drawer in read-only mode.
+  // Two-stage interaction model (per the user's UX direction) :
+  //   1. Click a row : selects it (highlights), does NOT open the
+  //      drawer. Edit + Delete buttons in the header light up.
+  //   2. Header button : New / Edit / Delete acts on the selection.
+  //
+  // The drawer remains the canonical place to view + edit. Delete
+  // can fire from the header without opening the drawer first —
+  // confirms inline like every other destructive action in the app.
+  // Non-admins see the page in read-only mode (no New / Edit /
+  // Delete affordances surfaced).
   import {
-    listSSHKeyCatalogue, getMe,
+    listSSHKeyCatalogue, deleteSSHKeyCatalogue, getMe,
     type SSHKeyEntry, type Me,
   } from '../api';
   import SSHKeyDrawer from './SSHKeyDrawer.svelte';
@@ -20,10 +26,22 @@
   let me = $state<Me | null>(null);
   let canEdit = $derived(!!me && (me.cluster_admin || me.tenant_admin));
 
-  // Drawer state : either an existing entry is selected or we're
-  // creating a new one. Mutually exclusive.
-  let selected = $state<SSHKeyEntry | null>(null);
+  // Selection state : the highlighted row's name. Empty = nothing
+  // selected (Edit / Delete disabled).
+  let selectedName = $state<string>('');
+  let selected = $derived<SSHKeyEntry | null>(
+    keys.find((k) => k.name === selectedName) ?? null,
+  );
+
+  // Drawer state : what's currently shown in the drawer (independent
+  // of the selection so closing the drawer doesn't deselect).
+  let drawerEntry = $state<SSHKeyEntry | null>(null);
   let creating = $state(false);
+  let drawerOpen = $derived(creating || drawerEntry !== null);
+
+  // Action error surfaced in an inline alert (e.g. delete failed).
+  let actionErr = $state('');
+  let actionBusy = $state(false);
 
   // Table filter — quick substring match on name / description /
   // fingerprint / source / account. Inline since the table is small
@@ -70,26 +88,56 @@
     }
   }
 
-  function openRow(k: SSHKeyEntry) {
-    creating = false;
-    selected = k;
+  function clickRow(k: SSHKeyEntry) {
+    // Toggle selection : second click on the same row deselects.
+    // Makes the "no selection" state reachable without clicking
+    // outside the table.
+    selectedName = selectedName === k.name ? '' : k.name;
+    actionErr = '';
   }
+
   function startNew() {
-    selected = null;
+    actionErr = '';
+    drawerEntry = null;
     creating = true;
   }
+
+  function startEdit() {
+    if (!selected) return;
+    actionErr = '';
+    creating = false;
+    drawerEntry = selected;
+  }
+
+  async function startDelete() {
+    if (!selected) return;
+    if (!confirm(`Delete key "${selected.name}" ? VMs that reference it by name will lose access on the next sshkeys publish ; existing connections aren't dropped.`)) return;
+    actionBusy = true; actionErr = '';
+    try {
+      await deleteSSHKeyCatalogue(selected.name);
+      selectedName = '';
+      refresh();
+    } catch (e) {
+      actionErr = String(e);
+    } finally {
+      actionBusy = false;
+    }
+  }
+
   function closeDrawer() {
-    selected = null;
+    drawerEntry = null;
     creating = false;
   }
   function onSaved(saved: SSHKeyEntry) {
     creating = false;
-    selected = saved;
+    drawerEntry = saved;
+    selectedName = saved.name;
     refresh();
   }
-  function onDeleted(name: string) {
-    selected = null;
+  function onDeleted(_name: string) {
+    drawerEntry = null;
     creating = false;
+    selectedName = '';
     refresh();
   }
 
@@ -116,8 +164,21 @@
       <input type="search" class="grow" placeholder="Filter…" bind:value={query} />
     </label>
     {#if canEdit}
-      <button class="btn btn-sm btn-primary gap-1" onclick={startNew}>
-        <span class="text-base leading-none">+</span> New key
+      <button class="btn btn-sm btn-primary gap-1" onclick={startNew} title="Create a new key">
+        <span class="text-base leading-none">+</span> New
+      </button>
+      <button class="btn btn-sm btn-warning gap-1"
+        disabled={!selected || actionBusy}
+        onclick={startEdit}
+        title={selected ? `Edit "${selected.name}"` : 'Select a row to edit'}>
+        Edit
+      </button>
+      <button class="btn btn-sm btn-error gap-1"
+        disabled={!selected || actionBusy}
+        onclick={startDelete}
+        title={selected ? `Delete "${selected.name}"` : 'Select a row to delete'}>
+        {#if actionBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+        Delete
       </button>
     {/if}
   </div>
@@ -125,6 +186,9 @@
 
 {#if listErr}
   <div class="mt-2 alert alert-error text-sm">{listErr}</div>
+{/if}
+{#if actionErr}
+  <div class="mt-2 alert alert-error text-sm">{actionErr}</div>
 {/if}
 
 <div class="mt-4 overflow-x-auto rounded-box border border-base-300 bg-base-100">
@@ -152,7 +216,11 @@
         </td></tr>
       {:else}
         {#each filtered as k (k.name)}
-          <tr class="hover cursor-pointer" onclick={() => openRow(k)}>
+          <tr class="hover cursor-pointer"
+            class:bg-primary={selectedName === k.name}
+            class:text-primary-content={selectedName === k.name}
+            ondblclick={() => { selectedName = k.name; startEdit(); }}
+            onclick={() => clickRow(k)}>
             <td class="font-mono">{k.name}</td>
             <td class="max-w-xs truncate">{k.description || '—'}</td>
             <td><span class="badge badge-xs badge-ghost">{sshTypeOf(k.public_key)}</span></td>
@@ -171,9 +239,9 @@
   </table>
 </div>
 
-{#if selected || creating}
+{#if drawerOpen}
   <SSHKeyDrawer
-    entry={selected}
+    entry={drawerEntry}
     {creating}
     {canEdit}
     onClose={closeDrawer}
