@@ -175,6 +175,7 @@ func (c *Client) ListVMs(ctx context.Context, project string) (rows []map[string
 	for _, v := range resp.GetVms() {
 		out = append(out, map[string]any{
 			"name":    v.Name,
+			"uuid":    v.Uuid,
 			"image":   v.Image,
 			"status":  vzclient.StateString(v.State),
 			"cpu":     v.Cpu,
@@ -490,6 +491,7 @@ func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[s
 	v := resp.Vm
 	return map[string]any{
 		"name":    v.Name,
+		"uuid":    v.Uuid,
 		"image":   v.Image,
 		"status":  vzclient.StateString(v.State),
 		"os":      v.Os,
@@ -497,7 +499,34 @@ func (c *Client) VMStatus(ctx context.Context, name, project string) (info map[s
 		"mem_mb":  v.MemMb,
 		"disk_gb": v.DiskGb,
 		"ip":      v.Ip,
+		"project": v.Project,
 	}, nil
+}
+
+// AttachVolume wires a Volume to a VM by their UUIDs. Detach takes
+// only the volume UUID — the daemon resolves the current attachment.
+func (c *Client) AttachVolume(ctx context.Context, volumeUUID, vmUUID string) (retErr error) {
+	defer c.measured("AttachVolume", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.AttachVolume(cctx, &vzdv1.AttachVolumeRequest{Uuid: volumeUUID, VmUuid: vmUUID})
+	return err
+}
+
+func (c *Client) DetachVolume(ctx context.Context, volumeUUID string) (retErr error) {
+	defer c.measured("DetachVolume", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DetachVolume(cctx, &vzdv1.DetachVolumeRequest{Uuid: volumeUUID})
+	return err
 }
 
 // VMTimings returns the recorded lifecycle events for a VM (state
