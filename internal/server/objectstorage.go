@@ -2,6 +2,7 @@ package server
 
 import (
 	"io"
+	"mime/multipart"
 	"net/http"
 	"path"
 	"regexp"
@@ -191,41 +192,7 @@ func handleListObjects(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
 		return
 	}
-
-	type entry struct {
-		Name        string `json:"name"`
-		Key         string `json:"key"`
-		Size        int64  `json:"size"`
-		SizeHuman   string `json:"sizeHuman"`
-		Modified    string `json:"modified"`
-		ContentType string `json:"contentType"`
-	}
-	seen := map[string]bool{}
-	folders := []string{}
-	objects := []entry{}
-	for _, o := range b.Objects {
-		if !strings.HasPrefix(o.Key, prefix) {
-			continue
-		}
-		rest := o.Key[len(prefix):]
-		if rest == "" {
-			continue
-		}
-		if i := strings.IndexByte(rest, '/'); i >= 0 {
-			folder := rest[:i+1]
-			if !seen[folder] {
-				seen[folder] = true
-				folders = append(folders, folder)
-			}
-			continue
-		}
-		objects = append(objects, entry{
-			Name: rest, Key: o.Key, Size: o.Size, SizeHuman: humanSize(o.Size),
-			Modified: o.Modified, ContentType: o.ContentType,
-		})
-	}
-	sort.Strings(folders)
-	sort.Slice(objects, func(i, j int) bool { return objects[i].Name < objects[j].Name })
+	folders, objects := listEntries(b.Objects, prefix)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bucket": b.Name, "prefix": prefix, "folders": folders, "objects": objects,
 	})
@@ -241,15 +208,9 @@ func handleGetObject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
 		return
 	}
-	for _, o := range b.Objects {
-		if o.Key == key {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"key": o.Key, "size": o.Size, "sizeHuman": humanSize(o.Size),
-				"modified": o.Modified, "contentType": o.ContentType,
-				"previewable": previewable(o.ContentType), "content": o.Content,
-			})
-			return
-		}
+	if d, ok := objectDetail(b.Objects, key); ok {
+		writeJSON(w, http.StatusOK, d)
+		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such object"})
 }
@@ -272,8 +233,73 @@ func handleUploadObject(w http.ResponseWriter, r *http.Request) {
 		badUpload(w, "no files")
 		return
 	}
-	added := 0
-	for _, fh := range r.MultipartForm.File["file"] {
+	uploaded := readUploads(r.MultipartForm.File["file"], prefix)
+	b.Objects = append(b.Objects, uploaded...)
+	writeJSON(w, http.StatusCreated, map[string]any{"bucket": b.Name, "added": len(uploaded)})
+}
+
+// ---- shared browsing helpers (used by buckets + shares) ----
+
+type objEntry struct {
+	Name        string `json:"name"`
+	Key         string `json:"key"`
+	Size        int64  `json:"size"`
+	SizeHuman   string `json:"sizeHuman"`
+	Modified    string `json:"modified"`
+	ContentType string `json:"contentType"`
+}
+
+// listEntries splits the objects under prefix into folders (common prefixes
+// one level down) and the files directly at that level.
+func listEntries(objs []s3object, prefix string) ([]string, []objEntry) {
+	seen := map[string]bool{}
+	folders := []string{}
+	entries := []objEntry{}
+	for _, o := range objs {
+		if !strings.HasPrefix(o.Key, prefix) {
+			continue
+		}
+		rest := o.Key[len(prefix):]
+		if rest == "" {
+			continue
+		}
+		if i := strings.IndexByte(rest, '/'); i >= 0 {
+			folder := rest[:i+1]
+			if !seen[folder] {
+				seen[folder] = true
+				folders = append(folders, folder)
+			}
+			continue
+		}
+		entries = append(entries, objEntry{
+			Name: rest, Key: o.Key, Size: o.Size, SizeHuman: humanSize(o.Size),
+			Modified: o.Modified, ContentType: o.ContentType,
+		})
+	}
+	sort.Strings(folders)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	return folders, entries
+}
+
+// objectDetail returns one object's metadata + a text preview, if present.
+func objectDetail(objs []s3object, key string) (map[string]any, bool) {
+	for _, o := range objs {
+		if o.Key == key {
+			return map[string]any{
+				"key": o.Key, "size": o.Size, "sizeHuman": humanSize(o.Size),
+				"modified": o.Modified, "contentType": o.ContentType,
+				"previewable": previewable(o.ContentType), "content": o.Content,
+			}, true
+		}
+	}
+	return nil, false
+}
+
+// readUploads turns multipart files into objects under prefix, reading small
+// text files for inline preview.
+func readUploads(files []*multipart.FileHeader, prefix string) []s3object {
+	out := make([]s3object, 0, len(files))
+	for _, fh := range files {
 		key := prefix + fh.Filename
 		ct := guessType(key)
 		content := ""
@@ -285,11 +311,10 @@ func handleUploadObject(w http.ResponseWriter, r *http.Request) {
 				_ = f.Close()
 			}
 		}
-		b.Objects = append(b.Objects, s3object{
+		out = append(out, s3object{
 			Key: key, Size: fh.Size, Modified: time.Now().UTC().Format("2006-01-02"),
 			ContentType: ct, Content: content,
 		})
-		added++
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"bucket": b.Name, "added": added})
+	return out
 }

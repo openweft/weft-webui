@@ -34,7 +34,10 @@ export async function uploadImage(form: FormData): Promise<Row> {
   return postForm('/api/images/upload', form);
 }
 
-// ---- Object storage (CubeFS S3) ----
+// ---- File storage (buckets = S3 prefixes, shares = POSIX dirs) ----
+// Both browse the same way ; `kind` selects the endpoint family.
+
+export type StorageKind = 'buckets' | 'shares';
 
 export interface ObjectEntry {
   name: string;
@@ -46,7 +49,6 @@ export interface ObjectEntry {
 }
 
 export interface ObjectListing {
-  bucket: string;
   prefix: string;
   folders: string[];
   objects: ObjectEntry[];
@@ -62,12 +64,16 @@ export interface ObjectDetail {
   content: string;
 }
 
-export const listObjects = (bucket: string, prefix = '') =>
-  getJSON<ObjectListing>(`/buckets/${bucket}/objects?prefix=${encodeURIComponent(prefix)}`);
+export const browse = (kind: StorageKind, container: string, prefix = '') =>
+  getJSON<ObjectListing>(`/${kind}/${container}/objects?prefix=${encodeURIComponent(prefix)}`);
 
-export const getObject = (bucket: string, key: string) =>
-  getJSON<ObjectDetail>(`/buckets/${bucket}/object?key=${encodeURIComponent(key)}`);
+export const readEntry = (kind: StorageKind, container: string, key: string) =>
+  getJSON<ObjectDetail>(`/${kind}/${container}/object?key=${encodeURIComponent(key)}`);
 
+export const uploadEntries = (kind: StorageKind, container: string, form: FormData) =>
+  postForm(`/api/${kind}/${container}/objects`, form);
+
+// Buckets are user-managed (shares are provisioned via the share lifecycle).
 export async function createBucket(name: string): Promise<void> {
   const res = await fetch('/api/buckets', {
     method: 'POST',
@@ -84,9 +90,6 @@ export async function deleteBucket(name: string): Promise<void> {
   const res = await fetch(`/api/buckets/${name}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
-
-export const uploadObjects = (bucket: string, form: FormData) =>
-  postForm(`/api/buckets/${bucket}/objects`, form);
 
 // ---- Network topology (mesh map) ----
 
