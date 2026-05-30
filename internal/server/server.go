@@ -180,9 +180,21 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/floating-ips/{uuid}/map", handleMapFloatingIP)
 	mux.HandleFunc("POST /api/floating-ips/{uuid}/unmap", handleUnmapFloatingIP)
 
-	// Scheduling rules (mock store ; no daemon RPC yet).
+	// Scheduling rules (live-first via weft-network ; mock store
+	// fallback on Unimplemented).
 	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)
 	mux.HandleFunc("DELETE /api/scheduling-rules/{name}", handleDeleteSchedulingRule)
+
+	// Routers / Load Balancers / DNS — weft-network territory.
+	mux.HandleFunc("POST /api/routers", handleCreateRouter)
+	mux.HandleFunc("DELETE /api/routers/{uuid}", handleDeleteRouter)
+	mux.HandleFunc("POST /api/loadbalancers", handleCreateLoadBalancer)
+	mux.HandleFunc("DELETE /api/loadbalancers/{uuid}", handleDeleteLoadBalancer)
+	mux.HandleFunc("PUT /api/loadbalancers/{uuid}/backends", handleSetLoadBalancerBackends)
+	mux.HandleFunc("POST /api/dns-zones", handleCreateDNSZone)
+	mux.HandleFunc("DELETE /api/dns-zones/{uuid}", handleDeleteDNSZone)
+	mux.HandleFunc("POST /api/dns-records", handleCreateDNSRecord)
+	mux.HandleFunc("DELETE /api/dns-records/{uuid}", handleDeleteDNSRecord)
 
 	// Shares (mock store ; tenant-admin gated inside the handler).
 	mux.HandleFunc("POST /api/shares", handleCreateShare)

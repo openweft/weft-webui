@@ -8,6 +8,10 @@
   import CreateSecurityGroupModal from './CreateSecurityGroupModal.svelte';
   import AllocateFloatingIPModal from './AllocateFloatingIPModal.svelte';
   import MapFloatingIPModal from './MapFloatingIPModal.svelte';
+  import CreateRouterModal from './CreateRouterModal.svelte';
+  import CreateLoadBalancerModal from './CreateLoadBalancerModal.svelte';
+  import CreateDNSZoneModal from './CreateDNSZoneModal.svelte';
+  import CreateDNSRecordModal from './CreateDNSRecordModal.svelte';
   import MicroVMDrawer from './MicroVMDrawer.svelte';
   import SecurityGroupDrawer from './SecurityGroupDrawer.svelte';
 
@@ -89,7 +93,10 @@
       mapFipTarget = { uuid: String(row.uuid), address: String(row.address) };
     }
   }
-  const creatable = ['microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups', 'floating-ips'];
+  const creatable = [
+    'microvms', 'volumes', 'networks', 'scheduling-rules', 'security-groups',
+    'floating-ips', 'routers', 'loadbalancers', 'dns-zones', 'dns-records',
+  ];
   let canCreate = $derived(creatable.includes(meta.id));
   let createLabel = $derived(
     meta.label
@@ -97,7 +104,10 @@
       .replace('microVMs', 'microVM')
       .replace('Scheduling Rule', 'rule')
       .replace('Security Group', 'SG')
-      .replace('Floating IP', 'FIP'),
+      .replace('Floating IP', 'FIP')
+      .replace('Load Balancer', 'LB')
+      .replace('DNS Zone', 'zone')
+      .replace('DNS Record', 'record'),
   );
 
   // Floating-IP "Map" action carries an extra modal triggered from the
@@ -168,6 +178,14 @@
   <CreateSecurityGroupModal bind:open={createOpen} onCreated={refresh} />
 {:else if meta.id === 'floating-ips'}
   <AllocateFloatingIPModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'routers'}
+  <CreateRouterModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'loadbalancers'}
+  <CreateLoadBalancerModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'dns-zones'}
+  <CreateDNSZoneModal bind:open={createOpen} onCreated={refresh} />
+{:else if meta.id === 'dns-records'}
+  <CreateDNSRecordModal bind:open={createOpen} onCreated={refresh} />
 {/if}
 
 {#if mapFipTarget}

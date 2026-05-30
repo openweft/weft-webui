@@ -389,6 +389,57 @@ export const attachVolume = (uuid: string, vmUUID: string) =>
 export const detachVolume = (uuid: string) =>
   postJSON<unknown>(`/volumes/${encodeURIComponent(uuid)}/detach`, {});
 
+// ---- Network controller resources (weft-network) ----
+
+export interface CreateRouterBody {
+  Name: string;
+  Kind: 'peer' | 'egress';
+  Backend?: string;             // empty → "wireguard" for peer, "vyos" for egress
+  Networks?: string[];
+  External?: string;
+}
+export const createRouter = (b: CreateRouterBody) =>
+  postJSON<{ name: string; uuid: string }>('/routers', b);
+export const deleteRouter = (uuid: string) =>
+  deleteJSON(`/routers/${encodeURIComponent(uuid)}`);
+
+export interface CreateLoadBalancerBody {
+  Name: string;
+  Mode: 'L4' | 'L7';
+  Port: number;
+  Backends?: string[];
+  AZ?: string;                  // empty → "multi"
+}
+export const createLoadBalancer = (b: CreateLoadBalancerBody) =>
+  postJSON<{ name: string; uuid: string }>('/loadbalancers', b);
+export const deleteLoadBalancer = (uuid: string) =>
+  deleteJSON(`/loadbalancers/${encodeURIComponent(uuid)}`);
+export const setLoadBalancerBackends = (uuid: string, backends: string[]) =>
+  putJSON<{ backends: number }>(`/loadbalancers/${encodeURIComponent(uuid)}/backends`, backends);
+
+export interface CreateDNSZoneBody {
+  Name: string;
+  Role?: 'primary' | 'secondary' | 'forward';
+  TTLDefault?: number;
+  PushTarget?: string;
+}
+export const createDNSZone = (b: CreateDNSZoneBody) =>
+  postJSON<{ name: string; uuid: string }>('/dns-zones', b);
+export const deleteDNSZone = (uuid: string) =>
+  deleteJSON(`/dns-zones/${encodeURIComponent(uuid)}`);
+
+export interface CreateDNSRecordBody {
+  ZoneUUID: string;
+  Name: string;
+  Type: string;
+  Value: string;
+  TTL?: number;
+}
+export const createDNSRecord = (b: CreateDNSRecordBody) =>
+  postJSON<{ uuid: string; name: string; type: string }>('/dns-records', b);
+export const deleteDNSRecord = (uuid: string) =>
+  deleteJSON(`/dns-records/${encodeURIComponent(uuid)}`);
+
 export const deleteNetwork = (uuid: string) => deleteJSON(`/networks/${encodeURIComponent(uuid)}`);
 
 export interface CreateNetworkBody {
