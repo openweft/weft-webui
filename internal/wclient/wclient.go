@@ -1236,3 +1236,372 @@ func (c *Client) UnmapFloatingIP(ctx context.Context, uuid string) (retErr error
 	_, err = rpc.UnmapFloatingIP(cctx, &weftv1.UnmapFloatingIPRequest{Uuid: uuid})
 	return err
 }
+
+// ============================================================================
+// Catalogue + VM-metadata passthroughs (Blocks B / Scripts / C / D / E)
+// ============================================================================
+//
+// These methods cover the five RPC blocks added to weft-proto in commits
+// 3608a44 (Flavors), 2684105 (Scripts), ec94187 (VMProperty),
+// 70e1309 (UEFIVar), 7703167 (VMSSHKey). weft-agent hasn't implemented
+// them yet — each currently returns codes.Unimplemented, and handlers
+// fall back to their in-memory store via IsUnimplemented(err) (the same
+// dance ListTenants / ListShares / scheduling-rules already do).
+//
+// The methods exist now so wiring a handler to live-mode is a one-liner
+// when weft-agent ships any one of these. Shape mirrors the existing
+// List* / Set* methods on this client : []map[string]any for table-
+// shaped rows, typed value structs for single-object reads.
+
+// ---- Flavors --------------------------------------------------------
+
+func (c *Client) ListFlavors(ctx context.Context, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListFlavors", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListFlavors(cctx, &weftv1.ListFlavorsRequest{
+		Limit: opts.Limit, PageToken: opts.PageToken,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetFlavors()))
+	for _, f := range resp.GetFlavors() {
+		out = append(out, map[string]any{
+			"name":         f.Name,
+			"vcpu":         int(f.Vcpu),
+			"ram":          f.Ram,
+			"ephemeral_gb": int(f.EphemeralGb),
+			"gpu":          f.Gpu,
+		})
+	}
+	return out, resp.GetNextPageToken(), nil
+}
+
+// GetFlavor returns one flavor as a row-shape map ; the typed Flavor
+// struct lives in the webui's flavors.go and the handler builds it from
+// the map. Keeps the wclient method uniform with the rest.
+func (c *Client) GetFlavor(ctx context.Context, name string) (row map[string]any, retErr error) {
+	defer c.measured("GetFlavor", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetFlavor(cctx, &weftv1.GetFlavorRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	f := resp.GetFlavor()
+	if f == nil {
+		return nil, errors.New("nil flavor")
+	}
+	return map[string]any{
+		"name":         f.Name,
+		"vcpu":         int(f.Vcpu),
+		"ram":          f.Ram,
+		"ephemeral_gb": int(f.EphemeralGb),
+		"gpu":          f.Gpu,
+	}, nil
+}
+
+func (c *Client) SetFlavor(ctx context.Context, name string, vcpu int32, ram string, ephemeralGB int32, gpu string) (retErr error) {
+	defer c.measured("SetFlavor", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetFlavor(cctx, &weftv1.SetFlavorRequest{
+		Flavor: &weftv1.Flavor{
+			Name: name, Vcpu: vcpu, Ram: ram, EphemeralGb: ephemeralGB, Gpu: gpu,
+		},
+	})
+	return err
+}
+
+func (c *Client) DeleteFlavor(ctx context.Context, name string) (retErr error) {
+	defer c.measured("DeleteFlavor", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteFlavor(cctx, &weftv1.DeleteFlavorRequest{Name: name})
+	return err
+}
+
+// ---- Scripts -------------------------------------------------------
+
+func (c *Client) ListScripts(ctx context.Context, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListScripts", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListScripts(cctx, &weftv1.ListScriptsRequest{
+		Limit: opts.Limit, PageToken: opts.PageToken,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetScripts()))
+	for _, s := range resp.GetScripts() {
+		out = append(out, map[string]any{
+			"name":        s.Name,
+			"description": s.Description,
+			"body":        s.Body,
+			"updated_at":  s.UpdatedAt,
+			"updated_by":  s.UpdatedBy,
+		})
+	}
+	return out, resp.GetNextPageToken(), nil
+}
+
+func (c *Client) GetScript(ctx context.Context, name string) (row map[string]any, retErr error) {
+	defer c.measured("GetScript", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetScript(cctx, &weftv1.GetScriptRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	s := resp.GetScript()
+	if s == nil {
+		return nil, errors.New("nil script")
+	}
+	return map[string]any{
+		"name":        s.Name,
+		"description": s.Description,
+		"body":        s.Body,
+		"updated_at":  s.UpdatedAt,
+		"updated_by":  s.UpdatedBy,
+	}, nil
+}
+
+func (c *Client) SetScript(ctx context.Context, name, description, body string) (retErr error) {
+	defer c.measured("SetScript", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetScript(cctx, &weftv1.SetScriptRequest{
+		Script: &weftv1.Script{Name: name, Description: description, Body: body},
+	})
+	return err
+}
+
+func (c *Client) DeleteScript(ctx context.Context, name string) (retErr error) {
+	defer c.measured("DeleteScript", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteScript(cctx, &weftv1.DeleteScriptRequest{Name: name})
+	return err
+}
+
+// ---- VM properties --------------------------------------------------
+
+func (c *Client) ListVMProperties(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListVMProperties", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListVMProperties(cctx, &weftv1.ListVMPropertiesRequest{
+		VmName: vmName, Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetProperties()))
+	for _, p := range resp.GetProperties() {
+		out = append(out, map[string]any{
+			"key":            p.Key,
+			"value":          p.Value,
+			"guest_readable": p.GuestReadable,
+			"updated_at":     p.UpdatedAt,
+		})
+	}
+	return out, resp.GetNextPageToken(), nil
+}
+
+func (c *Client) SetVMProperty(ctx context.Context, vmName, project, key, value string, guestReadable bool) (retErr error) {
+	defer c.measured("SetVMProperty", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetVMProperty(cctx, &weftv1.SetVMPropertyRequest{
+		VmName: vmName, Project: project,
+		Property: &weftv1.VMProperty{Key: key, Value: value, GuestReadable: guestReadable},
+	})
+	return err
+}
+
+func (c *Client) DeleteVMProperty(ctx context.Context, vmName, project, key string) (retErr error) {
+	defer c.measured("DeleteVMProperty", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVMProperty(cctx, &weftv1.DeleteVMPropertyRequest{
+		VmName: vmName, Project: project, Key: key,
+	})
+	return err
+}
+
+// ---- UEFI variables ------------------------------------------------
+
+func (c *Client) ListUEFIVars(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListUEFIVars", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListUEFIVars(cctx, &weftv1.ListUEFIVarsRequest{
+		VmName: vmName, Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetVars()))
+	for _, v := range resp.GetVars() {
+		out = append(out, map[string]any{
+			"namespace":  v.Namespace,
+			"name":       v.Name,
+			"value_hex":  v.ValueHex,
+			"attributes": v.Attributes,
+			"updated_at": v.UpdatedAt,
+		})
+	}
+	return out, resp.GetNextPageToken(), nil
+}
+
+func (c *Client) SetUEFIVar(ctx context.Context, vmName, project, namespace, name, valueHex string, attributes []string) (retErr error) {
+	defer c.measured("SetUEFIVar", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetUEFIVar(cctx, &weftv1.SetUEFIVarRequest{
+		VmName: vmName, Project: project,
+		Var: &weftv1.UEFIVar{
+			Namespace: namespace, Name: name,
+			ValueHex: valueHex, Attributes: attributes,
+		},
+	})
+	return err
+}
+
+func (c *Client) DeleteUEFIVar(ctx context.Context, vmName, project, namespace, name string) (retErr error) {
+	defer c.measured("DeleteUEFIVar", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteUEFIVar(cctx, &weftv1.DeleteUEFIVarRequest{
+		VmName: vmName, Project: project, Namespace: namespace, Name: name,
+	})
+	return err
+}
+
+// ---- VM SSH keys ---------------------------------------------------
+
+func (c *Client) ListVMSSHKeys(ctx context.Context, vmName, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListVMSSHKeys", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListVMSSHKeys(cctx, &weftv1.ListVMSSHKeysRequest{
+		VmName: vmName, Project: project, Limit: opts.Limit, PageToken: opts.PageToken,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetKeys()))
+	for _, k := range resp.GetKeys() {
+		out = append(out, map[string]any{
+			"fingerprint": k.Fingerprint,
+			"type":        k.Type,
+			"public_key":  k.PublicKey,
+			"comment":     k.Comment,
+			"added_at":    k.AddedAt,
+		})
+	}
+	return out, resp.GetNextPageToken(), nil
+}
+
+func (c *Client) AddVMSSHKey(ctx context.Context, vmName, project, publicKey string) (row map[string]any, retErr error) {
+	defer c.measured("AddVMSSHKey", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.AddVMSSHKey(cctx, &weftv1.AddVMSSHKeyRequest{
+		VmName: vmName, Project: project, PublicKey: publicKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	k := resp.GetKey()
+	if k == nil {
+		return nil, errors.New("nil key")
+	}
+	return map[string]any{
+		"fingerprint": k.Fingerprint,
+		"type":        k.Type,
+		"public_key":  k.PublicKey,
+		"comment":     k.Comment,
+		"added_at":    k.AddedAt,
+	}, nil
+}
+
+func (c *Client) RemoveVMSSHKey(ctx context.Context, vmName, project, fingerprint string) (retErr error) {
+	defer c.measured("RemoveVMSSHKey", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RemoveVMSSHKey(cctx, &weftv1.RemoveVMSSHKeyRequest{
+		VmName: vmName, Project: project, Fingerprint: fingerprint,
+	})
+	return err
+}
