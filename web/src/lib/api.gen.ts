@@ -2085,6 +2085,20 @@ export interface components {
             principal: string;
             resource: string;
         };
+        ProjectQuotaView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProjectQuotaView.json
+             */
+            readonly $schema?: string;
+            project: components["schemas"]["Quotas"];
+            siblings_total: components["schemas"]["Quotas"];
+            tenant_cap: components["schemas"]["Quotas"];
+            tenant_remaining: {
+                [key: string]: components["schemas"]["QuotaDim"];
+            };
+        };
         ProvisioningStruct: {
             script?: string;
             /**
@@ -2102,6 +2116,14 @@ export interface components {
             /** Format: int64 */
             limit: number;
             unit: string;
+            /** Format: int64 */
+            used: number;
+        };
+        QuotaDim: {
+            /** Format: int64 */
+            cap: number;
+            /** Format: int64 */
+            free: number;
             /** Format: int64 */
             used: number;
         };
@@ -2219,6 +2241,44 @@ export interface components {
             id: string;
             label: string;
         };
+        TenantCaller: {
+            cluster_admin: boolean;
+            email: string;
+            tenant_admin: boolean;
+        };
+        TenantDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TenantDetail.json
+             */
+            readonly $schema?: string;
+            caller?: components["schemas"]["TenantCaller"];
+            domain: string;
+            groups: components["schemas"]["TenantGroup"][] | null;
+            members: components["schemas"]["TenantMember"][] | null;
+            name: string;
+            projects: components["schemas"]["TenantProjectEntry"][] | null;
+            status: string;
+        };
+        TenantGroup: {
+            description: string;
+            name: string;
+        };
+        TenantMember: {
+            admin: boolean;
+            email: string;
+            groups: string[] | null;
+            name: string;
+        };
+        TenantProjectEntry: {
+            created: string;
+            name: string;
+            roles: {
+                [key: string]: string;
+            };
+            uuid: string;
+        };
         TenantProjectResp: {
             /**
              * Format: uri
@@ -2230,6 +2290,19 @@ export interface components {
             name: string;
             tenant: string;
             uuid: string;
+        };
+        TenantQuotaView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TenantQuotaView.json
+             */
+            readonly $schema?: string;
+            allocated: components["schemas"]["Quotas"];
+            cap: components["schemas"]["Quotas"];
+            remaining: {
+                [key: string]: components["schemas"]["QuotaDim"];
+            };
         };
         TopoNetwork: {
             az: string;
@@ -3776,7 +3849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ProjectQuotaView"];
                 };
             };
             /** @description Error */
@@ -3811,7 +3884,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ProjectQuotaView"];
                 };
             };
             /** @description Error */
@@ -4840,7 +4913,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TenantDetail"];
                 };
             };
             /** @description Error */
@@ -4977,7 +5050,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TenantQuotaView"];
                 };
             };
             /** @description Error */
@@ -5012,7 +5085,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TenantQuotaView"];
                 };
             };
             /** @description Error */

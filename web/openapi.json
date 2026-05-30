@@ -1934,6 +1934,42 @@
         ],
         "type": "object"
       },
+      "ProjectQuotaView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ProjectQuotaView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/Quotas"
+          },
+          "siblings_total": {
+            "$ref": "#/components/schemas/Quotas"
+          },
+          "tenant_cap": {
+            "$ref": "#/components/schemas/Quotas"
+          },
+          "tenant_remaining": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QuotaDim"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "tenant_cap",
+          "siblings_total",
+          "tenant_remaining"
+        ],
+        "type": "object"
+      },
       "ProvisioningStruct": {
         "additionalProperties": false,
         "properties": {
@@ -1993,6 +2029,29 @@
           "used",
           "limit",
           "unit"
+        ],
+        "type": "object"
+      },
+      "QuotaDim": {
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "free": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "used": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "cap",
+          "free"
         ],
         "type": "object"
       },
@@ -2325,6 +2384,161 @@
         ],
         "type": "object"
       },
+      "TenantCaller": {
+        "additionalProperties": false,
+        "properties": {
+          "cluster_admin": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "tenant_admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "cluster_admin",
+          "tenant_admin"
+        ],
+        "type": "object"
+      },
+      "TenantDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TenantDetail.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "caller": {
+            "$ref": "#/components/schemas/TenantCaller"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/TenantGroup"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TenantMember"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/TenantProjectEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "domain",
+          "status",
+          "projects",
+          "members",
+          "groups"
+        ],
+        "type": "object"
+      },
+      "TenantGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "type": "object"
+      },
+      "TenantMember": {
+        "additionalProperties": false,
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "name",
+          "groups",
+          "admin"
+        ],
+        "type": "object"
+      },
+      "TenantProjectEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "uuid",
+          "created",
+          "roles"
+        ],
+        "type": "object"
+      },
       "TenantProjectResp": {
         "additionalProperties": false,
         "properties": {
@@ -2355,6 +2569,38 @@
           "uuid",
           "tenant",
           "created"
+        ],
+        "type": "object"
+      },
+      "TenantQuotaView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TenantQuotaView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "allocated": {
+            "$ref": "#/components/schemas/Quotas"
+          },
+          "cap": {
+            "$ref": "#/components/schemas/Quotas"
+          },
+          "remaining": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QuotaDim"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "cap",
+          "allocated",
+          "remaining"
         ],
         "type": "object"
       },
@@ -4791,7 +5037,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectQuotaView"
+                }
               }
             },
             "description": "OK"
@@ -4842,7 +5090,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectQuotaView"
+                }
               }
             },
             "description": "OK"
@@ -6362,7 +6612,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDetail"
+                }
               }
             },
             "description": "OK"
@@ -6565,7 +6817,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TenantQuotaView"
+                }
               }
             },
             "description": "OK"
@@ -6616,7 +6870,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TenantQuotaView"
+                }
               }
             },
             "description": "OK"

@@ -383,40 +383,73 @@ func (s *tenantStore) listGroups() []map[string]any {
 	return out
 }
 
-// tenantDetail is the structure returned by GET /api/tenants/{name} —
-// everything the tenant-detail UI needs to render in one call.
-func (s *tenantStore) tenantDetail(name string) (map[string]any, bool) {
+// TenantMember is one row in TenantDetail.Members.
+type TenantMember struct {
+	Email  string   `json:"email"`
+	Name   string   `json:"name"`
+	Groups []string `json:"groups"`
+	Admin  bool     `json:"admin"`
+}
+
+// TenantProjectEntry is one row in TenantDetail.Projects. (Not named
+// TenantProject because that's already taken by the wire shape of
+// add-tenant-project.)
+type TenantProjectEntry struct {
+	Name    string            `json:"name"`
+	UUID    string            `json:"uuid"`
+	Created string            `json:"created"`
+	Roles   map[string]string `json:"roles"`
+}
+
+// TenantGroup is one row in TenantDetail.Groups.
+type TenantGroup struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// TenantCaller is the role-flags annotation the API layer adds to
+// every tenant-detail response so the SPA knows which affordances
+// to render without a second round-trip.
+type TenantCaller struct {
+	Email        string `json:"email"`
+	ClusterAdmin bool   `json:"cluster_admin"`
+	TenantAdmin  bool   `json:"tenant_admin"`
+}
+
+// TenantDetail is the structure returned by GET /api/tenants/{name}.
+// Everything the tenant-detail UI needs to render in one call.
+type TenantDetail struct {
+	Name     string               `json:"name"`
+	Domain   string               `json:"domain"`
+	Status   string               `json:"status"`
+	Projects []TenantProjectEntry `json:"projects"`
+	Members  []TenantMember       `json:"members"`
+	Groups   []TenantGroup        `json:"groups"`
+	// Caller is filled by the API layer after the store returns —
+	// it depends on the OIDC session, not on the tenant data itself.
+	Caller *TenantCaller `json:"caller,omitempty"`
+}
+
+func (s *tenantStore) tenantDetail(name string) (TenantDetail, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.tenants[name]
 	if !ok {
-		return nil, false
+		return TenantDetail{}, false
 	}
-	type member struct {
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Groups []string `json:"groups"`
-		Admin  bool     `json:"admin"`
-	}
-	type project struct {
-		Name    string            `json:"name"`
-		UUID    string            `json:"uuid"`
-		Created string            `json:"created"`
-		Roles   map[string]string `json:"roles"`
-	}
-	members := make([]member, 0, len(t.Members))
+	members := make([]TenantMember, 0, len(t.Members))
 	for _, email := range sortedKeys(t.Members) {
 		_, isAdmin := t.Admins[email]
 		nm := email
 		if u, ok := s.users[email]; ok && u.Name != "" {
 			nm = u.Name
 		}
-		members = append(members, member{
+		members = append(members, TenantMember{
 			Email: email, Name: nm,
 			Groups: t.Members[email], Admin: isAdmin,
 		})
 	}
-	projs := make([]project, 0, len(t.Projects))
+	projs := make([]TenantProjectEntry, 0, len(t.Projects))
 	for _, pn := range t.Projects {
 		p := s.projects[pn]
 		if p == nil {
@@ -427,19 +460,21 @@ func (s *tenantStore) tenantDetail(name string) (map[string]any, bool) {
 		for k, v := range p.Roles {
 			r[k] = v
 		}
-		projs = append(projs, project{Name: p.Name, UUID: p.UUID, Created: p.Created, Roles: r})
+		projs = append(projs, TenantProjectEntry{
+			Name: p.Name, UUID: p.UUID, Created: p.Created, Roles: r,
+		})
 	}
-	groups := make([]map[string]any, 0, len(t.Groups))
+	groups := make([]TenantGroup, 0, len(t.Groups))
 	for _, g := range sortedKeys(t.Groups) {
-		groups = append(groups, map[string]any{"name": g, "description": t.Groups[g]})
+		groups = append(groups, TenantGroup{Name: g, Description: t.Groups[g]})
 	}
-	return map[string]any{
-		"name":     t.Name,
-		"domain":   t.Domain,
-		"status":   t.Status,
-		"projects": projs,
-		"members":  members,
-		"groups":   groups,
+	return TenantDetail{
+		Name:     t.Name,
+		Domain:   t.Domain,
+		Status:   t.Status,
+		Projects: projs,
+		Members:  members,
+		Groups:   groups,
 	}, true
 }
 
@@ -574,16 +609,37 @@ func (s *tenantStore) grantRole(projectName, email, role string) error {
 
 // ---- Quotas ----
 
+// TenantQuotaView is the typed shape returned by GET /api/tenants/
+// {name}/quota and PUT /api/tenants/{name}/quota. Allocated is the
+// sum of project quotas + the live project count ; Remaining is
+// the per-dimension {used, cap, free} the SPA's QuotaBars consume.
+type TenantQuotaView struct {
+	Cap       Quotas              `json:"cap"`
+	Allocated Quotas              `json:"allocated"`
+	Remaining map[string]QuotaDim `json:"remaining"`
+}
+
+// ProjectQuotaView mirrors the tenant view but for a single project.
+// SiblingsTotal is the sum of every OTHER project in the tenant ; the
+// SPA uses it to model "if I bump my quota to X, do I still fit?" by
+// adding the candidate quota to siblings_total + comparing to tenant_cap.
+type ProjectQuotaView struct {
+	Project         Quotas              `json:"project"`
+	TenantCap       Quotas              `json:"tenant_cap"`
+	SiblingsTotal   Quotas              `json:"siblings_total"`
+	TenantRemaining map[string]QuotaDim `json:"tenant_remaining"`
+}
+
 // tenantQuotaView returns the tenant's hard cap, the sum of its
 // project quotas, and the per-dimension "remaining" for the tenant
 // admin. Tenant-level Projects (count of projects) is computed live
 // from len(t.Projects) so it never drifts from reality.
-func (s *tenantStore) tenantQuotaView(name string) (map[string]any, bool) {
+func (s *tenantStore) tenantQuotaView(name string) (TenantQuotaView, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.tenants[name]
 	if !ok {
-		return nil, false
+		return TenantQuotaView{}, false
 	}
 	allocated := Quotas{Projects: len(t.Projects)}
 	for _, pn := range t.Projects {
@@ -591,30 +647,27 @@ func (s *tenantStore) tenantQuotaView(name string) (map[string]any, bool) {
 			allocated = allocated.add(p.Quotas)
 		}
 	}
-	return map[string]any{
-		"cap":       t.Quotas,
-		"allocated": allocated, // sum of children + live project count
-		"remaining": remainingMap(t.Quotas, allocated),
+	return TenantQuotaView{
+		Cap:       t.Quotas,
+		Allocated: allocated,
+		Remaining: remainingMap(t.Quotas, allocated),
 	}, true
 }
 
 // projectQuotaView returns the project's quota + the parent tenant's
 // remaining (so the SPA can draw a "tenant : 32/96 used" bar without
 // a second round-trip).
-func (s *tenantStore) projectQuotaView(name string) (map[string]any, bool) {
+func (s *tenantStore) projectQuotaView(name string) (ProjectQuotaView, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	p, ok := s.projects[name]
 	if !ok {
-		return nil, false
+		return ProjectQuotaView{}, false
 	}
 	t := s.tenants[p.Tenant]
 	if t == nil {
-		return nil, false
+		return ProjectQuotaView{}, false
 	}
-	// allocated_by_siblings = sum(other projects) ; the project itself
-	// is excluded so the SPA can model "if I bump my quota to X, do I
-	// still fit ?"
 	siblings := Quotas{}
 	for _, otherName := range t.Projects {
 		if otherName == name {
@@ -624,11 +677,11 @@ func (s *tenantStore) projectQuotaView(name string) (map[string]any, bool) {
 			siblings = siblings.add(other.Quotas)
 		}
 	}
-	return map[string]any{
-		"project":         p.Quotas,
-		"tenant_cap":      t.Quotas,
-		"siblings_total":  siblings,
-		"tenant_remaining": remainingMap(t.Quotas, siblings.add(p.Quotas)),
+	return ProjectQuotaView{
+		Project:         p.Quotas,
+		TenantCap:       t.Quotas,
+		SiblingsTotal:   siblings,
+		TenantRemaining: remainingMap(t.Quotas, siblings.add(p.Quotas)),
 	}, true
 }
 
@@ -688,8 +741,8 @@ func (s *tenantStore) setProjectQuota(name string, q Quotas) error {
 }
 
 // quotasMap projects a typed Quotas into the string-keyed map shape
-// wclient.SetTenantQuota / SetProjectQuota expect. Pair to the inverse
-// quotasFromMap below.
+// wclient.SetTenantQuota / SetProjectQuota expect. Paired with the
+// inverse quotasFromMap below.
 func quotasMap(q Quotas) map[string]int {
 	return map[string]int{
 		"vcpu": q.VCPU, "ram_gib": q.RAMGiB, "gpus": q.GPUs,
@@ -702,28 +755,59 @@ func quotasMap(q Quotas) map[string]int {
 	}
 }
 
+// quotasFromMap is the inverse : the wclient cap/alloc maps round-
+// trip back into a typed Quotas struct. Missing keys default to 0.
+// Used by the live-mode set-tenant-quota path to bake the daemon's
+// response into the TenantQuotaView shape the SPA consumes.
+func quotasFromMap(m map[string]int) Quotas {
+	return Quotas{
+		VCPU:        m["vcpu"],
+		RAMGiB:      m["ram_gib"],
+		GPUs:        m["gpus"],
+		Volumes:     m["volumes"],
+		VolumesGiB:  m["volumes_gib"],
+		Shares:      m["shares"],
+		SharesGiB:   m["shares_gib"],
+		Buckets:     m["buckets"],
+		BucketsGiB:  m["buckets_gib"],
+		RegistryGiB: m["registry_gib"],
+		FloatingIPs: m["floating_ips"],
+		Projects:    m["projects"],
+	}
+}
+
+// QuotaDim is one entry in the SPA's progress-bar view : per-dimension
+// {used, cap, free}. Typed so the OpenAPI declares the shape (avoiding
+// the untyped map<string,map<string,int>> indexer the SPA would have
+// to widen QuotaBars to).
+type QuotaDim struct {
+	Used int `json:"used"`
+	Cap  int `json:"cap"`
+	Free int `json:"free"`
+}
+
 // remainingMapFromMaps mirrors remainingMap but takes the
 // already-projected cap/alloc maps the live wclient returns. Used to
-// stitch the live response into the same {used,cap,free}-per-dim
-// shape the SPA's QuotaBars expects.
-func remainingMapFromMaps(cap, used map[string]int) map[string]map[string]int {
+// stitch the live response into the same per-dim shape the SPA's
+// QuotaBars expects.
+func remainingMapFromMaps(cap, used map[string]int) map[string]QuotaDim {
 	keys := []string{
 		"vcpu", "ram_gib", "gpus", "volumes", "volumes_gib",
 		"shares", "shares_gib", "buckets", "buckets_gib",
 		"registry_gib", "floating_ips", "projects",
 	}
-	out := make(map[string]map[string]int, len(keys))
+	out := make(map[string]QuotaDim, len(keys))
 	for _, k := range keys {
 		c, u := cap[k], used[k]
-		out[k] = map[string]int{"used": u, "cap": c, "free": c - u}
+		out[k] = QuotaDim{Used: u, Cap: c, Free: c - u}
 	}
 	return out
 }
 
-// remainingMap projects each capacity into a {got, max, free} triplet
-// for the SPA's progress bars. Keeps the same field order as Quotas
-// so the UI doesn't need to know about the dimension list.
-func remainingMap(cap, used Quotas) map[string]map[string]int {
+// remainingMap projects each capacity into a QuotaDim for the SPA's
+// progress bars. Keeps the same field order as Quotas so the UI
+// doesn't need to know about the dimension list.
+func remainingMap(cap, used Quotas) map[string]QuotaDim {
 	pairs := []struct {
 		name string
 		u, c int
@@ -741,9 +825,9 @@ func remainingMap(cap, used Quotas) map[string]map[string]int {
 		{"floating_ips", used.FloatingIPs, cap.FloatingIPs},
 		{"projects", used.Projects, cap.Projects},
 	}
-	out := make(map[string]map[string]int, len(pairs))
+	out := make(map[string]QuotaDim, len(pairs))
 	for _, p := range pairs {
-		out[p.name] = map[string]int{"used": p.u, "cap": p.c, "free": p.c - p.u}
+		out[p.name] = QuotaDim{Used: p.u, Cap: p.c, Free: p.c - p.u}
 	}
 	return out
 }

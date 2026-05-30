@@ -25,6 +25,9 @@ import {
   type APITopoNetwork, type APITopoNode, type APITopologyBody,
   type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult,
   type APISecurityRule, type APIImportResult,
+  type APITenantDetail, type APITenantMember, type APITenantProjectEntry,
+  type APITenantGroup, type APITenantQuotaView, type APIProjectQuotaView,
+  type APIQuotas,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -362,24 +365,39 @@ export async function logout(): Promise<void> {
 
 // ---- Tenant administration ----------------------------------------
 
-export interface TenantMember { email: string; name: string; groups: string[]; admin: boolean }
-export interface TenantProject {
-  name: string; uuid: string; created: string; roles: Record<string, string>;
-}
-export interface TenantGroup { name: string; description: string }
-
-export interface TenantDetail {
-  name: string; domain: string; status: string;
-  projects: TenantProject[]; members: TenantMember[]; groups: TenantGroup[];
-  caller: { email: string; cluster_admin: boolean; tenant_admin: boolean };
-}
+// Types now come from api.gen.ts. The TS aliases override the
+// generated nullable arrays + the optional caller field with non-
+// null versions ; the API layer always initialises slices + always
+// sets caller before returning, so callers don't need to guard.
+export type TenantMember = Omit<APITenantMember, 'groups'> & { groups: string[] };
+export type TenantProject = APITenantProjectEntry;
+export type TenantGroup = APITenantGroup;
+// Caller is always set by the API layer (tenant-detail handler in
+// api_tenants.go) — the generated optional flag is overridden here.
+export type TenantCaller = NonNullable<APITenantDetail['caller']>;
+export type TenantDetail = Omit<APITenantDetail, 'projects' | 'members' | 'groups' | 'caller'> & {
+  projects: TenantProject[];
+  members: TenantMember[];
+  groups: TenantGroup[];
+  caller: TenantCaller;
+};
 
 export const getTenant = async (name: string): Promise<TenantDetail> => {
   const { data, error } = await client.GET('/api/tenants/{name}', {
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as TenantDetail;
+  // The Go side always initialises slices + sets `caller` before
+  // returning ; we normalise nullable arrays here so consumers
+  // don't have to ternary-guard. caller is asserted non-null since
+  // the API handler always fills it post-fetch.
+  return {
+    ...data,
+    projects: data.projects ?? [],
+    members: (data.members ?? []).map((m) => ({ ...m, groups: m.groups ?? [] })),
+    groups: data.groups ?? [],
+    caller: data.caller!,
+  };
 };
 
 export const createTenant = async (name: string, domain: string) => {
@@ -428,26 +446,20 @@ export const grantProjectRole = async (project: string, email: string, role: str
 
 // ---- Quotas (typed views) -----------------------------------------
 
-export interface Quotas {
-  vcpu: number; ram_gib: number; gpus: number;
-  volumes: number; volumes_gib: number;
-  shares: number; shares_gib: number;
-  buckets: number; buckets_gib: number;
-  registry_gib: number; floating_ips: number; projects: number;
-}
+// Strip $schema (an openapi-typescript convenience that bleeds into
+// keyof Quotas and breaks Record<keyof Quotas, number> usages).
+export type Quotas = Omit<APIQuotas, '$schema'>;
 export interface QuotaDim { used: number; cap: number; free: number }
 export type QuotaBars = Record<string, QuotaDim>;
-export interface TenantQuotaView { cap: Quotas; allocated: Quotas; remaining: QuotaBars }
-export interface ProjectQuotaView {
-  project: Quotas; tenant_cap: Quotas; siblings_total: Quotas; tenant_remaining: QuotaBars;
-}
+export type TenantQuotaView = APITenantQuotaView;
+export type ProjectQuotaView = APIProjectQuotaView;
 
 export const getTenantQuota = async (name: string): Promise<TenantQuotaView> => {
   const { data, error } = await client.GET('/api/tenants/{name}/quota', {
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as TenantQuotaView;
+  return data;
 };
 
 export const getProjectQuota = async (name: string): Promise<ProjectQuotaView> => {
@@ -455,7 +467,7 @@ export const getProjectQuota = async (name: string): Promise<ProjectQuotaView> =
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as ProjectQuotaView;
+  return data;
 };
 
 export const setTenantQuota = async (name: string, q: Quotas): Promise<TenantQuotaView> => {
@@ -464,7 +476,7 @@ export const setTenantQuota = async (name: string, q: Quotas): Promise<TenantQuo
     body: q,
   });
   if (error) throwErr(error);
-  return data as unknown as TenantQuotaView;
+  return data;
 };
 
 export const setProjectQuota = async (name: string, q: Quotas): Promise<ProjectQuotaView> => {
@@ -473,7 +485,7 @@ export const setProjectQuota = async (name: string, q: Quotas): Promise<ProjectQ
     body: q,
   });
   if (error) throwErr(error);
-  return data as unknown as ProjectQuotaView;
+  return data;
 };
 
 // ---- VM lifecycle -------------------------------------------------
@@ -483,7 +495,7 @@ export const startVM = async (name: string) => {
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as { name: string };
+  return data;
 };
 
 export const stopVM = async (name: string) => {
@@ -491,7 +503,7 @@ export const stopVM = async (name: string) => {
     params: { path: { name } },
   });
   if (error) throwErr(error);
-  return data as unknown as { name: string };
+  return data;
 };
 
 export const deleteVM = async (name: string): Promise<void> => {
