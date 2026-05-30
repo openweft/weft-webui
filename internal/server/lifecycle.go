@@ -15,6 +15,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/openweft/weft-webui/internal/auth"
@@ -110,6 +111,77 @@ func handleDeleteVM(w http.ResponseWriter, r *http.Request) {
 	}
 	userAction(r, "microvm.delete")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- VM inspect (status / timings / logs) ---------------------------
+//
+// Read-only endpoints the SPA's microVM drawer hits when the operator
+// opens a row. Like the lifecycle mutators they need a project, so
+// they go through resolveVMProject ; mock mode returns 503 so the
+// drawer surfaces the same "no daemon" message instead of hanging.
+
+func handleVMStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	name := r.PathValue("name")
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	info, cerr := live.VMStatus(r.Context(), name, project)
+	if cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func handleVMTimings(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	name := r.PathValue("name")
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	events, cerr := live.VMTimings(r.Context(), name, project)
+	if cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+// handleVMLogs supports ?tail=<bytes>. Defaults to 65536 (64 KiB) so a
+// VM with a giant console.log doesn't blow up the SPA on first open.
+func handleVMLogs(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	name := r.PathValue("name")
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var tail int64 = 65536
+	if t := r.URL.Query().Get("tail"); t != "" {
+		var n int64
+		_, _ = fmt.Sscanf(t, "%d", &n)
+		if n >= 0 {
+			tail = n
+		}
+	}
+	out, cerr := live.VMLogs(r.Context(), name, project, tail)
+	if cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleCreateVM : POST /api/microvms  {name, image, cpu, mem_mb,
