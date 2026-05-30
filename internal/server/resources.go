@@ -194,12 +194,11 @@ var registry = []Resource{
 		Rows:    nil,
 	},
 	{
-		// OCI registry. Rows come from the images store (see images.go)
+		// OCI registry. Rows come from the artifact store (registry.go)
 		// so uploads round-trip ; the dashboard renders a custom view.
-		// Label is "Registry" — OCI artifacts cover more than container
-		// images (raw disks, charts, models, …) ; the internal slug
-		// stays `images` for URL/route stability.
-		ID: "images", Label: "Registry", Section: "Storage",
+		// "registry" rather than "images" because the registry holds
+		// any OCI artifact (containers, raw disks, charts, models…).
+		ID: "registry", Label: "Registry", Section: "Storage",
 		Columns: cols("repository", "Repository", "tag", "Tag", "type", "Type",
 			"arch", "Architectures", "registry", "Registry", "size", "Size", "pushed", "Pushed"),
 		Rows: nil,

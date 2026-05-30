@@ -110,7 +110,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/resources", scopedResources(scope))
 	mux.HandleFunc("GET /api/resources/{id}", scopedResourceRows(scope))
 	mux.HandleFunc("GET /api/summary", scopedSummary(scope))
-	mux.HandleFunc("POST /api/images/upload", handleImageUpload)
+	mux.HandleFunc("POST /api/registry/upload", handleRegistryUpload)
 
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
@@ -251,8 +251,8 @@ func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]a
 // rowCount returns the live count for a resource.
 func rowCount(res *Resource) int {
 	switch res.ID {
-	case "images":
-		return imagesCount()
+	case "registry":
+		return registryCount()
 	case "buckets":
 		return bucketsCount()
 	case "topology":
@@ -279,8 +279,8 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch id {
-	case "images":
-		writeJSON(w, http.StatusOK, imagesList())
+	case "registry":
+		writeJSON(w, http.StatusOK, registryList())
 		return
 	case "buckets":
 		writeJSON(w, http.StatusOK, bucketSummaries())
