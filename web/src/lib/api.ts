@@ -124,6 +124,18 @@ export const readEntry = (kind: StorageKind, container: string, key: string) =>
 export const uploadEntries = (kind: StorageKind, container: string, form: FormData) =>
   postForm(`/api/${kind}/${container}/objects`, form);
 
+// Delete one object by key. Only wired for buckets today ; the server
+// returns 404 if you point it at a share (no DELETE route on that side
+// yet — share files come and go via the workload itself).
+export async function deleteEntry(kind: StorageKind, container: string, key: string): Promise<void> {
+  const url = `/api/${kind}/${container}/object?key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, { method: 'DELETE' });
+  if (res.status === 401) handleUnauthorised();
+  if (res.status === 204) return;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { error?: string }).error ?? `${res.status} ${res.statusText}`);
+}
+
 // Buckets are user-managed (shares are provisioned via the share lifecycle).
 export async function createBucket(name: string): Promise<void> {
   const res = await fetch('/api/buckets', {

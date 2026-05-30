@@ -3,6 +3,7 @@
     browse,
     readEntry,
     uploadEntries,
+    deleteEntry,
     type StorageKind,
     type ObjectListing,
     type ObjectDetail,
@@ -17,6 +18,10 @@
   let viewer = $state<ObjectDetail | null>(null);
   let viewerLoading = $state(false);
   let uploading = $state(false);
+  let deleting = $state(false);
+  // Surfaced inside the viewer modal so a 403 from the bucket policy
+  // lands next to the action that triggered it.
+  let viewerError = $state('');
 
   $effect(() => {
     const p = prefix;
@@ -36,10 +41,32 @@
 
   async function openObject(key: string) {
     viewerLoading = true;
+    viewerError = '';
     try {
       viewer = await readEntry(kind, container, key);
     } finally {
       viewerLoading = false;
+    }
+  }
+
+  // Delete the object currently open in the viewer. Gated to buckets :
+  // shares have no DELETE route (their files are owned by the workload
+  // that wrote them). The bucket's policy is checked server-side ; a
+  // matching Deny lands here as a 403 surfaced in viewerError.
+  async function deleteObject() {
+    if (!viewer) return;
+    const key = viewer.key;
+    if (!confirm(`Delete ${key} ?`)) return;
+    deleting = true;
+    viewerError = '';
+    try {
+      await deleteEntry(kind, container, key);
+      viewer = null;
+      listing = await browse(kind, container, prefix);
+    } catch (e) {
+      viewerError = String(e);
+    } finally {
+      deleting = false;
     }
   }
 
@@ -143,8 +170,18 @@
             </div>
           {/if}
         </div>
+        {#if viewerError}
+          <div class="mt-3 alert alert-error py-2 text-sm">{viewerError}</div>
+        {/if}
         <div class="modal-action">
           <button class="btn btn-sm">Download</button>
+          {#if kind === 'buckets'}
+            <button class="btn btn-sm btn-ghost text-error gap-1"
+              disabled={deleting} onclick={deleteObject}>
+              {#if deleting}<span class="loading loading-spinner loading-xs"></span>{/if}
+              Delete
+            </button>
+          {/if}
           <button class="btn btn-sm btn-ghost" onclick={() => (viewer = null)}>Close</button>
         </div>
       {/if}
