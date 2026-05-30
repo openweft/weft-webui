@@ -433,13 +433,15 @@ func (c *Client) RemoveProjectMember(ctx context.Context, projectUUID, userUUID 
 }
 
 // CreateVM creates a new microVM. The proto carries name/image/cpu/
-// mem/disk/sshPub/project + the two pull-model labels
-// scheduling_rule/network ; flavor mapping (tenant view) is the
-// webui's responsibility.
+// mem/disk/project + the two pull-model labels scheduling_rule/network ;
+// flavor mapping (tenant view) is the webui's responsibility. SSH keys
+// are NOT a create-time field anymore — they're pushed at runtime via
+// the per-VM Properties surface ; the CreateVMRequest.ssh_pub tag was
+// retired upstream (see weft-proto's reserved comment on tag 6).
 type CreateVMOpts struct {
-	Name, Image, Project, SSHPubKey string
-	CPU                             uint32
-	MemMB, DiskGB                   uint64
+	Name, Image, Project string
+	CPU                  uint32
+	MemMB, DiskGB        uint64
 	// SchedulingRule : nominal binding ; the rule's selector is the
 	// discovery fallback for VMs without an explicit binding. Empty =
 	// selector-only (legacy / loose binding). See [[openweft_nominal_binding]].
@@ -460,7 +462,7 @@ func (c *Client) CreateVM(ctx context.Context, o CreateVMOpts) (retErr error) {
 	defer cancel()
 	_, err = rpc.CreateVM(cctx, &weftv1.CreateVMRequest{
 		Name: o.Name, Image: o.Image, Project: o.Project,
-		Cpu: o.CPU, MemMb: o.MemMB, DiskGb: o.DiskGB, SshPub: o.SSHPubKey,
+		Cpu: o.CPU, MemMb: o.MemMB, DiskGb: o.DiskGB,
 		SchedulingRule: o.SchedulingRule,
 		Network:        o.Network,
 	})
