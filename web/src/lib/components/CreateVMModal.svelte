@@ -15,6 +15,7 @@
     createVM, getMe, getFlavors, getRowsPage,
     type Row, type VMIngressKind,
   } from '../api';
+  import Combobox from './Combobox.svelte';
 
   let {
     open = $bindable(false),
@@ -77,17 +78,9 @@
     return fips.filter((f) => String(f.mapped_to ?? '') === '');
   });
 
-  // Group flavors by the GPU/no-GPU axis so the <select> scales past
-  // a handful of entries. Native <optgroup> means no extra widget code
-  // and works at 7 or 700 flavors. The grouping is derived (not seeded)
-  // so a future "ai-mig" or "spot" tier shows up as soon as the
-  // catalogue carries it.
-  let cpuFlavors = $derived(flavors.filter((f) => !f.gpu));
-  let gpuFlavors = $derived(flavors.filter((f) => !!f.gpu));
-
   // Picked flavor as an object — drives the detail panel + the submit
-  // payload. Declared here (after `flavors`) to avoid the use-before-
-  // declaration that bit the first try.
+  // payload. The Combobox handles grouping (CPU/GPU) internally via
+  // its getGroup prop, so no derived split is needed here.
   let flavor = $derived<Row | null>(
     flavors.find((f) => String(f.name) === flavorName) ?? null,
   );
@@ -185,31 +178,15 @@
         <p class="mt-1 text-xs text-base-content/50">No flavor catalogue loaded.</p>
       {:else}
         <div class="mt-1 grid gap-3 sm:grid-cols-[1fr_1.2fr]">
-          <select
-            class="select select-sm select-bordered"
+          <Combobox
+            items={flavors}
             bind:value={flavorName}
-            size={Math.min(8, flavors.length + (cpuFlavors.length > 0 && gpuFlavors.length > 0 ? 2 : 1))}
-          >
-            <option value="" disabled>— pick a flavor —</option>
-            {#if cpuFlavors.length > 0 && gpuFlavors.length > 0}
-              <optgroup label="CPU">
-                {#each cpuFlavors as f (f.name)}
-                  <option value={String(f.name)}>{f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}</option>
-                {/each}
-              </optgroup>
-              <optgroup label="GPU">
-                {#each gpuFlavors as f (f.name)}
-                  <option value={String(f.name)}>{f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}  ·  {f.gpu}</option>
-                {/each}
-              </optgroup>
-            {:else}
-              {#each flavors as f (f.name)}
-                <option value={String(f.name)}>
-                  {f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}{f.gpu ? '  ·  ' + f.gpu : ''}
-                </option>
-              {/each}
-            {/if}
-          </select>
+            getId={(f) => String(f.name)}
+            getLabel={(f) => String(f.name)}
+            getSub={(f) => `${f.vcpu} vCPU · ${f.ram} · ${f.ephemeral_gb} GB${f.gpu ? ' · ' + f.gpu : ''}`}
+            getGroup={(f) => (f.gpu ? 'GPU' : 'CPU')}
+            placeholder="Type to filter flavors…"
+          />
 
           <div class="rounded-box border border-base-300 bg-base-200/40 p-3 text-sm">
             {#if flavor}
