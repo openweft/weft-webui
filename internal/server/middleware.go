@@ -145,3 +145,13 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Flush delegates to the inner ResponseWriter so SSE handlers can
+// push each event straight through this wrapper. Without it, the
+// flusher type assertion in handleEvents would fail because
+// statusRecorder doesn't itself implement http.Flusher.
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}

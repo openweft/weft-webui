@@ -122,6 +122,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// /api/me lives in this package (not in auth) because the role
 	// flags depend on the tenant store, which sits in this layer.
 	mux.HandleFunc("GET /api/me", handleMe)
+	// Server-Sent Events stream bridging the agent's WatchEvents RPC
+	// to the SPA's EventSource subscription. Open per browser tab,
+	// auto-reconnects on disconnect.
+	mux.HandleFunc("GET /api/events", handleEvents)
 	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
 	// Resource catalogue + rows : filtered by scope so the user-facing

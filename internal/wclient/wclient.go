@@ -763,6 +763,59 @@ func (c *Client) GetSecurityGroup(ctx context.Context, uuid string) (rules []Sec
 // authoritative, and a stale lookup that referenced a renamed entity
 // would 400 down the line anyway.
 
+// EventStream is the channel-based view of WatchEvents. Each emit is
+// a flat map ready for SSE / JSON ; the underlying gRPC stream is
+// cancelled when the caller's context is done OR Close is invoked.
+type EventStream struct {
+	Events <-chan map[string]any
+	Errors <-chan error
+	cancel context.CancelFunc
+}
+
+// Close cancels the stream. Safe to call multiple times.
+func (s *EventStream) Close() { s.cancel() }
+
+// WatchEvents opens a server-stream of PlatformEvents filtered by
+// kindPrefixes (any-match) and optionally narrowed to a single
+// project / subject. The returned channels are closed when the stream
+// ends (server side or context cancel). Errors carry the canonical
+// gRPC status so the proxy can surface a clean message.
+func (c *Client) WatchEvents(ctx context.Context, kindPrefixes []string, project, subject string) (*EventStream, error) {
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	streamCtx, cancel := context.WithCancel(withBearer(ctx))
+	stream, err := rpc.WatchEvents(streamCtx, &vzdv1.WatchEventsRequest{
+		KindPrefix: kindPrefixes, Project: project, Subject: subject,
+	})
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	events := make(chan map[string]any, 16)
+	errors := make(chan error, 1)
+	go func() {
+		defer close(events)
+		defer close(errors)
+		for {
+			ev, err := stream.Recv()
+			if err != nil {
+				errors <- err
+				return
+			}
+			events <- map[string]any{
+				"ts":      time.Unix(0, ev.TsUnixNs).UTC().Format(time.RFC3339Nano),
+				"kind":    ev.Kind,
+				"subject": ev.Subject,
+				"project": ev.ProjectUuid,
+				"meta":    ev.Meta,
+			}
+		}
+	}()
+	return &EventStream{Events: events, Errors: errors, cancel: cancel}, nil
+}
+
 // UserUUIDByEmail returns the UUID for the given email, or "" if no
 // user matches. Walks ListUsers() ; the user count is small.
 func (c *Client) UserUUIDByEmail(ctx context.Context, email string) (string, error) {

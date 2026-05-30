@@ -11,6 +11,7 @@
   import SharesPage from './lib/components/SharesPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
+  import EventToasts from './lib/components/EventToasts.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
   let loaded = $state(false);
@@ -81,3 +82,5 @@
     </main>
   </div>
 </div>
+
+<EventToasts />
