@@ -6,12 +6,16 @@
   import Topbar from './lib/components/Topbar.svelte';
   import ResourcePage from './lib/components/ResourcePage.svelte';
   import RegistryPage from './lib/components/RegistryPage.svelte';
+  import DNSPage from './lib/components/DNSPage.svelte';
+  import SecurityPage from './lib/components/SecurityPage.svelte';
+  import NetworksPage from './lib/components/NetworksPage.svelte';
   import TenantsPage from './lib/components/TenantsPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import SharesPage from './lib/components/SharesPage.svelte';
   import ScriptsPage from './lib/components/ScriptsPage.svelte';
   import SSHKeysPage from './lib/components/SSHKeysPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
+  import PluginsPage from './lib/components/PluginsPage.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
@@ -21,15 +25,21 @@
   let loaded = $state(false);
   let error = $state('');
 
-  onMount(async () => {
+  // refreshResources is exposed to PluginsPage : installing /
+  // uninstalling / enabling / disabling a plugin shifts the
+  // sidebar — the page calls back here to re-fetch /api/resources.
+  async function refreshResources() {
     try {
       resources = await getResources();
+      error = '';
     } catch (e) {
       error = String(e);
     } finally {
       loaded = true;
     }
-  });
+  }
+
+  onMount(refreshResources);
 
   let byId = $derived(new Map(resources.map((r) => [r.id, r])));
 
@@ -75,9 +85,21 @@
         <Overview {grouped} />
       {:else if active === 'activity'}
         <ActivityPage />
-      {:else if active === 'registry'}
+      {:else if active === 'registries'}
         {#key active}
           <RegistryPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'dns'}
+        {#key active}
+          <DNSPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'security-groups'}
+        {#key active}
+          <SecurityPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'networks'}
+        {#key active}
+          <NetworksPage meta={byId.get(active)!} />
         {/key}
       {:else if active === 'tenants'}
         {#key active}
@@ -93,6 +115,10 @@
         <SSHKeysPage />
       {:else if active === 'topology'}
         <NetworkTopology />
+      {:else if active === 'plugins'}
+        {#key active}
+          <PluginsPage meta={byId.get(active)!} onChange={refreshResources} />
+        {/key}
       {:else}
         {#key active}
           <ResourcePage meta={byId.get(active)!} />

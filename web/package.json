@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "gen:api": "openapi-typescript ./openapi.json -o ./src/lib/api.gen.ts"
+    "gen:api": "openapi-typescript ./openapi.json -o ./src/lib/api.gen.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0"
@@ -16,13 +18,18 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
+    "@vitest/ui": "^4.1.7",
     "daisyui": "^5.0.0",
+    "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "tslib": "^2.7.0",
     "typescript": "^5.6.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^4.1.7"
   }
 }

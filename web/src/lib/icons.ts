@@ -10,6 +10,10 @@ const ICONS: Record<string, string> = {
   Storage: `<ellipse cx="12" cy="6" rx="7" ry="2.6" ${stroke}/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6" ${stroke}/>`,
   Compute: `<rect x="4" y="5" width="16" height="6" rx="1.5" ${stroke}/><rect x="4" y="13" width="16" height="6" rx="1.5" ${stroke}/><path d="M7.5 8h.01M7.5 16h.01" ${stroke}/>`,
   Admin: `<path d="M4 7h10M18 7h2M4 17h2M10 17h10" ${stroke}/><circle cx="16" cy="7" r="2.2" ${stroke}/><circle cx="8" cy="17" r="2.2" ${stroke}/>`,
+  // Database : two stacked cylinder slices to evoke a sharded table.
+  // Distinct from Storage (whole cylinder) — Database is structured
+  // data, Storage is a blob of bytes.
+  Database: `<ellipse cx="12" cy="5.5" rx="7" ry="2.4" ${stroke}/><path d="M5 5.5v5c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-5" ${stroke}/><path d="M5 11v5c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-5" ${stroke}/><path d="M5 16.5v2c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-2" ${stroke}/>`,
 };
 
 export function sectionIcon(section: string): string {

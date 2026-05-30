@@ -18,7 +18,7 @@ import (
 
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/telemetry"
-	vzclient "github.com/openweft/weft-client"
+	weftclient "github.com/openweft/weft-client"
 	weftv1 "github.com/openweft/weft-proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -50,7 +50,7 @@ type Client struct {
 
 // New builds a client that will dial socket on the first RPC. socket follows
 // the weft-client convention : a unix path (e.g. ~/.weft/weft.sock —
-// some older deployments still see the legacy ~/.vzd/vzd.sock) or an
+// some older deployments still see the legacy ~/.weft/weft.sock) or an
 // ssh:// URL routed through the SSH transport.
 func New(socket string) *Client { return &Client{socket: socket} }
 
@@ -83,12 +83,12 @@ func (c *Client) dial() (weftv1.WeftAgentClient, error) {
 	}
 	// We install our own interceptors here so the bearer comes from the
 	// request context (one access token per signed-in user) rather than
-	// the on-disk cache vzclient.CachedTokenSource() reads. Vzclient's
+	// the on-disk cache weftclient.CachedTokenSource() reads. Weftclient's
 	// Client() already installs its own bearer interceptor on top — both
 	// stamp `authorization` metadata, and the per-request one wins when
 	// it sets a value (metadata.AppendToOutgoingContext concatenates,
 	// weft-agent's validator accepts the first valid bearer).
-	rpc, conn, err := vzclient.Client(c.socket)
+	rpc, conn, err := weftclient.Client(c.socket)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (c *Client) ListVMs(ctx context.Context, project string, opts ListOpts) (ro
 			"name":    v.Name,
 			"uuid":    v.Uuid,
 			"image":   v.Image,
-			"status":  vzclient.StateString(v.State),
+			"status":  weftclient.StateString(v.State),
 			"cpu":     v.Cpu,
 			"mem_mb":  v.MemMb,
 			"disk_gb": v.DiskGb,
@@ -545,7 +545,7 @@ func (c *Client) VMStatus(ctx context.Context, name, project string) (info *VMIn
 	v := resp.Vm
 	return &VMInfo{
 		Name: v.Name, UUID: v.Uuid, Image: v.Image,
-		Status: vzclient.StateString(v.State),
+		Status: weftclient.StateString(v.State),
 		OS:     v.Os,
 		CPU:    v.Cpu, MemMB: v.MemMb, DiskGB: v.DiskGb,
 		IP: v.Ip, Project: v.Project,
@@ -710,6 +710,12 @@ type SecurityRule struct {
 	PortMax         int32  `json:"port_max"`
 	RemoteCIDR      string `json:"remote_cidr"`
 	RemoteGroupUUID string `json:"remote_group_uuid"`
+	// Enabled = whether the rule applies. Disabled rules stay in the
+	// list (auditable + easy to re-enable) but the data plane skips
+	// them. Optional on the wire — missing = enabled — so older
+	// rule literals don't need to be updated atomically with this
+	// field's introduction.
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // CreateSecurityGroupOpts groups the proto's create fields with a

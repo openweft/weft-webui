@@ -219,7 +219,6 @@
           <tr class="hover cursor-pointer"
             class:bg-primary={selectedName === k.name}
             class:text-primary-content={selectedName === k.name}
-            ondblclick={() => { selectedName = k.name; startEdit(); }}
             onclick={() => clickRow(k)}>
             <td class="font-mono">{k.name}</td>
             <td class="max-w-xs truncate">{k.description || '—'}</td>

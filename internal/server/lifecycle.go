@@ -120,7 +120,7 @@ func parseRAMtoMB(s string) uint64 {
 // doc-block lives on createVMInput / the create-vm Operation description.)
 
 // writeBootProperty stamps one reserved weft.boot/* property on the
-// newly-created VM. Always guest-readable — the in-guest weft-vm-agent
+// newly-created VM. Always guest-readable — the in-guest weft-microvm-agent
 // is the consumer ; host-only would defeat the purpose. Goes through
 // the same per-VM Properties store as the operator-set ones (see
 // vm_metadata.go) so the drawer's Properties tab shows them too.

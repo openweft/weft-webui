@@ -19,7 +19,7 @@ import (
 type APIVMProperty struct {
 	Key           string `json:"key" doc:"Operator-defined property key" example:"owner" minLength:"1" maxLength:"128"`
 	Value         string `json:"value" doc:"Property value (opaque string ; structured data is the caller's serialisation)" example:"team-alpha"`
-	GuestReadable bool   `json:"guest_readable" doc:"When true, the in-guest weft-vm-agent can read this via NATS"`
+	GuestReadable bool   `json:"guest_readable" doc:"When true, the in-guest weft-microvm-agent can read this via NATS"`
 	UpdatedAt     string `json:"updated_at" doc:"RFC3339, server-stamped" readOnly:"true"`
 }
 

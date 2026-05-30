@@ -8,7 +8,7 @@
 //   Properties (host-set application-level annotations) :
 //     - free-form key→value (operator-defined)
 //     - each carries a GuestReadable flag — when true, the in-guest
-//       weft-vm-agent is allowed to read the value via its NATS API
+//       weft-microvm-agent is allowed to read the value via its NATS API
 //       (subject /weft/vm/<uuid>/property/<key>). False = host-only
 //       metadata (billing tags, security labels, …) the guest never
 //       sees.
@@ -20,7 +20,7 @@
 //       BootServiceAccess, RuntimeAccess, …
 //
 // Both stores are in-memory mocks today. Once weft-agent grows the
-// matching RPCs and the in-guest weft-vm-agent learns the property
+// matching RPCs and the in-guest weft-microvm-agent learns the property
 // subject, this file becomes a thin live-first wrapper.
 package server
 

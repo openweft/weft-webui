@@ -1,8 +1,8 @@
 // shares.go — in-memory store for the dashboard's view of CubeFS
 // shares.
 //
-// vzd doesn't have a CreateShare RPC : the CubeFS volume itself is
-// provisioned out-of-band on the storage cluster, vzd's
+// weft doesn't have a CreateShare RPC : the CubeFS volume itself is
+// provisioned out-of-band on the storage cluster, weft's
 // PublishShareToProject just fans the resulting mount out to the
 // project's VMs over its event bus. The webui's tenant-admin
 // "Create share" affordance therefore records the *intent* — the
@@ -144,6 +144,29 @@ func (s *shareStore) delete(name string) error {
 		return errNotFound("share")
 	}
 	delete(s.shares, name)
+	return nil
+}
+
+// resize bumps the size of an existing share. The CubeFS side
+// owns actual capacity ; this mock store just updates the metadata
+// the dashboard reads. ReadOnly is editable too — toggling re-fans
+// the share to mounting VMs on the next reconcile (out of scope for
+// the mock).
+func (s *shareStore) resize(name string, sizeGB int64, readOnly bool) error {
+	if sizeGB <= 0 {
+		return errBadReq("size_gb must be > 0")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sh, ok := s.shares[name]
+	if !ok {
+		return errNotFound("share")
+	}
+	if sizeGB < sh.SizeGB {
+		return errBadReq("shrinking is not supported")
+	}
+	sh.SizeGB = sizeGB
+	sh.ReadOnly = readOnly
 	return nil
 }
 

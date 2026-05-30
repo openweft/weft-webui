@@ -39,6 +39,12 @@ type Resource struct {
 	// Scope defaults to ScopeBoth (zero value treated as ScopeBoth via
 	// resolveScope). Set explicitly to ScopeAdmin for cluster-only types.
 	Scope Scope `json:"-"`
+	// Hidden = excluded from the /api/resources catalogue listing
+	// (so it doesn't show up in the sidebar) but rows still fetchable
+	// via /api/resources/{id}/rows. Used for "data resources" the
+	// dashboard merges into a custom page (e.g. dns-zones + dns-records
+	// merged into a single DNS page).
+	Hidden bool `json:"-"`
 }
 
 // resolveScope treats the zero value as ScopeBoth so existing entries
@@ -192,13 +198,19 @@ var registry = []Resource{
 		ID: "microvms", Label: "microVMs", Section: "Compute",
 		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
 		Rows: []map[string]any{
-			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
+			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small", "scheduling_rule", "web-tier"),
+			row("name", "web-2", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.22", "project", "team-alpha", "host", "dc-b-r1-h1", "network", "tenant-net-1", "flavor", "small", "scheduling_rule", "web-tier"),
 			// nb-1 uses gpu-small : the scheduler placed it on dc-c-r2-h1
 			// because that's the host carrying an A100-40G in its pool.
 			row("name", "nb-1", "image", "jupyter:cuda12", "status", "running", "cpu", 4, "mem_mb", 16384, "disk_gb", 32, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "gpu-small"),
 			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
 			// model-train-1 demands gpu-large → pinned to the H100 pool.
 			row("name", "model-train-1", "image", "pytorch:2.4-cuda12", "status", "running", "cpu", 32, "mem_mb", 262144, "disk_gb", 256, "ip", "10.20.0.30", "project", "research", "host", "dc-c-r3-h2", "network", "tenant-net-2", "flavor", "gpu-large"),
+			// research-batch members (count=5, ready=4 → one missing).
+			row("name", "batch-001", "image", "ubuntu:24.04", "status", "running", "cpu", 8, "mem_mb", 32768, "disk_gb", 64, "ip", "10.20.0.41", "project", "research", "host", "dc-c-r2-h2", "network", "tenant-net-2", "flavor", "large", "scheduling_rule", "research-batch"),
+			row("name", "batch-002", "image", "ubuntu:24.04", "status", "running", "cpu", 8, "mem_mb", 32768, "disk_gb", 64, "ip", "10.20.0.42", "project", "research", "host", "dc-c-r2-h3", "network", "tenant-net-2", "flavor", "large", "scheduling_rule", "research-batch"),
+			row("name", "batch-003", "image", "ubuntu:24.04", "status", "running", "cpu", 8, "mem_mb", 32768, "disk_gb", 64, "ip", "10.20.0.43", "project", "research", "host", "dc-a-r1-h1", "network", "tenant-net-2", "flavor", "large", "scheduling_rule", "research-batch"),
+			row("name", "batch-004", "image", "ubuntu:24.04", "status", "running", "cpu", 8, "mem_mb", 32768, "disk_gb", 64, "ip", "10.20.0.44", "project", "research", "host", "dc-a-r2-h1", "network", "tenant-net-2", "flavor", "large", "scheduling_rule", "research-batch"),
 		},
 	},
 	{
@@ -238,14 +250,55 @@ var registry = []Resource{
 		Rows:    nil,
 	},
 	{
-		// OCI registry. Rows come from the artifact store (registry.go)
-		// so uploads round-trip ; the dashboard renders a custom view.
-		// "registry" rather than "images" because the registry holds
-		// any OCI artifact (containers, raw disks, charts, models…).
-		ID: "registry", Label: "Registry", Section: "Storage",
+		// OCI registries. Rows come from the artifact store (registry.go)
+		// so uploads round-trip ; the dashboard renders a custom view
+		// with two tabs (artifacts + remotes for proxy / replication).
+		// Plural to match the other storage sub-sections (Volumes,
+		// Shares, Buckets).
+		ID: "registries", Label: "Registries", Section: "Storage",
 		Columns: cols("repository", "Repository", "tag", "Tag", "type", "Type",
 			"arch", "Architectures", "registry", "Registry", "size", "Size", "pushed", "Pushed"),
 		Rows: nil,
+	},
+
+	// ---------- Database ----------
+	{
+		// DBaaS exposed by the integrated Vitess cluster. One row per
+		// user-facing keyspace (logical database) — the underlying
+		// shards / tablets stay an implementation detail until the
+		// dashboard grows a per-keyspace drawer with shard topology.
+		//
+		// `engine` carries the MySQL-flavour version Vitess targets ;
+		// `shards` reflects the sharding count (1 = unsharded) ;
+		// `replicas` is the per-shard replica count (HA fan-out).
+		// Gated by the vitess-dbaas plugin — the section only shows
+		// up in the sidebar once the superadmin installs + enables
+		// the plugin from the Admin → Plugins panel. The gating
+		// logic is in plugins.go : a plugin's Resources slice
+		// declares which resource ids it contributes ; built-in
+		// resources (no plugin contributes them) are always open.
+		ID: "databases", Label: "Databases", Section: "Database",
+		Columns: cols("name", "Name", "engine", "Engine",
+			"shards", "Shards", "replicas", "Replicas",
+			"size_gb", "Size (GB)", "project", "Project",
+			"status", "Status", "created", "Created"),
+		Rows: []map[string]any{
+			row("name", "team-alpha-prod", "engine", "Vitess · MySQL 8.0",
+				"shards", 8, "replicas", 3, "size_gb", 200,
+				"project", "team-alpha", "status", "active", "created", "2026-04-10"),
+			row("name", "team-alpha-staging", "engine", "Vitess · MySQL 8.0",
+				"shards", 2, "replicas", 2, "size_gb", 50,
+				"project", "team-alpha", "status", "active", "created", "2026-04-12"),
+			row("name", "research-warehouse", "engine", "Vitess · MySQL 8.0",
+				"shards", 16, "replicas", 3, "size_gb", 2048,
+				"project", "research", "status", "active", "created", "2026-03-22"),
+			row("name", "team-beta-orders", "engine", "Vitess · MySQL 8.0",
+				"shards", 4, "replicas", 3, "size_gb", 120,
+				"project", "team-beta", "status", "active", "created", "2026-05-02"),
+			row("name", "scratch-1", "engine", "Vitess · MySQL 8.0",
+				"shards", 1, "replicas", 1, "size_gb", 10,
+				"project", "team-alpha", "status", "provisioning", "created", "2026-05-29"),
+		},
 	},
 
 	// ---------- Network ----------
@@ -292,7 +345,11 @@ var registry = []Resource{
 		// the in-cluster names without manual edits. Empty target =
 		// no external push (zone stays internal). push_state is one of
 		// `idle`, `pushing`, `synced @<ts>`, `failed: <reason>`.
-		ID: "dns-zones", Label: "DNS Zones", Section: "Network",
+		// Hidden : the sidebar surfaces a single "DNS" entry (below)
+		// that fetches zones + records and renders them in a unified
+		// master-detail view. Rows still served via /api/resources/dns-zones/rows
+		// for the dashboard's own consumption.
+		ID: "dns-zones", Label: "DNS Zones", Section: "Network", Hidden: true,
 		Columns: cols("name", "Name", "role", "Role",
 			"records", "Records", "ttl_default", "Default TTL",
 			"backend", "Backend", "push_target", "Push target",
@@ -329,7 +386,8 @@ var registry = []Resource{
 		// for the apex) ; `zone` is the parent. Records flagged `auto`
 		// are reconciled by weft-network from the live VM list — operator
 		// edits to those are clobbered on the next reconcile.
-		ID: "dns-records", Label: "DNS Records", Section: "Network",
+		// Hidden : merged into the "DNS" sidebar entry via DNSPage.
+		ID: "dns-records", Label: "DNS Records", Section: "Network", Hidden: true,
 		Columns: cols("name", "Name", "zone", "Zone", "type", "Type",
 			"value", "Value", "ttl", "TTL", "source", "Source"),
 		Rows: []map[string]any{
@@ -354,6 +412,15 @@ var registry = []Resource{
 			row("name", "web", "zone", "acme.weft.internal", "type", "A",
 				"value", "203.0.113.20", "ttl", 60, "source", "auto"),
 		},
+	},
+	{
+		// Unified DNS sidebar entry. The page renders zones on the
+		// left + records of the selected zone on the right (custom
+		// component in App.svelte). Row count = number of zones so
+		// the sidebar badge is meaningful.
+		ID: "dns", Label: "DNS", Section: "Network",
+		Columns: nil,
+		Rows:    nil,
 	},
 	{
 		// Routers stitch meshes together (inter-tenant peering, mesh ↔ outside)
@@ -441,23 +508,30 @@ var registry = []Resource{
 		// Mirrors SecurityGroupInfo (uuid, name, description, rules count,
 		// project, created). `uuid` is on the row so the row-action
 		// dropdown's Delete can hit /api/security-groups/{uuid}.
-		ID: "security-groups", Label: "Security Groups", Section: "Network",
+		// Label "Security" (singular) — the per-group rules editor lives
+		// inside the SG drawer (Rules tab), so the separate "Security
+		// Rules" entry below is Hidden to avoid a redundant flat view.
+		ID: "security-groups", Label: "Security", Section: "Network",
 		Columns: cols("name", "Name", "description", "Description",
-			"rules", "Rules", "project", "Project", "created", "Created"),
+			"rules", "Rules", "enabled", "Enabled",
+			"project", "Project", "created", "Created"),
 		Rows: []map[string]any{
 			row("name", "default", "uuid", "a1c0e7d2-9f01-4811-b6a5-101010101010",
-				"description", "Default deny-in / allow-out", "rules", 2,
+				"description", "Default deny-in / allow-out", "rules", 2, "enabled", true,
 				"project", "team-alpha", "created", "2026-04-12"),
 			row("name", "web", "uuid", "a1c0e7d2-9f01-4811-b6a5-202020202020",
-				"description", "HTTP/HTTPS ingress", "rules", 3,
+				"description", "HTTP/HTTPS ingress", "rules", 3, "enabled", true,
 				"project", "team-alpha", "created", "2026-04-14"),
 			row("name", "db", "uuid", "a1c0e7d2-9f01-4811-b6a5-303030303030",
-				"description", "Postgres from web only", "rules", 1,
+				"description", "Postgres from web only", "rules", 1, "enabled", true,
 				"project", "team-beta", "created", "2026-04-20"),
 		},
 	},
 	{
-		ID: "security-rules", Label: "Security Rules", Section: "Network",
+		// Hidden : flat rules view is redundant with the per-group rules
+		// editor in SecurityGroupDrawer. Kept in the catalogue so the
+		// rows are still fetchable by anyone who wants the firehose.
+		ID: "security-rules", Label: "Security Rules", Section: "Network", Hidden: true,
 		Columns: cols("group", "Group", "direction", "Direction", "protocol", "Protocol", "port_range", "Ports", "remote", "Remote"),
 		Rows: []map[string]any{
 			row("group", "web", "direction", "ingress", "protocol", "tcp", "port_range", "443", "remote", "0.0.0.0/0"),
@@ -496,6 +570,18 @@ var registry = []Resource{
 				"gpu", "4×H100-80G",
 				"status", "active", "last_seen", "2026-05-28"),
 		},
+	},
+	{
+		// Plugin registry — *-as-a-service modules the cluster can
+		// host (Database / Streaming / Cache / Object lake …). Rows
+		// are served from pluginsByID via the /api/plugins endpoints
+		// so install / enable round-trip ; columns here drive the
+		// catalogue listing only.
+		ID: "plugins", Label: "Plugins", Section: "Admin", Scope: ScopeAdmin,
+		Columns: cols("id", "ID", "name", "Name", "vendor", "Vendor",
+			"version", "Version", "section", "Section",
+			"install_status", "Install", "enabled", "Enabled"),
+		Rows: nil, // populated dynamically — see api_plugins.go
 	},
 }
 

@@ -66,11 +66,18 @@ tasks:
       - npm run dev
 
   check:
-    desc: Vet Go + type-check Svelte (regenerates the typed client first)
+    desc: Vet Go + type-check Svelte + run unit tests (regenerates the typed client first)
     deps: [gen-api]
     cmds:
       - go vet ./...
       - cd web && npm run check
+      - cd web && npm run test
+
+  test:web:
+    desc: Frontend unit tests only (Vitest)
+    dir: web
+    cmds:
+      - npm run test
 
   check:drift:
     desc: Fail when the committed OpenAPI snapshot + typed client are stale

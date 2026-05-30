@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/openweft/weft-client v0.0.0
 	github.com/openweft/weft-network-proto v0.0.0
 	github.com/openweft/weft-proto v0.0.0
@@ -17,7 +18,6 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/danielgtaylor/huma/v2 v2.38.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/grpc-transports/ssh v0.0.0-00010101000000-000000000000 // indirect

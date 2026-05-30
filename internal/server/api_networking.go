@@ -11,8 +11,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
 )
 
@@ -97,6 +100,126 @@ func mountNetworksAPI(api huma.API) {
 		userActionCtx(ctx, "network.delete")
 		return nil, nil
 	})
+
+	// ---- Editable metadata layer (mock-friendly) -----------------
+	//
+	// The webui needs an "Edit" affordance even when no daemon is
+	// wired ; live wiring routes these to SetNetworkDNS / a future
+	// SetNetworkDescription / RenameNetwork. Mock store mirrors
+	// the patterns used for volumes.
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-network-metadata",
+		Method:      "GET",
+		Path:        "/api/networks/{key}/metadata",
+		Summary:     "Get the editable metadata layer for one network",
+		Tags:        []string{"networks"},
+	}, func(_ context.Context, in *networkKeyInput) (*getNetworkMetadataOutput, error) {
+		return &getNetworkMetadataOutput{Body: getNetworkMetadata(in.Key)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "set-network-metadata",
+		Method:        "PUT",
+		Path:          "/api/networks/{key}/metadata",
+		Summary:       "Replace the editable metadata for one network (admin)",
+		Description:   "Description + DNS servers. UpdatedAt / UpdatedBy stamped server-side. Live wiring forwards DNS to SetNetworkDNS.",
+		Tags:          []string{"networks"},
+		DefaultStatus: 200,
+	}, func(ctx context.Context, in *setNetworkMetadataInput) (*setNetworkMetadataOutput, error) {
+		m := in.Body
+		m.Description = strings.TrimSpace(m.Description)
+		if m.DNSServers == nil {
+			m.DNSServers = []string{}
+		}
+		m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if u := auth.UserFromContext(ctx); u != nil {
+			m.UpdatedBy = u.Email
+			if m.UpdatedBy == "" {
+				m.UpdatedBy = u.Subject
+			}
+		}
+		setNetworkMetadataStore(in.Key, m)
+		return &setNetworkMetadataOutput{Body: m}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "rename-network",
+		Method:        "PUT",
+		Path:          "/api/networks/{key}",
+		Summary:       "Rename a network (admin)",
+		Description:   "Updates the human-readable name. Attached VMs keep referencing by uuid.",
+		Tags:          []string{"networks"},
+		DefaultStatus: 200,
+	}, func(_ context.Context, in *renameNetworkInput) (*renameNetworkOutput, error) {
+		newName := strings.TrimSpace(in.Body.NewName)
+		if newName == "" {
+			return nil, huma.Error400BadRequest("new_name is required")
+		}
+		if newName == in.Key {
+			return &renameNetworkOutput{Body: renameNetworkResp{Name: newName}}, nil
+		}
+		if !renameNetworkRow(in.Key, newName) {
+			return nil, huma.Error404NotFound("network not found")
+		}
+		return &renameNetworkOutput{Body: renameNetworkResp{Name: newName}}, nil
+	})
+}
+
+type networkKeyInput struct {
+	Key string `path:"key" doc:"Network identifier (name today ; uuid once live wiring lands)" minLength:"1" maxLength:"128"`
+}
+
+type getNetworkMetadataOutput struct {
+	Body NetworkMetadata
+}
+
+type setNetworkMetadataInput struct {
+	Key  string `path:"key" doc:"Network identifier" minLength:"1" maxLength:"128"`
+	Body NetworkMetadata
+}
+
+type setNetworkMetadataOutput struct {
+	Body NetworkMetadata
+}
+
+type renameNetworkInput struct {
+	Key  string `path:"key" doc:"Current network identifier" minLength:"1" maxLength:"128"`
+	Body struct {
+		NewName string `json:"new_name" doc:"New human-readable name" minLength:"1" maxLength:"128"`
+	}
+}
+
+type renameNetworkResp struct {
+	Name string `json:"name"`
+}
+
+type renameNetworkOutput struct {
+	Body renameNetworkResp
+}
+
+type updateSGInput struct {
+	UUID string `path:"uuid" doc:"Security-group uuid" minLength:"1" maxLength:"64"`
+	Body struct {
+		Name        string `json:"name,omitempty"        doc:"New name. Empty = keep current."`
+		Description string `json:"description"           doc:"Free-form description. Empty string clears it."`
+		// Enabled is a tri-state from the client's view : present-and-true
+		// = enable, present-and-false = disable, absent = leave alone.
+		// Modeled as a pointer so the JSON marshaller distinguishes the
+		// three states correctly.
+		Enabled *bool `json:"enabled,omitempty"     doc:"Enable / disable the group. Omit to leave unchanged ; disabled groups stay in the catalogue but their rules don't apply."`
+	}
+}
+
+type UpdateSGResp struct {
+	UUID        string `json:"uuid"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+}
+
+type updateSGOutput struct {
+	Body UpdateSGResp
 }
 
 // ---- Security groups ---------------------------------------------
@@ -136,12 +259,26 @@ func mountSecurityGroupsAPI(api huma.API) {
 		OperationID:   "delete-security-group",
 		Method:        "DELETE",
 		Path:          "/api/security-groups/{uuid}",
-		Summary:       "Delete a security group (live-only)",
+		Summary:       "Delete a security group",
 		Tags:          []string{"security-groups"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
-		if err := requireLiveCtx(); err != nil {
-			return nil, err
+		if live == nil {
+			// Mock fallback : drop the row from the seed + clear rules.
+			res, ok := resourceByID["security-groups"]
+			if !ok {
+				return nil, huma.Error404NotFound("group not found")
+			}
+			for i, row := range res.Rows {
+				if str(row["uuid"]) == in.UUID {
+					res.Rows = append(res.Rows[:i], res.Rows[i+1:]...)
+					sgRulesMu.Lock()
+					delete(sgRules, in.UUID)
+					sgRulesMu.Unlock()
+					return nil, nil
+				}
+			}
+			return nil, huma.Error404NotFound("group not found")
 		}
 		if err := live.DeleteSecurityGroup(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -167,30 +304,44 @@ func mountSecurityGroupsAPI(api huma.API) {
 				return nil, huma.Error502BadGateway("live: " + err.Error())
 			}
 		}
-		var groupName string
-		for _, row := range resourceByID["security-groups"].Rows {
-			if row["uuid"] == in.UUID {
-				groupName, _ = row["name"].(string)
-				break
-			}
+		// Mock path : read from the in-memory store (seeded lazily
+		// from the static security-rules table on first hit). Writes
+		// flow through setMockSGRules so subsequent gets reflect them.
+		return &sgRulesOutput{Body: getMockSGRules(in.UUID)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "update-security-group",
+		Method:        "PUT",
+		Path:          "/api/security-groups/{uuid}",
+		Summary:       "Rename / re-describe a security group (mock-friendly)",
+		Description:   "Updates name and/or description in the seed catalogue. Live wiring will route to RenameSecurityGroup + SetSecurityGroupDescription once exposed via huma.",
+		Tags:          []string{"security-groups"},
+		DefaultStatus: 200,
+	}, func(_ context.Context, in *updateSGInput) (*updateSGOutput, error) {
+		res, ok := resourceByID["security-groups"]
+		if !ok {
+			return nil, huma.Error404NotFound("group not found")
 		}
-		out := make([]wclient.SecurityRule, 0)
-		if groupName != "" {
-			for _, row := range resourceByID["security-rules"].Rows {
-				if row["group"] == groupName {
-					portMin, portMax := parsePortRange(row["port_range"])
-					dir, _ := row["direction"].(string)
-					proto, _ := row["protocol"].(string)
-					cidr, _ := row["remote"].(string)
-					out = append(out, wclient.SecurityRule{
-						Direction: dir, Protocol: proto,
-						PortMin: int32(portMin), PortMax: int32(portMax),
-						RemoteCIDR: cidr,
-					})
+		for _, row := range res.Rows {
+			if str(row["uuid"]) == in.UUID {
+				if in.Body.Name != "" {
+					row["name"] = strings.TrimSpace(in.Body.Name)
 				}
+				// Description may legitimately be cleared.
+				row["description"] = strings.TrimSpace(in.Body.Description)
+				if in.Body.Enabled != nil {
+					row["enabled"] = *in.Body.Enabled
+				}
+				return &updateSGOutput{Body: UpdateSGResp{
+					UUID:        in.UUID,
+					Name:        str(row["name"]),
+					Description: str(row["description"]),
+					Enabled:     boolField(row["enabled"]),
+				}}, nil
 			}
 		}
-		return &sgRulesOutput{Body: out}, nil
+		return nil, huma.Error404NotFound("group not found")
 	})
 
 	huma.Register(api, huma.Operation{
@@ -198,10 +349,12 @@ func mountSecurityGroupsAPI(api huma.API) {
 		Method:      "PUT",
 		Path:        "/api/security-groups/{uuid}/rules",
 		Summary:     "Atomically replace a security group's rules",
+		Description: "Live-first ; falls back to an in-memory mock store (seeded from the static security-rules table on first read) when no live agent is wired, so the SecurityPage edit affordance works through staged rollouts.",
 		Tags:        []string{"security-groups"},
 	}, func(ctx context.Context, in *setSGRulesInput) (*setSGRulesOutput, error) {
-		if err := requireLiveCtx(); err != nil {
-			return nil, err
+		if live == nil {
+			setMockSGRules(in.UUID, in.Body)
+			return &setSGRulesOutput{Body: SetSGRulesResp{UUID: in.UUID, Rules: len(in.Body)}}, nil
 		}
 		if err := live.SetSecurityGroupRules(ctx, in.UUID, in.Body); err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -455,14 +608,72 @@ func mountDNSAPI(api huma.API) {
 		Tags:          []string{"dns"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
+		if liveNet == nil {
+			// Mock fallback : drop the row from the seed.
+			dnsMockMu.Lock()
+			z, ok := resourceByID["dns-zones"]
+			if !ok {
+				dnsMockMu.Unlock()
+				return nil, huma.Error404NotFound("zone not found")
+			}
+			for i, row := range z.Rows {
+				if str(row["uuid"]) == in.UUID {
+					z.Rows = append(z.Rows[:i], z.Rows[i+1:]...)
+					dnsMockMu.Unlock()
+					return nil, nil
+				}
+			}
+			dnsMockMu.Unlock()
+			return nil, huma.Error404NotFound("zone not found")
 		}
 		if err := liveNet.DeleteDNSZone(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "dns-zone.delete")
 		return nil, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "update-dns-zone",
+		Method:        "PUT",
+		Path:          "/api/dns-zones/{uuid}",
+		Summary:       "Update a DNS zone (mock-friendly ; live wiring TBD)",
+		Description:   "Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.",
+		Tags:          []string{"dns"},
+		DefaultStatus: 200,
+	}, func(_ context.Context, in *updateDNSZoneInput) (*updateDNSZoneOutput, error) {
+		ok := updateDNSZoneRow(in.UUID, func(row map[string]any) {
+			if in.Body.Name != "" {
+				row["name"] = in.Body.Name
+			}
+			if in.Body.Role != "" {
+				row["role"] = in.Body.Role
+			}
+			if in.Body.TTLDefault > 0 {
+				row["ttl_default"] = in.Body.TTLDefault
+			}
+			if in.Body.Backend != "" {
+				row["backend"] = in.Body.Backend
+			}
+			// PushTarget may legitimately be cleared.
+			row["push_target"] = in.Body.PushTarget
+			if in.Body.Enabled != nil {
+				row["enabled"] = *in.Body.Enabled
+			}
+		})
+		if !ok {
+			return nil, huma.Error404NotFound("zone not found")
+		}
+		row, _, _ := findDNSZoneByUUID(in.UUID)
+		return &updateDNSZoneOutput{Body: UpdateDNSZoneResp{
+			UUID:       in.UUID,
+			Name:       str(row["name"]),
+			Role:       str(row["role"]),
+			TTLDefault: toInt(row["ttl_default"]),
+			Backend:    str(row["backend"]),
+			PushTarget: str(row["push_target"]),
+			Enabled:    boolField(row["enabled"]),
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -498,14 +709,69 @@ func mountDNSAPI(api huma.API) {
 		Tags:          []string{"dns"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
+		if liveNet == nil {
+			dnsMockMu.Lock()
+			r, ok := resourceByID["dns-records"]
+			if !ok {
+				dnsMockMu.Unlock()
+				return nil, huma.Error404NotFound("record not found")
+			}
+			for i, row := range r.Rows {
+				if str(row["uuid"]) == in.UUID {
+					r.Rows = append(r.Rows[:i], r.Rows[i+1:]...)
+					dnsMockMu.Unlock()
+					return nil, nil
+				}
+			}
+			dnsMockMu.Unlock()
+			return nil, huma.Error404NotFound("record not found")
 		}
 		if err := liveNet.DeleteDNSRecord(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "dns-record.delete")
 		return nil, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "update-dns-record",
+		Method:        "PUT",
+		Path:          "/api/dns-records/{uuid}",
+		Summary:       "Update a DNS record (mock-friendly ; live wiring TBD)",
+		Description:   "Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.",
+		Tags:          []string{"dns"},
+		DefaultStatus: 200,
+	}, func(_ context.Context, in *updateDNSRecordInput) (*updateDNSRecordOutput, error) {
+		ok := updateDNSRecordRow(in.UUID, func(row map[string]any) {
+			if in.Body.Name != "" {
+				row["name"] = in.Body.Name
+			}
+			if in.Body.Type != "" {
+				row["type"] = in.Body.Type
+			}
+			if in.Body.Value != "" {
+				row["value"] = in.Body.Value
+			}
+			if in.Body.TTL > 0 {
+				row["ttl"] = in.Body.TTL
+			}
+			if in.Body.Enabled != nil {
+				row["enabled"] = *in.Body.Enabled
+			}
+		})
+		if !ok {
+			return nil, huma.Error404NotFound("record not found")
+		}
+		row, _ := findDNSRecordByUUID(in.UUID)
+		return &updateDNSRecordOutput{Body: UpdateDNSRecordResp{
+			UUID:    in.UUID,
+			Name:    str(row["name"]),
+			Zone:    str(row["zone"]),
+			Type:    str(row["type"]),
+			Value:   str(row["value"]),
+			TTL:     toInt(row["ttl"]),
+			Enabled: boolField(row["enabled"]),
+		}}, nil
 	})
 }
 
@@ -846,6 +1112,57 @@ type createDNSRecordInput struct {
 		Value    string `json:"value" minLength:"1"`
 		TTL      int32  `json:"ttl,omitempty" minimum:"0"`
 	}
+}
+
+type updateDNSZoneInput struct {
+	UUID string `path:"uuid" doc:"Zone uuid" minLength:"1" maxLength:"64"`
+	Body struct {
+		Name       string `json:"name,omitempty"        doc:"New zone name (FQDN). Empty = keep current."`
+		Role       string `json:"role,omitempty"        doc:"primary / secondary / forward" enum:",primary,secondary,forward"`
+		TTLDefault int    `json:"ttl_default,omitempty" doc:"Default TTL in seconds (>0 to change)" minimum:"0" maximum:"86400"`
+		Backend    string `json:"backend,omitempty"     doc:"Backend (coredns / bind9 / route53 …). Empty = keep current."`
+		PushTarget string `json:"push_target"           doc:"External NS to fan updates to (RFC-2136). Empty string clears the target."`
+		Enabled    *bool  `json:"enabled,omitempty"     doc:"Enable / disable serving this zone. Omit to leave unchanged."`
+	}
+}
+
+type UpdateDNSZoneResp struct {
+	UUID       string `json:"uuid"`
+	Name       string `json:"name"`
+	Role       string `json:"role"`
+	TTLDefault int    `json:"ttl_default"`
+	Backend    string `json:"backend"`
+	PushTarget string `json:"push_target"`
+	Enabled    bool   `json:"enabled"`
+}
+
+type updateDNSZoneOutput struct {
+	Body UpdateDNSZoneResp
+}
+
+type updateDNSRecordInput struct {
+	UUID string `path:"uuid" doc:"Record uuid" minLength:"1" maxLength:"64"`
+	Body struct {
+		Name    string `json:"name,omitempty"    doc:"Leaf name (or '@' for apex)"`
+		Type    string `json:"type,omitempty"    doc:"A / AAAA / CNAME / TXT / SRV / NS / MX"`
+		Value   string `json:"value,omitempty"   doc:"Record value (IP, target, TXT data, …)"`
+		TTL     int    `json:"ttl,omitempty"     doc:"TTL in seconds" minimum:"0" maximum:"86400"`
+		Enabled *bool  `json:"enabled,omitempty" doc:"Enable / disable this record. Omit to leave unchanged."`
+	}
+}
+
+type UpdateDNSRecordResp struct {
+	UUID    string `json:"uuid"`
+	Name    string `json:"name"`
+	Zone    string `json:"zone"`
+	Type    string `json:"type"`
+	Value   string `json:"value"`
+	TTL     int    `json:"ttl"`
+	Enabled bool   `json:"enabled"`
+}
+
+type updateDNSRecordOutput struct {
+	Body UpdateDNSRecordResp
 }
 
 type createSchedulingRuleInput struct {

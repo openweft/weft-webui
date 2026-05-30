@@ -34,6 +34,14 @@
   // save the name field becomes the catalogue key.
   let creating = $state(false);
 
+  // Quick substring filter on name / description — matches the
+  // pattern used by SSHKeysPage.
+  let query = $state('');
+
+  // Header-level action state — busy flag drives the spinner inside
+  // the Delete button while the RPC is in flight.
+  let actionBusy = $state(false);
+
   function refresh(keepName = selected) {
     listBusy = true;
     listErr = '';
@@ -111,51 +119,99 @@
   async function del() {
     if (!selected) return;
     if (!confirm(`Delete script "${selected}" ? VMs already provisioned with this script aren't affected ; new VMs that referenced it will lose their boot script body.`)) return;
+    actionBusy = true;
     try {
       await deleteScript(selected);
       // Pick the next one (or empty).
       const ss = await listScripts();
       scripts = ss;
       selectScript(ss[0]?.name ?? '');
-    } catch (e) { editErr = String(e); }
+    } catch (e) {
+      editErr = String(e);
+    } finally {
+      actionBusy = false;
+    }
   }
+
+  // Edit jumps focus into the editor's name input. Triggered from the
+  // header button so the keyboard flow matches SSHKeysPage's "select
+  // row → click Edit" pattern even though the editor is always
+  // visible here.
+  let nameInput: HTMLInputElement | undefined = $state();
+  function startEdit() {
+    if (!selected) return;
+    editErr = '';
+    nameInput?.focus();
+  }
+
+  let filtered = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return scripts;
+    return scripts.filter((s) =>
+      s.name.toLowerCase().includes(q)
+      || (s.description ?? '').toLowerCase().includes(q),
+    );
+  });
 </script>
 
 <div class="flex items-center gap-3">
   <div>
     <h2 class="text-2xl font-bold">Scripts</h2>
     <p class="text-sm text-base-content/60">
-      Named, reusable provisioning sh bodies. Pickable from
-      CreateVMModal ; stamped onto the VM as
-      <code>weft.boot/script</code> at create time.
+      Named, reusable provisioning sh bodies. Pick a script on the left to view + edit its body on the right.
     </p>
   </div>
-  {#if canEdit}
-    <button class="ml-auto btn btn-sm btn-primary gap-1" onclick={startNew}>
-      <span class="text-base leading-none">+</span> New script
-    </button>
-  {/if}
 </div>
 
-{#if listErr}
-  <div class="mt-2 alert alert-error text-sm">{listErr}</div>
-{/if}
-
 <div class="mt-4 flex gap-4">
-  <aside class="w-64 shrink-0">
-    <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
-      Catalogue {#if listBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+  <!-- Master : scripts list with filter + N/E/D, aligned on the DNS / Security / Networks pattern. -->
+  <section class="w-80 shrink-0 flex flex-col gap-2">
+    <div class="flex items-center gap-2">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Catalogue</h3>
+      {#if listBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+      <span class="ml-auto text-xs text-base-content/50">{filtered.length} of {scripts.length}</span>
     </div>
+
+    <label class="input input-sm input-bordered flex items-center gap-2">
+      <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-50" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
+      </svg>
+      <input type="search" class="grow" placeholder="Filter scripts…" bind:value={query} />
+    </label>
+
+    {#if canEdit}
+      <div class="flex flex-wrap gap-2">
+        <button class="btn btn-sm btn-primary gap-1" onclick={startNew} title="Create a new script">
+          <span class="text-base leading-none">+</span> New
+        </button>
+        <button class="btn btn-sm btn-warning gap-1"
+          disabled={!selected || creating || actionBusy}
+          onclick={startEdit}
+          title={selected ? `Edit "${selected}"` : 'Select a script to edit'}>
+          Edit
+        </button>
+        <button class="btn btn-sm btn-error gap-1"
+          disabled={!selected || creating || actionBusy}
+          onclick={del}
+          title={selected ? `Delete "${selected}"` : 'Select a script to delete'}>
+          {#if actionBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Delete
+        </button>
+      </div>
+    {/if}
+
+    {#if listErr}<div class="alert alert-error py-2 text-sm">{listErr}</div>{/if}
+
     <ul class="menu menu-sm w-full rounded-box border border-base-300 bg-base-100">
-      {#each scripts as s (s.name)}
+      {#each filtered as s (s.name)}
         <li>
           <button class:menu-active={selected === s.name} onclick={() => selectScript(s.name)}>
             <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none" stroke="currentColor" stroke-width="1.7">
               <path d="M4 4h12l4 4v12H4z" stroke-linejoin="round" />
               <path d="M8 12h8M8 16h6" />
             </svg>
-            <div class="min-w-0">
-              <div class="truncate">{s.name}</div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium">{s.name}</div>
               <div class="text-[10px] text-base-content/50">
                 {1 + s.body.split('\n').length - 1} lines · {s.updated_by || '—'}
               </div>
@@ -163,15 +219,17 @@
           </button>
         </li>
       {:else}
-        <li class="px-3 py-2 text-sm text-base-content/50">No scripts. Create one with “+ New script”.</li>
+        <li class="px-3 py-2 text-sm text-base-content/50">
+          {scripts.length === 0 ? 'No scripts. Create one with "+ New".' : 'No scripts match the filter.'}
+        </li>
       {/each}
     </ul>
-  </aside>
+  </section>
 
   <section class="min-w-0 flex-1">
     {#if !creating && !selected}
       <div class="rounded-box border border-base-300 bg-base-100 p-10 text-center text-base-content/50">
-        Pick a script on the left, or create a new one.
+        Select a script on the left, or create a new one.
       </div>
     {:else}
       <div class="rounded-box border border-base-300 bg-base-100 p-4">
@@ -182,6 +240,7 @@
               class="input input-sm input-bordered font-mono"
               placeholder="setup-nginx"
               disabled={!canEdit || (!creating && !!current)}
+              bind:this={nameInput}
               bind:value={editName}
             />
             {#if !creating && current}
@@ -226,9 +285,6 @@
         {/if}
 
         <div class="mt-3 flex items-center gap-2">
-          {#if canEdit && !creating && current}
-            <button class="btn btn-sm btn-ghost text-error" onclick={del}>Delete</button>
-          {/if}
           <div class="ml-auto flex items-center gap-2">
             {#if creating}
               <button class="btn btn-sm btn-ghost" onclick={() => { creating = false; selectScript(scripts[0]?.name ?? ''); }}>Cancel</button>

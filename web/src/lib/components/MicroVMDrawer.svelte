@@ -18,8 +18,11 @@
     listVMKeys, addVMKey, removeVMKey, listSSHKeyCatalogue,
     listVMProperties, setVMProperty, removeVMProperty,
     listUEFIVars, setUEFIVar, removeUEFIVar,
+    listVMAuthorizedGroups, addVMAuthorizedGroup, removeVMAuthorizedGroup,
+    listVMEffectiveKeys,
     type VMStatus, type VMTimingEvent, type VMLogs, type Row, type VMSSHKey,
     type SSHKeyEntry, type VMProperty, type UEFIVar,
+    type AuthorizedGroup, type EffectiveKey,
   } from '../api';
   import Combobox from './Combobox.svelte';
   import { openScopedEvents } from '../events';
@@ -39,7 +42,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'volumes' | 'keys' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'volumes' | 'keys' | 'authz' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -94,6 +97,69 @@
   let propGuestReadable = $state(false);
   let propBusy = $state(false);
   let propAddErr = $state('');
+
+  // Authorized-groups tab : group-based SSH authz. A VM authorized
+  // for group G inherits the SSH keys of every group member (via the
+  // key's owner email). The effective set is computed server-side and
+  // shown alongside the group list for clarity.
+  let authzGroups = $state<AuthorizedGroup[] | null>(null);
+  let authzErr = $state('');
+  let authzBusy = $state(false);
+  let effectiveKeys = $state<EffectiveKey[] | null>(null);
+  let newAuthzTenant = $state('');
+  let newAuthzGroup = $state('');
+
+  // Available tenants / groups for the picker. Loaded lazily on first
+  // visit to the authz tab so the drawer doesn't pay the cost for the
+  // 99% of opens that stay on Summary.
+  let allTenants = $state<Row[] | null>(null);
+  let allGroups = $state<Row[] | null>(null);
+  let availableGroups = $derived.by<Row[]>(() => {
+    if (!allGroups) return [];
+    if (!newAuthzTenant) return allGroups;
+    return allGroups.filter((g) => g.tenant === newAuthzTenant);
+  });
+
+  async function refreshAuthz() {
+    authzErr = '';
+    try {
+      authzGroups = await listVMAuthorizedGroups(name);
+      effectiveKeys = await listVMEffectiveKeys(name);
+      // Lazy-load the pickers on the same hop.
+      if (!allTenants) allTenants = await getRows('tenants');
+      if (!allGroups)  allGroups  = await getRows('groups');
+    } catch (e) {
+      authzErr = String(e);
+    }
+  }
+
+  async function addAuthz() {
+    if (!newAuthzTenant.trim() || !newAuthzGroup.trim()) return;
+    authzBusy = true; authzErr = '';
+    try {
+      await addVMAuthorizedGroup(name, newAuthzTenant.trim(), newAuthzGroup.trim());
+      newAuthzTenant = '';
+      newAuthzGroup = '';
+      await refreshAuthz();
+    } catch (e) {
+      authzErr = String(e);
+    } finally {
+      authzBusy = false;
+    }
+  }
+
+  async function removeAuthz(g: AuthorizedGroup) {
+    if (!confirm(`Remove authorization for ${g.tenant}/${g.group} ? Keys derived from this group will be dropped on the next push.`)) return;
+    authzBusy = true; authzErr = '';
+    try {
+      await removeVMAuthorizedGroup(name, g.tenant, g.group);
+      await refreshAuthz();
+    } catch (e) {
+      authzErr = String(e);
+    } finally {
+      authzBusy = false;
+    }
+  }
 
   // UEFI vars tab : firmware NVRAM editor. Values stay in hex on the
   // wire ; we let the operator paste hex pairs (with optional spaces
@@ -265,6 +331,7 @@
     if (tab === 'logs' && !logs && !logsErr) loadLogs();
     if (tab === 'volumes' && !volumes && !volumesErr) loadVolumes();
     if (tab === 'keys' && !keys && !keysErr) loadKeys();
+    if (tab === 'authz' && !authzGroups && !authzErr) refreshAuthz();
     if (tab === 'props' && !vmProperties && !propsErr) loadProps();
     if (tab === 'uefi' && !uefi && !uefiErr) loadUEFI();
   });
@@ -399,7 +466,7 @@
   {/if}
 
   <!-- Tabs -->
-  <div role="tablist" class="tabs tabs-bordered shrink-0 px-5">
+  <div role="tablist" class="tabs tabs-border shrink-0 px-5">
     <button role="tab" class="tab" class:tab-active={tab === 'summary'} onclick={() => (tab = 'summary')}>Summary</button>
     <button role="tab" class="tab" class:tab-active={tab === 'volumes'} onclick={() => (tab = 'volumes')}>
       Volumes
@@ -408,6 +475,10 @@
     <button role="tab" class="tab" class:tab-active={tab === 'keys'} onclick={() => (tab = 'keys')}>
       SSH keys
       {#if keys && keys.length > 0}<span class="ml-1 badge badge-xs">{keys.length}</span>{/if}
+    </button>
+    <button role="tab" class="tab" class:tab-active={tab === 'authz'} onclick={() => (tab = 'authz')}>
+      Authorized groups
+      {#if authzGroups && authzGroups.length > 0}<span class="ml-1 badge badge-xs">{authzGroups.length}</span>{/if}
     </button>
     <button role="tab" class="tab" class:tab-active={tab === 'props'} onclick={() => (tab = 'props')}>
       Properties
@@ -573,6 +644,121 @@
           attributes them. Catalogue edits propagate to every VM that
           references the name on the next host publish.
         </p>
+      </div>
+
+    {:else if tab === 'authz'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Authorized groups</h3>
+        <span class="text-xs text-base-content/50">
+          group-based authz · keys flow from member ownership via NATS push
+        </span>
+      </div>
+
+      {#if authzErr}
+        <div class="mt-2 alert alert-error py-2 text-sm">{authzErr}</div>
+      {/if}
+
+      <div class="mt-3 rounded-box border border-base-300 bg-base-100">
+        <table class="table table-sm">
+          <thead><tr><th>Tenant</th><th>Group</th><th>Added</th><th class="w-0"></th></tr></thead>
+          <tbody>
+            {#if !authzGroups}
+              <tr><td colspan="4" class="py-6 text-center">
+                <span class="loading loading-spinner"></span>
+              </td></tr>
+            {:else if authzGroups.length === 0}
+              <tr><td colspan="4" class="py-6 text-center text-base-content/50">
+                No authorized groups. Add one below to grant SSH access to every member.
+              </td></tr>
+            {:else}
+              {#each authzGroups as g (`${g.tenant}/${g.group}`)}
+                <tr>
+                  <td class="font-mono">{g.tenant}</td>
+                  <td class="font-mono">{g.group}</td>
+                  <td class="text-xs text-base-content/60">{g.added_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-xs text-error"
+                      disabled={authzBusy}
+                      onclick={() => removeAuthz(g)} title="Remove authorization">✕</button>
+                  </td>
+                </tr>
+              {/each}
+            {/if}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+        <label class="form-control">
+          <span class="label-text text-xs">Tenant</span>
+          <select class="select select-sm select-bordered"
+            bind:value={newAuthzTenant}
+            onchange={() => { newAuthzGroup = ''; }}>
+            <option value="" disabled>— pick a tenant —</option>
+            {#each (allTenants ?? []) as t (t.name)}
+              <option value={String(t.name)}>{t.name}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Group</span>
+          <select class="select select-sm select-bordered"
+            bind:value={newAuthzGroup}
+            disabled={!newAuthzTenant}>
+            <option value="" disabled>{newAuthzTenant ? '— pick a group —' : 'select a tenant first'}</option>
+            {#each availableGroups as g (`${g.tenant}/${g.name}`)}
+              <option value={String(g.name)}>
+                {g.name} {g.members ? `(${g.members} members)` : ''}
+              </option>
+            {/each}
+          </select>
+        </label>
+        <button class="btn btn-sm btn-primary"
+          disabled={authzBusy || !newAuthzTenant || !newAuthzGroup}
+          onclick={addAuthz}>
+          {#if authzBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Add
+        </button>
+      </div>
+
+      <div class="mt-6">
+        <h4 class="text-sm font-semibold mb-2">Effective SSH keys</h4>
+        <p class="text-xs text-base-content/50 mb-2">
+          Union of explicit per-VM keys and keys owned by members of the
+          authorized groups above. This is the resolved set
+          weft-vm-agent receives on the next push.
+        </p>
+        <div class="rounded-box border border-base-300 bg-base-100">
+          <table class="table table-sm">
+            <thead><tr><th>Name</th><th>Fingerprint</th><th>Owner</th><th>Source</th></tr></thead>
+            <tbody>
+              {#if !effectiveKeys}
+                <tr><td colspan="4" class="py-4 text-center">
+                  <span class="loading loading-spinner"></span>
+                </td></tr>
+              {:else if effectiveKeys.length === 0}
+                <tr><td colspan="4" class="py-4 text-center text-base-content/50">
+                  No effective keys yet.
+                </td></tr>
+              {:else}
+                {#each effectiveKeys as k (k.name)}
+                  <tr>
+                    <td class="font-mono">{k.name}</td>
+                    <td class="font-mono text-xs truncate max-w-[12rem]">{k.fingerprint}</td>
+                    <td class="font-mono text-xs">{k.owner || '—'}</td>
+                    <td>
+                      {#if k.source === 'direct'}
+                        <span class="badge badge-xs badge-ghost">direct</span>
+                      {:else}
+                        <span class="badge badge-xs badge-info">{k.source}</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              {/if}
+            </tbody>
+          </table>
+        </div>
       </div>
 
     {:else if tab === 'props'}

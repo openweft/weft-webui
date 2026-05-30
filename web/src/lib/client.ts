@@ -87,6 +87,32 @@ export type APIObjectDetail  = components['schemas']['ObjectDetail'];
 export type APIBucketPolicy  = components['schemas']['BucketPolicy'];
 export type APIPolicyStatement = components['schemas']['PolicyStatement'];
 
+// Registries — remote-registry catalogue (proxy / replica federation).
+export type APIRegistryRemote = components['schemas']['RegistryRemote'];
+export type APIRemoteSearchHit = components['schemas']['RemoteSearchHit'];
+
+// Plugins — *-as-a-service modules the cluster can host.
+export type APIPlugin = components['schemas']['Plugin'];
+
+// Volumes — editable metadata layer + property bag (orchestration tags).
+export type APIVolumeMetadata = components['schemas']['VolumeMetadata'];
+export type APIVolumeProperty = components['schemas']['VolumeProperty'];
+
+// Networks — editable metadata layer (description + DNS servers).
+export type APINetworkMetadata = components['schemas']['NetworkMetadata'];
+
+// Generic editable metadata (description only) used by routers,
+// floating-ips, scheduling-rules — anything whose drawer just needs
+// rename + description.
+export type APIEditableMetadata = components['schemas']['EditableMetadata'];
+
+// Subnets — per-network sub-resource.
+export type APISubnet = components['schemas']['Subnet'];
+
+// Per-VM authorized groups + the derived effective key set.
+export type APIAuthorizedGroup = components['schemas']['AuthorizedGroup'];
+export type APIEffectiveKey    = components['schemas']['EffectiveKey'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };
