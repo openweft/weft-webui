@@ -16,13 +16,9 @@
 package server
 
 import (
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/openweft/weft-webui/internal/auth"
-	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 type Share struct {
@@ -161,94 +157,4 @@ func (s *shareStore) shareProject(name string) (string, bool) {
 	return sh.Project, true
 }
 
-// ---- HTTP handlers ------------------------------------------------
-
-// handleCreateShare : POST /api/shares  {Name, Project, SizeGB, ReadOnly}
-//
-// Gated on tenant admin of the project's tenant ; cluster admin
-// passes implicitly. Project defaults to the session scope when
-// missing (so the operator doesn't have to repeat themselves after
-// picking it in the topbar).
-func handleCreateShare(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name, Project, Backend string
-		SizeGB                 int64
-		ReadOnly               bool
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, errBadReq("invalid body: "+err.Error()))
-		return
-	}
-	if body.Project == "" {
-		_, body.Project = scopeFromRequest(r)
-	}
-	if body.Project == "" {
-		writeErr(w, errBadReq("project is required (set scope via the topbar or pass project=...)"))
-		return
-	}
-	tenant, ok := tenantsDB.projectTenant(body.Project)
-	if !ok {
-		writeErr(w, errBadReq("unknown project: "+body.Project))
-		return
-	}
-	u := auth.UserFromContext(r.Context())
-	if !tenantsDB.isTenantAdmin(u, tenant) {
-		writeErr(w, errForbidden("tenant admin required"))
-		return
-	}
-	// Live-first : ask weft-agent to register the share. Falls back
-	// to the mock store on Unimplemented so the dashboard stays
-	// useful while the daemon catches up with CreateShare.
-	if live != nil {
-		uuid, err := live.CreateShare(r.Context(), body.Project, body.Name, body.SizeGB, body.ReadOnly, body.Backend)
-		if err == nil {
-			userAction(r, "share.create")
-			writeJSON(w, http.StatusCreated, map[string]any{
-				"name": body.Name, "project": body.Project,
-				"uuid": uuid, "size_gb": body.SizeGB,
-				"readonly": body.ReadOnly, "status": "provisioning",
-			})
-			return
-		}
-		if !wclient.IsUnimplemented(err) {
-			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
-			return
-		}
-	}
-	sh := &Share{
-		Name: body.Name, Project: body.Project, Backend: body.Backend,
-		SizeGB: body.SizeGB, ReadOnly: body.ReadOnly,
-	}
-	if err := sharesDB.create(sh); err != nil {
-		writeErr(w, err)
-		return
-	}
-	userAction(r, "share.create")
-	writeJSON(w, http.StatusCreated, shareToRow(sh))
-}
-
-// handleDeleteShare : DELETE /api/shares/{name}
-func handleDeleteShare(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	project, ok := sharesDB.shareProject(name)
-	if !ok {
-		writeErr(w, errNotFound("share"))
-		return
-	}
-	tenant, ok := tenantsDB.projectTenant(project)
-	if !ok {
-		writeErr(w, errNotFound("project"))
-		return
-	}
-	u := auth.UserFromContext(r.Context())
-	if !tenantsDB.isTenantAdmin(u, tenant) {
-		writeErr(w, errForbidden("tenant admin required"))
-		return
-	}
-	if err := sharesDB.delete(name); err != nil {
-		writeErr(w, err)
-		return
-	}
-	userAction(r, "share.delete")
-	w.WriteHeader(http.StatusNoContent)
-}
+// (Share lifecycle handlers moved to huma — see api_storage.go.)
