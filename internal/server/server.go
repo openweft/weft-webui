@@ -160,6 +160,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
 	mux.HandleFunc("POST /api/security-groups", handleCreateSecurityGroup)
 	mux.HandleFunc("DELETE /api/security-groups/{uuid}", handleDeleteSecurityGroup)
+	mux.HandleFunc("POST /api/floating-ips", handleAllocateFloatingIP)
+	mux.HandleFunc("DELETE /api/floating-ips/{uuid}", handleReleaseFloatingIP)
+	mux.HandleFunc("POST /api/floating-ips/{uuid}/map", handleMapFloatingIP)
+	mux.HandleFunc("POST /api/floating-ips/{uuid}/unmap", handleUnmapFloatingIP)
 
 	// Scheduling rules (mock store ; no daemon RPC yet).
 	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)

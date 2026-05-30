@@ -444,6 +444,24 @@ export const createSecurityGroup = (b: CreateSecurityGroupBody) =>
 export const deleteSecurityGroup = (uuid: string) =>
   deleteJSON(`/security-groups/${encodeURIComponent(uuid)}`);
 
+// ---- Floating IPs ----
+
+export interface AllocateFloatingIPBody {
+  Network: string;
+}
+export const allocateFloatingIP = (b: AllocateFloatingIPBody) =>
+  postJSON<{ uuid: string; address: string; network: string; project: string }>('/floating-ips', b);
+
+export const releaseFloatingIP = (uuid: string) =>
+  deleteJSON(`/floating-ips/${encodeURIComponent(uuid)}`);
+
+export const mapFloatingIP = (uuid: string, targetKind: 'vm' | 'lb', targetName: string) =>
+  postJSON<{ uuid: string; target: string }>(`/floating-ips/${encodeURIComponent(uuid)}/map`,
+    { TargetKind: targetKind, TargetName: targetName });
+
+export const unmapFloatingIP = (uuid: string) =>
+  postJSON<unknown>(`/floating-ips/${encodeURIComponent(uuid)}/unmap`, {});
+
 // ---- microVM inspect (status / timings / logs) ----
 
 export interface VMStatus {

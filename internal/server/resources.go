@@ -391,12 +391,23 @@ var registry = []Resource{
 		},
 	},
 	{
+		// FloatingIPs are now wired to weft-agent's allocate / release /
+		// map / unmap RPCs (live-first with mock fallback on
+		// Unimplemented). `uuid` is on the row so the row-action
+		// dropdown can address each address by its real handle.
 		ID: "floating-ips", Label: "Floating IPs", Section: "Network",
-		Columns: cols("address", "Address", "network", "Network", "mapped_to", "Mapped to", "status", "Status"),
+		Columns: cols("address", "Address", "network", "Network",
+			"mapped_to", "Mapped to", "status", "Status"),
 		Rows: []map[string]any{
-			row("address", "203.0.113.10", "network", "edge", "mapped_to", "web-1", "status", "active"),
-			row("address", "203.0.113.11", "network", "edge", "mapped_to", "", "status", "available"),
-			row("address", "203.0.113.12", "network", "edge", "mapped_to", "nb-1", "status", "active"),
+			row("uuid", "fip-1010-1010-1010-101010101010",
+				"address", "203.0.113.10", "network", "edge",
+				"mapped_to", "web-1", "status", "active"),
+			row("uuid", "fip-1010-1010-1010-202020202020",
+				"address", "203.0.113.11", "network", "edge",
+				"mapped_to", "", "status", "available"),
+			row("uuid", "fip-1010-1010-1010-303030303030",
+				"address", "203.0.113.12", "network", "edge",
+				"mapped_to", "nb-1", "status", "active"),
 		},
 	},
 	{

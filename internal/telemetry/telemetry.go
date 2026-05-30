@@ -261,6 +261,14 @@ func RouteLabel(method, path string) string {
 		return method + " /api/security-groups"
 	case prefix(path, "/api/security-groups/"):
 		return method + " /api/security-groups/:uuid"
+	case path == "/api/floating-ips":
+		return method + " /api/floating-ips"
+	case prefix(path, "/api/floating-ips/") && suffix(path, "/map"):
+		return "POST /api/floating-ips/:uuid/map"
+	case prefix(path, "/api/floating-ips/") && suffix(path, "/unmap"):
+		return "POST /api/floating-ips/:uuid/unmap"
+	case prefix(path, "/api/floating-ips/"):
+		return method + " /api/floating-ips/:uuid"
 
 	case prefix(path, "/api/buckets/") && suffix(path, "/objects"):
 		return method + " /api/buckets/:name/objects"

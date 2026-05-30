@@ -683,6 +683,39 @@ func (s *tenantStore) setProjectQuota(name string, q Quotas) error {
 	return nil
 }
 
+// quotasMap projects a typed Quotas into the string-keyed map shape
+// wclient.SetTenantQuota / SetProjectQuota expect. Pair to the inverse
+// quotasFromMap below.
+func quotasMap(q Quotas) map[string]int {
+	return map[string]int{
+		"vcpu": q.VCPU, "ram_gib": q.RAMGiB,
+		"volumes": q.Volumes, "volumes_gib": q.VolumesGiB,
+		"shares": q.Shares, "shares_gib": q.SharesGiB,
+		"buckets": q.Buckets, "buckets_gib": q.BucketsGiB,
+		"registry_gib": q.RegistryGiB,
+		"floating_ips": q.FloatingIPs,
+		"projects":     q.Projects,
+	}
+}
+
+// remainingMapFromMaps mirrors remainingMap but takes the
+// already-projected cap/alloc maps the live wclient returns. Used to
+// stitch the live response into the same {used,cap,free}-per-dim
+// shape the SPA's QuotaBars expects.
+func remainingMapFromMaps(cap, used map[string]int) map[string]map[string]int {
+	keys := []string{
+		"vcpu", "ram_gib", "volumes", "volumes_gib",
+		"shares", "shares_gib", "buckets", "buckets_gib",
+		"registry_gib", "floating_ips", "projects",
+	}
+	out := make(map[string]map[string]int, len(keys))
+	for _, k := range keys {
+		c, u := cap[k], used[k]
+		out[k] = map[string]int{"used": u, "cap": c, "free": c - u}
+	}
+	return out
+}
+
 // remainingMap projects each capacity into a {got, max, free} triplet
 // for the SPA's progress bars. Keeps the same field order as Quotas
 // so the UI doesn't need to know about the dimension list.

@@ -302,6 +302,92 @@ func handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"name": body.Name, "project": project, "cidr": body.CIDR})
 }
 
+// --- Floating IPs --------------------------------------------------
+
+// handleAllocateFloatingIP : POST /api/floating-ips {Network}
+// Project from session scope ; 503 in mock mode (no fallback — the
+// store path would mint a fake address that wouldn't route).
+func handleAllocateFloatingIP(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	project, err := resolveVMProject(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var body struct{ Network string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.Network == "" {
+		writeErr(w, errBadReq("network is required"))
+		return
+	}
+	uuid, addr, cerr := live.AllocateFloatingIP(r.Context(), project, body.Network)
+	if cerr != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
+		return
+	}
+	userAction(r, "floating-ip.allocate")
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"uuid": uuid, "address": addr, "network": body.Network, "project": project,
+	})
+}
+
+// handleReleaseFloatingIP : DELETE /api/floating-ips/{uuid}
+func handleReleaseFloatingIP(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	if err := live.ReleaseFloatingIP(r.Context(), r.PathValue("uuid")); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "floating-ip.release")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMapFloatingIP : POST /api/floating-ips/{uuid}/map  {TargetKind, TargetName}
+func handleMapFloatingIP(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	var body struct{ TargetKind, TargetName string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.TargetKind != "vm" && body.TargetKind != "lb" {
+		writeErr(w, errBadReq("target_kind must be 'vm' or 'lb'"))
+		return
+	}
+	if body.TargetName == "" {
+		writeErr(w, errBadReq("target_name is required"))
+		return
+	}
+	if err := live.MapFloatingIP(r.Context(), r.PathValue("uuid"), body.TargetKind, body.TargetName); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "floating-ip.map")
+	writeJSON(w, http.StatusOK, map[string]string{"uuid": r.PathValue("uuid"), "target": body.TargetName})
+}
+
+// handleUnmapFloatingIP : POST /api/floating-ips/{uuid}/unmap
+func handleUnmapFloatingIP(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	if err := live.UnmapFloatingIP(r.Context(), r.PathValue("uuid")); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "floating-ip.unmap")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Security groups -----------------------------------------------
 
 // handleCreateSecurityGroup : POST /api/security-groups
