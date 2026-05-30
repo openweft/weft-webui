@@ -2096,6 +2096,10 @@
         "additionalProperties": false,
         "properties": {
           "direction": {
+            "enum": [
+              "ingress",
+              "egress"
+            ],
             "type": "string"
           },
           "port_max": {
@@ -2107,6 +2111,12 @@
             "type": "integer"
           },
           "protocol": {
+            "enum": [
+              "tcp",
+              "udp",
+              "icmp",
+              "any"
+            ],
             "type": "string"
           },
           "remote_cidr": {
@@ -2311,6 +2321,118 @@
         "required": [
           "networks",
           "nodes"
+        ],
+        "type": "object"
+      },
+      "VMInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VMInfo.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cpu": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_gb": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "image": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "mem_mb": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "uuid",
+          "image",
+          "status",
+          "os",
+          "cpu",
+          "mem_mb",
+          "disk_gb",
+          "ip",
+          "project"
+        ],
+        "type": "object"
+      },
+      "VMLogsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VMLogsResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "contents": {
+            "type": "string"
+          },
+          "total_bytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contents",
+          "total_bytes"
+        ],
+        "type": "object"
+      },
+      "VMTimingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "meta": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ts",
+          "meta"
         ],
         "type": "object"
       },
@@ -3773,7 +3895,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VMLogsResult"
+                }
               }
             },
             "description": "OK"
@@ -4054,7 +4178,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VMInfo"
+                }
               }
             },
             "description": "OK"
@@ -4164,7 +4290,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VMTimingEvent"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
               }
             },
             "description": "OK"
@@ -5402,7 +5536,15 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SecurityRule"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
               }
             },
             "description": "OK"
