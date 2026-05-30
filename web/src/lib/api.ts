@@ -444,6 +444,12 @@ export const createSecurityGroup = (b: CreateSecurityGroupBody) =>
 export const deleteSecurityGroup = (uuid: string) =>
   deleteJSON(`/security-groups/${encodeURIComponent(uuid)}`);
 
+export const getSecurityGroupRules = (uuid: string) =>
+  getJSON<SecurityRule[]>(`/security-groups/${encodeURIComponent(uuid)}/rules`);
+
+export const setSecurityGroupRules = (uuid: string, rules: SecurityRule[]) =>
+  putJSON<{ uuid: string; rules: number }>(`/security-groups/${encodeURIComponent(uuid)}/rules`, rules);
+
 // ---- Floating IPs ----
 
 export interface AllocateFloatingIPBody {

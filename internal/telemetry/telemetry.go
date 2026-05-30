@@ -259,6 +259,8 @@ func RouteLabel(method, path string) string {
 		return method + " /api/shares"
 	case path == "/api/security-groups":
 		return method + " /api/security-groups"
+	case prefix(path, "/api/security-groups/") && suffix(path, "/rules"):
+		return method + " /api/security-groups/:uuid/rules"
 	case prefix(path, "/api/security-groups/"):
 		return method + " /api/security-groups/:uuid"
 	case path == "/api/floating-ips":

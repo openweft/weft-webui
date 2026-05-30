@@ -667,6 +667,63 @@ func (c *Client) DeleteSecurityGroup(ctx context.Context, uuid string) (retErr e
 	return err
 }
 
+// SetSecurityGroupRules atomically replaces the SG's rule list. The
+// proto's `repeated rules` semantic is "this is the new state" —
+// any pre-existing rule not in the slice is dropped.
+func (c *Client) SetSecurityGroupRules(ctx context.Context, uuid string, rules []SecurityRule) (retErr error) {
+	defer c.measured("SetSecurityGroupRules", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	protoRules := make([]*vzdv1.SecurityRule, 0, len(rules))
+	for _, r := range rules {
+		protoRules = append(protoRules, &vzdv1.SecurityRule{
+			Direction: r.Direction, Protocol: r.Protocol,
+			PortMin: r.PortMin, PortMax: r.PortMax,
+			RemoteCidr: r.RemoteCIDR, RemoteGroupUuid: r.RemoteGroupUUID,
+		})
+	}
+	_, err = rpc.SetSecurityGroupRules(cctx, &vzdv1.SetSecurityGroupRulesRequest{
+		Uuid: uuid, Rules: protoRules,
+	})
+	return err
+}
+
+// GetSecurityGroup returns one SG by UUID. There's no dedicated
+// GetSecurityGroup RPC ; we list and filter. Good enough at SG-list
+// scale (typically dozens, not thousands per project).
+func (c *Client) GetSecurityGroup(ctx context.Context, uuid string) (rules []SecurityRule, retErr error) {
+	defer c.measured("GetSecurityGroup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListSecurityGroups(cctx, &vzdv1.ListSecurityGroupsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range resp.GetGroups() {
+		if g.Uuid != uuid {
+			continue
+		}
+		out := make([]SecurityRule, 0, len(g.Rules))
+		for _, r := range g.Rules {
+			out = append(out, SecurityRule{
+				Direction: r.Direction, Protocol: r.Protocol,
+				PortMin: r.PortMin, PortMax: r.PortMax,
+				RemoteCIDR: r.RemoteCidr, RemoteGroupUUID: r.RemoteGroupUuid,
+			})
+		}
+		return out, nil
+	}
+	return nil, errors.New("security group not found")
+}
+
 // --- Lookup helpers -------------------------------------------------
 //
 // weft-agent's mutation RPCs key by UUID (project, user, network, volume).
