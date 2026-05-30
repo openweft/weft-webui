@@ -79,6 +79,14 @@ var registry = []Resource{
 
 	// ---------- Network ----------
 	{
+		// Graphical mesh map (custom SVG view). Rows are unused ; the sidebar
+		// badge shows the number of networks (see rowCount). Served by
+		// /api/network-topology.
+		ID: "topology", Label: "Topology", Section: "Network",
+		Columns: nil,
+		Rows:    nil,
+	},
+	{
 		ID: "networks", Label: "Networks", Section: "Network",
 		Columns: cols("name", "Name", "cidr", "CIDR", "az", "AZ", "type", "Type", "status", "Status"),
 		Rows: []map[string]any{
@@ -145,19 +153,19 @@ var registry = []Resource{
 	// ---------- Compute ----------
 	{
 		ID: "microvms", Label: "microVMs", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "project", "Project", "status", "Status"),
+		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "web-1", "image", "alpine:3.21", "flavor", "small", "host", "dc-a-r1-h2", "project", "team-alpha", "status", "running"),
-			row("name", "nb-1", "image", "jupyter:latest", "flavor", "small", "host", "dc-c-r2-h1", "project", "research", "status", "running"),
-			row("name", "ci-job-7f3", "image", "buildkit:latest", "flavor", "medium", "host", "dc-b-r1-h3", "project", "team-beta", "status", "running"),
+			row("name", "web-1", "image", "alpine:3.21", "flavor", "small", "host", "dc-a-r1-h2", "network", "tenant-net-1", "project", "team-alpha", "status", "running"),
+			row("name", "nb-1", "image", "jupyter:latest", "flavor", "small", "host", "dc-c-r2-h1", "network", "tenant-net-2", "project", "research", "status", "running"),
+			row("name", "ci-job-7f3", "image", "buildkit:latest", "flavor", "medium", "host", "dc-b-r1-h3", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
 		},
 	},
 	{
 		ID: "instances", Label: "Instances (VM)", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "project", "Project", "status", "Status"),
+		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "project", "team-beta", "status", "running"),
-			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "project", "team-beta", "status", "stopped"),
+			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
+			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
 		},
 	},
 	{

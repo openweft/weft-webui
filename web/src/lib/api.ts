@@ -88,6 +88,29 @@ export async function deleteBucket(name: string): Promise<void> {
 export const uploadObjects = (bucket: string, form: FormData) =>
   postForm(`/api/buckets/${bucket}/objects`, form);
 
+// ---- Network topology (mesh map) ----
+
+export interface TopoNetwork {
+  id: string;
+  name: string;
+  cidr: string;
+  az: string;
+  type: string;
+}
+
+export interface TopoNode {
+  id: string;
+  name: string;
+  kind: 'microvm' | 'instance' | 'infra';
+  network: string;
+  status: string;
+  project: string;
+  host: string;
+}
+
+export const getTopology = () =>
+  getJSON<{ networks: TopoNetwork[]; nodes: TopoNode[] }>('/network-topology');
+
 async function postForm(path: string, form: FormData): Promise<Row> {
   const res = await fetch(path, { method: 'POST', body: form });
   const body = await res.json().catch(() => ({}));

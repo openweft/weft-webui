@@ -7,6 +7,7 @@
   import ResourcePage from './lib/components/ResourcePage.svelte';
   import ImagesPage from './lib/components/ImagesPage.svelte';
   import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
+  import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import Overview from './lib/components/Overview.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
@@ -62,6 +63,8 @@
         {/key}
       {:else if active === 'buckets'}
         <ObjectStoragePage />
+      {:else if active === 'topology'}
+        <NetworkTopology />
       {:else}
         {#key active}
           <ResourcePage meta={byId.get(active)!} />
