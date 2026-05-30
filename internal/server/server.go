@@ -159,12 +159,12 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	}
 
 	// --- Auth-protected routes ---
-	// /api/me lives in this package (not in auth) because the role
-	// flags depend on the tenant store, which sits in this layer.
-	mux.HandleFunc("GET /api/me", handleMe)
+	// /api/me moved to huma (api_tenants.go) since the role flags
+	// depend on the tenant store which sits in this layer.
 	// Server-Sent Events stream bridging the agent's WatchEvents RPC
 	// to the SPA's EventSource subscription. Open per browser tab,
-	// auto-reconnects on disconnect.
+	// auto-reconnects on disconnect. (Stays on stdlib — huma's
+	// streaming story is heavier than what this needs.)
 	mux.HandleFunc("GET /api/events", handleEvents)
 	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
@@ -175,28 +175,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/summary", scopedSummary(scope))
 	mux.HandleFunc("POST /api/registry/upload", handleRegistryUpload)
 
-	// --- Tenant / identity mutations -----------------------------
-	// Cluster-admin only — mounted on the admin listener.
-	if scope == ScopeAdmin {
-		mux.HandleFunc("POST /api/tenants", handleCreateTenant)
-		mux.HandleFunc("POST /api/tenants/{name}/admins", handleAddTenantAdmin)
-	}
-	// Tenant-admin (delegated). Mounted on both listeners : tenant
-	// admins typically work from the user UI ; cluster admins reach
-	// the same handlers through the admin port. The handler enforces
-	// the per-tenant check.
-	mux.HandleFunc("GET /api/tenants/{name}", handleTenantDetail)
-	mux.HandleFunc("POST /api/tenants/{name}/projects", handleAddTenantProject)
-	mux.HandleFunc("POST /api/tenants/{name}/members", handleAddTenantMember)
-	mux.HandleFunc("POST /api/projects/{name}/roles", handleGrantProjectRole)
-
-	// Quotas. Reads are member-gated ; writes are role-gated inside
-	// the handler (PUT /api/tenants/.../quota → cluster_admin ;
-	// PUT /api/projects/.../quota → tenant_admin).
-	mux.HandleFunc("GET /api/tenants/{name}/quota", handleGetTenantQuota)
-	mux.HandleFunc("PUT /api/tenants/{name}/quota", handleSetTenantQuota)
-	mux.HandleFunc("GET /api/projects/{name}/quota", handleGetProjectQuota)
-	mux.HandleFunc("PUT /api/projects/{name}/quota", handleSetProjectQuota)
+	// (Tenants, projects, quotas, /api/me all moved to huma — see
+	// api_tenants.go. Cluster-admin / tenant-admin gating preserved
+	// server-side ; scope-gated registration handles the user-listener
+	// 404 for the cluster-admin endpoints.)
 
 	// --- Resource lifecycle (live gRPC only) ---------------------
 	// VM lifecycle + per-VM metadata routes all live in huma now.
@@ -242,7 +224,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		// admin listener gets the typed huma op in api_networking.go.
 		mux.HandleFunc("GET /api/network-topology", notFound)
 	}
-	mux.HandleFunc("GET /api/quotas", handleQuotas)
+	// (/api/quotas moved to huma — see api_tenants.go.)
 
 	// /metrics is admin-only — never expose the user's TSDB to the
 	// public listener. The auth middleware (below) still applies, so
@@ -817,31 +799,6 @@ func applyScopeFilter(rows []map[string]any, r *http.Request) []map[string]any {
 //                     distinct "ADMIN" badge for delegated tenant
 //                     admins who are not cluster admins.
 //
-// Returning 401 when there's no session lets api.ts trigger the
-// /api/auth/login redirect without a separate code path.
-func handleMe(w http.ResponseWriter, r *http.Request) {
-	u := auth.UserFromContext(r.Context())
-	if u == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no session", "login": "/api/auth/login"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"sub":           u.Subject,
-		"email":         u.Email,
-		"name":          u.Name,
-		"groups":        u.Groups,
-		"tenant":        u.Tenant,
-		"project":       u.Project,
-		"initials":      u.Initials(),
-		"dev":           u.DevMode,
-		"cluster_admin": isClusterAdmin(u),
-		"tenant_admin":  tenantsDB.isAnyTenantAdmin(u.Email),
-		// scopes drives the cascading topbar selector — one entry per
-		// tenant the user belongs to, each with its projects.
-		"scopes": tenantsDB.userScopes(u),
-	})
-}
-
 func devLogin(w http.ResponseWriter, r *http.Request) {
 	rt := r.URL.Query().Get("return_to")
 	if rt == "" {
