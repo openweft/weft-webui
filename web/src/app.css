@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* DaisyUI v5 — loaded as a Tailwind v4 plugin. Light is the default,
+   dark follows the OS / the in-app toggle (data-theme on <html>). */
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
