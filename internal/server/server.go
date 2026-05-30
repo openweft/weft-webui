@@ -156,6 +156,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/microvms/{name}/logs", handleVMLogs)
 	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
+	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)
+	mux.HandleFunc("POST /api/volumes/{uuid}/detach", handleDetachVolume)
 	mux.HandleFunc("POST /api/networks", handleCreateNetwork)
 	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
 	mux.HandleFunc("POST /api/security-groups", handleCreateSecurityGroup)

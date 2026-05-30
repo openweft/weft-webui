@@ -222,6 +222,46 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 // --- Volume / Network mutators -------------------------------------
 
+// handleAttachVolume : POST /api/volumes/{uuid}/attach  {VMUUID}
+//
+// Attaches a volume to a VM identified by UUID. The caller looks up
+// the VM UUID from VMStatus or ListVMs before calling — weft-agent
+// keys on UUID, not name.
+func handleAttachVolume(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	uuid := r.PathValue("uuid")
+	var body struct{ VMUUID string }
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if body.VMUUID == "" {
+		writeErr(w, errBadReq("vm_uuid is required"))
+		return
+	}
+	if err := live.AttachVolume(r.Context(), uuid, body.VMUUID); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "volume.attach")
+	writeJSON(w, http.StatusOK, map[string]string{"volume": uuid, "vm": body.VMUUID})
+}
+
+// handleDetachVolume : POST /api/volumes/{uuid}/detach
+func handleDetachVolume(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	if err := live.DetachVolume(r.Context(), r.PathValue("uuid")); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "volume.detach")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleDeleteVolume(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
 		return

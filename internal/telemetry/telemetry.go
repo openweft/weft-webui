@@ -243,6 +243,10 @@ func RouteLabel(method, path string) string {
 		return method + " /api/microvms/:name"
 	case path == "/api/microvms":
 		return method + " /api/microvms"
+	case prefix(path, "/api/volumes/") && suffix(path, "/attach"):
+		return "POST /api/volumes/:uuid/attach"
+	case prefix(path, "/api/volumes/") && suffix(path, "/detach"):
+		return "POST /api/volumes/:uuid/detach"
 	case prefix(path, "/api/volumes/"):
 		return method + " /api/volumes/:uuid"
 	case path == "/api/volumes":

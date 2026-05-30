@@ -383,6 +383,12 @@ export const createVolume = (b: CreateVolumeBody) =>
   postJSON<{ name: string; project: string; size_gib: number }>('/volumes', b);
 export const deleteVolume = (uuid: string) => deleteJSON(`/volumes/${encodeURIComponent(uuid)}`);
 
+export const attachVolume = (uuid: string, vmUUID: string) =>
+  postJSON<{ volume: string; vm: string }>(`/volumes/${encodeURIComponent(uuid)}/attach`, { VMUUID: vmUUID });
+
+export const detachVolume = (uuid: string) =>
+  postJSON<unknown>(`/volumes/${encodeURIComponent(uuid)}/detach`, {});
+
 export const deleteNetwork = (uuid: string) => deleteJSON(`/networks/${encodeURIComponent(uuid)}`);
 
 export interface CreateNetworkBody {
