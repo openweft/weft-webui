@@ -3,7 +3,7 @@
 // Operators name + version their first-boot scripts here rather than
 // pasting raw sh into the CreateVMModal textarea each time. The modal
 // picks by name ; the server still stamps the script body verbatim on
-// the VM's weft.boot/script property (so the in-guest weft-vm-agent's
+// the VM's weft.boot/script property (so the in-guest weft-microvm-agent's
 // behaviour is unchanged — see 2c098e7).
 //
 // Same shape as flavors.go : interface + in-memory seed today,
@@ -78,7 +78,7 @@ func seedScripts() []Script {
 			Description: "Pulls + installs the project's static site from a git checkout.",
 			Body: `#!/bin/sh
 set -eu
-# Payload is in $PWD (weft-vm-agent cd's into the cloned repo).
+# Payload is in $PWD (weft-microvm-agent cd's into the cloned repo).
 apk add --no-cache nginx
 mkdir -p /var/www/html
 cp -r ./public/* /var/www/html/

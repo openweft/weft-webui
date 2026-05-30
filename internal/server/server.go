@@ -322,8 +322,14 @@ func liveServe(w http.ResponseWriter, _ *http.Request, fn func() ([]map[string]a
 // summary path.
 func rowCount(res *Resource) int {
 	switch res.ID {
-	case "registry":
+	case "registries":
 		return registryCount()
+	case "dns":
+		// Unified DNS entry — badge surfaces zone count.
+		if zones, ok := resourceByID["dns-zones"]; ok {
+			return len(zones.Rows)
+		}
+		return 0
 	case "flavors":
 		fl, _ := flavorsCatalogue.List(context.Background())
 		return len(fl)
@@ -397,7 +403,7 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch id {
-	case "registry":
+	case "registries":
 		writePage(w, r, registryList())
 		return
 	case "flavors":

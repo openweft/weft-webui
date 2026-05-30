@@ -102,6 +102,13 @@
             "minLength": 1,
             "type": "string"
           },
+          "owner": {
+            "description": "Email of the user who owns the key. Drives group-based authz : a VM authorized for group G inherits keys whose owner is a member of G.",
+            "examples": [
+              "alice@weft.local"
+            ],
+            "type": "string"
+          },
           "public_key": {
             "description": "OpenSSH-format line : '\u003ctype\u003e \u003cb64\u003e [comment]'",
             "examples": [
@@ -295,7 +302,7 @@
             "type": "string"
           },
           "guest_readable": {
-            "description": "When true, the in-guest weft-vm-agent can read this via NATS",
+            "description": "When true, the in-guest weft-microvm-agent can read this via NATS",
             "type": "boolean"
           },
           "key": {
@@ -583,6 +590,43 @@
         "required": [
           "volume",
           "vm"
+        ],
+        "type": "object"
+      },
+      "AuthorizedGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuthorizedGroup.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "added_at": {
+            "description": "RFC-3339, server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "group": {
+            "description": "Group name within the tenant",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tenant": {
+            "description": "Tenant the group lives in",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant",
+          "group",
+          "added_at"
         ],
         "type": "object"
       },
@@ -1392,6 +1436,27 @@
         ],
         "type": "object"
       },
+      "DeleteRegistryRemoteOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteRegistryRemoteOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "DeleteSSHKeyOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1434,6 +1499,27 @@
         ],
         "type": "object"
       },
+      "DeleteVolumePropertyOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteVolumePropertyOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "DeletedNameResp": {
         "additionalProperties": false,
         "properties": {
@@ -1452,6 +1538,65 @@
         },
         "required": [
           "deleted"
+        ],
+        "type": "object"
+      },
+      "EditableMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/EditableMetadata.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Operator-supplied prose ; surfaced in the dashboard.",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC-3339 ; server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC email of the last editor",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
+      "EffectiveKey": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "source": {
+            "description": "'direct' or 'group:\u003ctenant\u003e/\u003cgroup\u003e'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fingerprint",
+          "owner",
+          "source"
         ],
         "type": "object"
       },
@@ -1889,6 +2034,51 @@
         ],
         "type": "object"
       },
+      "NetworkMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/NetworkMetadata.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Operator-supplied prose ; surfaced in the dashboard.",
+            "type": "string"
+          },
+          "dns_servers": {
+            "description": "DNS resolvers handed to instances on this network. Empty = inherit cluster default.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "description": "RFC-3339 ; server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC email of the last editor",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "dns_servers",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
       "ObjectDetail": {
         "additionalProperties": false,
         "properties": {
@@ -2033,6 +2223,86 @@
         },
         "required": [
           "ok"
+        ],
+        "type": "object"
+      },
+      "Plugin": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/Plugin.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "One-paragraph description ; shown in the install detail pane",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "When installed, can be temporarily disabled without uninstalling",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Stable plugin slug, e.g. 'vitess-dbaas'",
+            "type": "string"
+          },
+          "install_status": {
+            "description": "'available' | 'installed'",
+            "enum": [
+              "available",
+              "installed"
+            ],
+            "type": "string"
+          },
+          "installed_at": {
+            "description": "RFC-3339 ; set when InstallStatus transitions to installed",
+            "type": "string"
+          },
+          "installed_by": {
+            "description": "OIDC email of the installing admin",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name",
+            "type": "string"
+          },
+          "resources": {
+            "description": "Resource IDs this plugin contributes — they appear in /api/resources once installed+enabled",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "section": {
+            "description": "Sidebar section the plugin contributes to (e.g. 'Database')",
+            "type": "string"
+          },
+          "vendor": {
+            "description": "Vendor / maintainer (e.g. 'openweft', 'planetscale', 'redis')",
+            "type": "string"
+          },
+          "version": {
+            "description": "Plugin version (semver)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vendor",
+          "version",
+          "description",
+          "section",
+          "resources",
+          "install_status",
+          "enabled"
         ],
         "type": "object"
       },
@@ -2268,6 +2538,104 @@
         ],
         "type": "object"
       },
+      "RegistryRemote": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RegistryRemote.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Sync paused when false",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "'proxy' (pull-through cache) or 'replica' (push mirror)",
+            "enum": [
+              "proxy",
+              "replica"
+            ],
+            "type": "string"
+          },
+          "last_sync": {
+            "description": "RFC-3339 timestamp of the last successful sync",
+            "type": "string"
+          },
+          "name": {
+            "description": "Stable identifier (slug)",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC-3339",
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "Email of the last editor",
+            "type": "string"
+          },
+          "url": {
+            "description": "OCI registry endpoint (https://…)",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "Basic-auth user (optional)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "kind",
+          "enabled",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "RemoteSearchHit": {
+        "additionalProperties": false,
+        "properties": {
+          "arches": {
+            "description": "Comma-separated arch list, e.g. 'amd64, arm64'",
+            "type": "string"
+          },
+          "pushed": {
+            "description": "Relative timestamp, e.g. '3d ago'",
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "size": {
+            "description": "Human-readable size, e.g. '52 MiB'",
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "type": {
+            "description": "container / raw / chart / model …",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "tag",
+          "type",
+          "arches",
+          "size",
+          "pushed"
+        ],
+        "type": "object"
+      },
       "RemovedOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2286,6 +2654,199 @@
         },
         "required": [
           "removed"
+        ],
+        "type": "object"
+      },
+      "RenameNetworkInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameNetworkInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_name": {
+            "description": "New human-readable name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_name"
+        ],
+        "type": "object"
+      },
+      "RenameNetworkResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameNetworkResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "RenameRowInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameRowInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_name": {
+            "description": "New human-readable name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_name"
+        ],
+        "type": "object"
+      },
+      "RenameRowResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameRowResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "RenameVolumeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameVolumeInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_name": {
+            "description": "New human-readable name ; must be unique within the project",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_name"
+        ],
+        "type": "object"
+      },
+      "RenameVolumeResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameVolumeResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ResizeShareInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ResizeShareInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "read_only": {
+            "description": "Re-fans to mounting VMs on the next reconcile",
+            "type": "boolean"
+          },
+          "size_gb": {
+            "description": "New size in GiB (must be \u003e= current ; shrinking is rejected)",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "size_gb"
+        ],
+        "type": "object"
+      },
+      "ResizeShareResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ResizeShareResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "size_gb": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "size_gb",
+          "read_only"
         ],
         "type": "object"
       },
@@ -2388,6 +2949,9 @@
               "egress"
             ],
             "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
           },
           "port_max": {
             "format": "int32",
@@ -2496,6 +3060,85 @@
         },
         "required": [
           "names"
+        ],
+        "type": "object"
+      },
+      "Subnet": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/Subnet.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cidr": {
+            "description": "e.g. 10.10.0.0/24",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Disabled subnets stay in the catalogue but the DHCP pool is parked. Missing = enabled.",
+            "type": "boolean"
+          },
+          "gateway": {
+            "description": "Gateway IP (optional ; first usable host if empty)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Operator-chosen handle, unique within the network",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC-3339 ; server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC email of the last editor",
+            "readOnly": true,
+            "type": "string"
+          },
+          "uuid": {
+            "description": "Server-stamped",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "cidr",
+          "gateway",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
+      "SubnetDeleteOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SubnetDeleteOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
         ],
         "type": "object"
       },
@@ -2846,6 +3489,250 @@
         ],
         "type": "object"
       },
+      "UpdateDNSRecordInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateDNSRecordInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Enable / disable this record. Omit to leave unchanged.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Leaf name (or '@' for apex)",
+            "type": "string"
+          },
+          "ttl": {
+            "description": "TTL in seconds",
+            "format": "int64",
+            "maximum": 86400,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "A / AAAA / CNAME / TXT / SRV / NS / MX",
+            "type": "string"
+          },
+          "value": {
+            "description": "Record value (IP, target, TXT data, …)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateDNSRecordResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateDNSRecordResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ttl": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "zone",
+          "type",
+          "value",
+          "ttl",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "UpdateDNSZoneInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateDNSZoneInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backend": {
+            "description": "Backend (coredns / bind9 / route53 …). Empty = keep current.",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Enable / disable serving this zone. Omit to leave unchanged.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "New zone name (FQDN). Empty = keep current.",
+            "type": "string"
+          },
+          "push_target": {
+            "description": "External NS to fan updates to (RFC-2136). Empty string clears the target.",
+            "type": "string"
+          },
+          "role": {
+            "description": "primary / secondary / forward",
+            "enum": [
+              "",
+              "primary",
+              "secondary",
+              "forward"
+            ],
+            "type": "string"
+          },
+          "ttl_default": {
+            "description": "Default TTL in seconds (\u003e0 to change)",
+            "format": "int64",
+            "maximum": 86400,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "push_target"
+        ],
+        "type": "object"
+      },
+      "UpdateDNSZoneResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateDNSZoneResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "push_target": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "ttl_default": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "role",
+          "ttl_default",
+          "backend",
+          "push_target",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "UpdateSGInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateSGInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Free-form description. Empty string clears it.",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Enable / disable the group. Omit to leave unchanged ; disabled groups stay in the catalogue but their rules don't apply.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "New name. Empty = keep current.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "type": "object"
+      },
+      "UpdateSGResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateSGResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "description",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "VMInfo": {
         "additionalProperties": false,
         "properties": {
@@ -2958,6 +3845,58 @@
         ],
         "type": "object"
       },
+      "VmAuthzAddInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VmAuthzAddInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "group": {
+            "description": "Group name within the tenant",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tenant": {
+            "description": "Tenant the group belongs to",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant",
+          "group"
+        ],
+        "type": "object"
+      },
+      "VmAuthzRemoveOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VmAuthzRemoveOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "VmStateBody": {
         "additionalProperties": false,
         "properties": {
@@ -2980,6 +3919,93 @@
         "required": [
           "name",
           "state"
+        ],
+        "type": "object"
+      },
+      "VolumeMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VolumeMetadata.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Operator-supplied prose ; surfaced in the dashboard and the volume drawer",
+            "type": "string"
+          },
+          "filesystem": {
+            "description": "mkfs target when the guest claims a fresh volume",
+            "enum": [
+              "",
+              "ext4",
+              "xfs",
+              "btrfs",
+              "ext3",
+              "zfs"
+            ],
+            "type": "string"
+          },
+          "mount_point": {
+            "description": "Guest-side mount path the agent honours when attaching (e.g. /mnt/data)",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC-3339 ; server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "OIDC email of the last editor",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "mount_point",
+          "filesystem",
+          "updated_at",
+          "updated_by"
+        ],
+        "type": "object"
+      },
+      "VolumeProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VolumeProperty.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "key": {
+            "description": "Free-form annotation key",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC-3339 ; server-stamped",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "description": "Annotation value (opaque to this layer)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "updated_at"
         ],
         "type": "object"
       }
@@ -3490,6 +4516,60 @@
         "tags": [
           "dns"
         ]
+      },
+      "put": {
+        "description": "Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.",
+        "operationId": "update-dns-record",
+        "parameters": [
+          {
+            "description": "Record uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Record uuid",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDNSRecordInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDNSRecordResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update a DNS record (mock-friendly ; live wiring TBD)",
+        "tags": [
+          "dns"
+        ]
       }
     },
     "/api/dns-zones": {
@@ -3578,6 +4658,60 @@
           }
         },
         "summary": "Delete a DNS zone",
+        "tags": [
+          "dns"
+        ]
+      },
+      "put": {
+        "description": "Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.",
+        "operationId": "update-dns-zone",
+        "parameters": [
+          {
+            "description": "Zone uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Zone uuid",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDNSZoneInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDNSZoneResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update a DNS zone (mock-friendly ; live wiring TBD)",
         "tags": [
           "dns"
         ]
@@ -3711,6 +4845,159 @@
           }
         },
         "summary": "Allocate a floating IP (live-only)",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/floating-ips/{key}": {
+      "put": {
+        "operationId": "rename-floating-ips-row",
+        "parameters": [
+          {
+            "description": "Current row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Current row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRowInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameRowResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename one floating-ip (admin)",
+        "tags": [
+          "floating-ips"
+        ]
+      }
+    },
+    "/api/floating-ips/{key}/metadata": {
+      "get": {
+        "operationId": "get-floating-ips-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier (name or uuid)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier (name or uuid)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get editable metadata for one floating-ip",
+        "tags": [
+          "floating-ips"
+        ]
+      },
+      "put": {
+        "operationId": "set-floating-ips-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditableMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace editable metadata for one floating-ip (admin)",
         "tags": [
           "floating-ips"
         ]
@@ -4058,7 +5345,7 @@
     },
     "/api/microvms": {
       "post": {
-        "description": "A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-vm-agent (pull model).",
+        "description": "A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-microvm-agent (pull model).",
         "operationId": "create-vm",
         "parameters": [
           {
@@ -4157,6 +5444,235 @@
         "tags": [
           "microvms",
           "lifecycle"
+        ]
+      }
+    },
+    "/api/microvms/{name}/authorized-groups": {
+      "get": {
+        "operationId": "list-vm-authorized-groups",
+        "parameters": [
+          {
+            "description": "microVM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "microVM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthorizedGroup"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List groups authorized to access one microVM",
+        "tags": [
+          "microvms",
+          "authz"
+        ]
+      },
+      "post": {
+        "operationId": "add-vm-authorized-group",
+        "parameters": [
+          {
+            "description": "microVM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "microVM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmAuthzAddInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizedGroup"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Authorize a (tenant, group) pair on this microVM (admin)",
+        "tags": [
+          "microvms",
+          "authz"
+        ]
+      }
+    },
+    "/api/microvms/{name}/authorized-groups/{tenant}/{group}": {
+      "delete": {
+        "operationId": "remove-vm-authorized-group",
+        "parameters": [
+          {
+            "description": "microVM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "microVM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tenant",
+            "in": "path",
+            "name": "tenant",
+            "required": true,
+            "schema": {
+              "description": "Tenant",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Group name",
+            "in": "path",
+            "name": "group",
+            "required": true,
+            "schema": {
+              "description": "Group name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmAuthzRemoveOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a (tenant, group) authorization from this microVM (admin) — idempotent",
+        "tags": [
+          "microvms",
+          "authz"
+        ]
+      }
+    },
+    "/api/microvms/{name}/effective-keys": {
+      "get": {
+        "description": "Union of explicit per-VM assignments AND keys whose owner is a member of any authorized group. Same shape as the per-VM SSH-keys list.",
+        "operationId": "list-vm-effective-keys",
+        "parameters": [
+          {
+            "description": "microVM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "microVM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EffectiveKey"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Derived SSH key set this microVM will see",
+        "tags": [
+          "microvms",
+          "authz"
         ]
       }
     },
@@ -5192,6 +6708,326 @@
         ]
       }
     },
+    "/api/networks/{key}": {
+      "put": {
+        "description": "Updates the human-readable name. Attached VMs keep referencing by uuid.",
+        "operationId": "rename-network",
+        "parameters": [
+          {
+            "description": "Current network identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Current network identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameNetworkInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameNetworkResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename a network (admin)",
+        "tags": [
+          "networks"
+        ]
+      }
+    },
+    "/api/networks/{key}/metadata": {
+      "get": {
+        "operationId": "get-network-metadata",
+        "parameters": [
+          {
+            "description": "Network identifier (name today ; uuid once live wiring lands)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Network identifier (name today ; uuid once live wiring lands)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the editable metadata layer for one network",
+        "tags": [
+          "networks"
+        ]
+      },
+      "put": {
+        "description": "Description + DNS servers. UpdatedAt / UpdatedBy stamped server-side. Live wiring forwards DNS to SetNetworkDNS.",
+        "operationId": "set-network-metadata",
+        "parameters": [
+          {
+            "description": "Network identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Network identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace the editable metadata for one network (admin)",
+        "tags": [
+          "networks"
+        ]
+      }
+    },
+    "/api/networks/{key}/subnets": {
+      "get": {
+        "operationId": "list-subnets",
+        "parameters": [
+          {
+            "description": "Network identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Network identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Subnet"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List subnets attached to one network",
+        "tags": [
+          "networks",
+          "subnets"
+        ]
+      },
+      "post": {
+        "description": "Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side.",
+        "operationId": "set-subnet",
+        "parameters": [
+          {
+            "description": "Network identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Network identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Subnet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subnet"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or update a subnet inside a network (admin)",
+        "tags": [
+          "networks",
+          "subnets"
+        ]
+      }
+    },
+    "/api/networks/{key}/subnets/{uuid}": {
+      "delete": {
+        "operationId": "delete-subnet",
+        "parameters": [
+          {
+            "description": "Network identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Network identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Subnet uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Subnet uuid",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubnetDeleteOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a subnet (admin) — idempotent",
+        "tags": [
+          "networks",
+          "subnets"
+        ]
+      }
+    },
     "/api/networks/{uuid}": {
       "delete": {
         "operationId": "delete-network",
@@ -5227,6 +7063,224 @@
         "summary": "Delete a network (live-only)",
         "tags": [
           "networks"
+        ]
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "operationId": "list-plugins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Plugin"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List installable plugins (*-as-a-service modules)",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{id}/disable": {
+      "post": {
+        "operationId": "disable-plugin",
+        "parameters": [
+          {
+            "description": "Plugin id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Plugin id",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plugin"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Temporarily disable an installed plugin (cluster-admin) — hides its sidebar entry without uninstalling",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{id}/enable": {
+      "post": {
+        "operationId": "enable-plugin",
+        "parameters": [
+          {
+            "description": "Plugin id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Plugin id",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plugin"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Enable an installed plugin (cluster-admin)",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{id}/install": {
+      "post": {
+        "operationId": "install-plugin",
+        "parameters": [
+          {
+            "description": "Plugin id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Plugin id",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plugin"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Install a plugin (cluster-admin) — exposes its resources in the sidebar",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/{id}/uninstall": {
+      "post": {
+        "description": "Resource rows belonging to the uninstalled plugin remain in the mock store ; reinstalling restores visibility instantly. Live wiring would drain workloads first.",
+        "operationId": "uninstall-plugin",
+        "parameters": [
+          {
+            "description": "Plugin id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Plugin id",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plugin"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Uninstall a plugin (cluster-admin) — its resources disappear from the sidebar",
+        "tags": [
+          "plugins"
         ]
       }
     },
@@ -5459,6 +7513,233 @@
         "summary": "Readiness probe (returns mode=mock when no daemon is wired)",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/registries/remotes": {
+      "get": {
+        "operationId": "list-registry-remotes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryRemote"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List remote OCI registries (proxy / replica configuration)",
+        "tags": [
+          "registries"
+        ]
+      },
+      "post": {
+        "description": "Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored.",
+        "operationId": "set-registry-remote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryRemote"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryRemote"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or update a remote registry (cluster-admin)",
+        "tags": [
+          "registries"
+        ]
+      }
+    },
+    "/api/registries/remotes/{name}": {
+      "delete": {
+        "operationId": "delete-registry-remote",
+        "parameters": [
+          {
+            "description": "Remote-registry slug",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Remote-registry slug",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteRegistryRemoteOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a remote registry (cluster-admin) — idempotent",
+        "tags": [
+          "registries"
+        ]
+      },
+      "get": {
+        "operationId": "get-registry-remote",
+        "parameters": [
+          {
+            "description": "Remote-registry slug",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Remote-registry slug",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryRemote"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one remote registry by name",
+        "tags": [
+          "registries"
+        ]
+      }
+    },
+    "/api/registries/remotes/{name}/search": {
+      "get": {
+        "description": "Substring match on repository name. Live wiring routes to the remote's catalog API ; the mock returns canned results against a fixed corpus per remote.",
+        "operationId": "search-registry-remote",
+        "parameters": [
+          {
+            "description": "Remote-registry slug",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Remote-registry slug",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Repository substring to search for. Empty returns a curated 'featured' subset.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Repository substring to search for. Empty returns a curated 'featured' subset.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RemoteSearchHit"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Search a remote OCI registry for matching images",
+        "tags": [
+          "registries"
         ]
       }
     },
@@ -5749,6 +8030,159 @@
         ]
       }
     },
+    "/api/routers/{key}": {
+      "put": {
+        "operationId": "rename-routers-row",
+        "parameters": [
+          {
+            "description": "Current row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Current row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRowInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameRowResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename one router (admin)",
+        "tags": [
+          "routers"
+        ]
+      }
+    },
+    "/api/routers/{key}/metadata": {
+      "get": {
+        "operationId": "get-routers-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier (name or uuid)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier (name or uuid)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get editable metadata for one router",
+        "tags": [
+          "routers"
+        ]
+      },
+      "put": {
+        "operationId": "set-routers-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditableMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace editable metadata for one router (admin)",
+        "tags": [
+          "routers"
+        ]
+      }
+    },
     "/api/routers/{uuid}": {
       "delete": {
         "operationId": "delete-router",
@@ -5823,6 +8257,212 @@
           }
         },
         "summary": "Create a scheduling rule (live-first ; mem fallback on Unimplemented)",
+        "tags": [
+          "scheduling-rules"
+        ]
+      }
+    },
+    "/api/scheduling-rules/{key}": {
+      "put": {
+        "operationId": "rename-scheduling-rules-row",
+        "parameters": [
+          {
+            "description": "Current row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Current row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRowInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameRowResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename one scheduling-rule (admin)",
+        "tags": [
+          "scheduling-rules"
+        ]
+      }
+    },
+    "/api/scheduling-rules/{key}/metadata": {
+      "get": {
+        "operationId": "get-scheduling-rules-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier (name or uuid)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier (name or uuid)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get editable metadata for one scheduling-rule",
+        "tags": [
+          "scheduling-rules"
+        ]
+      },
+      "put": {
+        "operationId": "set-scheduling-rules-metadata",
+        "parameters": [
+          {
+            "description": "Row identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Row identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditableMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditableMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace editable metadata for one scheduling-rule (admin)",
+        "tags": [
+          "scheduling-rules"
+        ]
+      }
+    },
+    "/api/scheduling-rules/{key}/microvms": {
+      "get": {
+        "description": "Filters the microvms catalogue by the row's `scheduling_rule` field (set when a rule expands to N replicas).",
+        "operationId": "list-scheduling-rule-microvms",
+        "parameters": [
+          {
+            "description": "Scheduling-rule name",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Scheduling-rule name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the microVMs deployed under one scheduling rule",
         "tags": [
           "scheduling-rules"
         ]
@@ -6122,7 +8762,61 @@
             "description": "Error"
           }
         },
-        "summary": "Delete a security group (live-only)",
+        "summary": "Delete a security group",
+        "tags": [
+          "security-groups"
+        ]
+      },
+      "put": {
+        "description": "Updates name and/or description in the seed catalogue. Live wiring will route to RenameSecurityGroup + SetSecurityGroupDescription once exposed via huma.",
+        "operationId": "update-security-group",
+        "parameters": [
+          {
+            "description": "Security-group uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Security-group uuid",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSGInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateSGResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename / re-describe a security group (mock-friendly)",
         "tags": [
           "security-groups"
         ]
@@ -6180,6 +8874,7 @@
         ]
       },
       "put": {
+        "description": "Live-first ; falls back to an in-memory mock store (seeded from the static security-rules table on first read) when no live agent is wired, so the SecurityPage edit affordance works through staged rollouts.",
         "operationId": "set-security-group-rules",
         "parameters": [
           {
@@ -6311,6 +9006,60 @@
           }
         },
         "summary": "Delete a share (tenant admin)",
+        "tags": [
+          "shares"
+        ]
+      },
+      "put": {
+        "description": "Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile.",
+        "operationId": "resize-share",
+        "parameters": [
+          {
+            "description": "Share name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Share name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResizeShareInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResizeShareResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Resize a share / toggle read-only (tenant admin)",
         "tags": [
           "shares"
         ]
@@ -7161,6 +9910,323 @@
           }
         },
         "summary": "Create a volume (live-only)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{key}": {
+      "put": {
+        "description": "Updates the human-readable name. Attached VMs keep referencing the volume by uuid ; this is the dashboard label.",
+        "operationId": "rename-volume",
+        "parameters": [
+          {
+            "description": "Current volume identifier (name today ; uuid once live wiring lands)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Current volume identifier (name today ; uuid once live wiring lands)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameVolumeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameVolumeResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename a volume (admin)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{key}/metadata": {
+      "get": {
+        "operationId": "get-volume-metadata",
+        "parameters": [
+          {
+            "description": "Volume identifier (name today ; uuid once live wiring lands)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume identifier (name today ; uuid once live wiring lands)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the editable metadata layer for one volume",
+        "tags": [
+          "volumes"
+        ]
+      },
+      "put": {
+        "description": "Free-form description + suggested mount-point + filesystem hint. UpdatedAt / UpdatedBy are stamped server-side.",
+        "operationId": "set-volume-metadata",
+        "parameters": [
+          {
+            "description": "Volume identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolumeMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace the editable metadata for one volume (admin)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{key}/properties": {
+      "get": {
+        "operationId": "list-volume-properties",
+        "parameters": [
+          {
+            "description": "Volume identifier (name today ; uuid once live wiring lands)",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume identifier (name today ; uuid once live wiring lands)",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VolumeProperty"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the property bag attached to a volume",
+        "tags": [
+          "volumes"
+        ]
+      },
+      "post": {
+        "description": "Inserts or updates by Key. The orchestration layer reads these to make placement / lifecycle decisions.",
+        "operationId": "set-volume-property",
+        "parameters": [
+          {
+            "description": "Volume identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolumeProperty"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeProperty"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Upsert a property on a volume (admin)",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{key}/properties/{prop_key}": {
+      "delete": {
+        "operationId": "delete-volume-property",
+        "parameters": [
+          {
+            "description": "Volume identifier",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume identifier",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Property key to delete",
+            "in": "path",
+            "name": "prop_key",
+            "required": true,
+            "schema": {
+              "description": "Property key to delete",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteVolumePropertyOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete one property on a volume (admin) — idempotent",
         "tags": [
           "volumes"
         ]

@@ -182,6 +182,36 @@ func mountSharesAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "resize-share",
+		Method:        "PUT",
+		Path:          "/api/shares/{name}",
+		Summary:       "Resize a share / toggle read-only (tenant admin)",
+		Description:   "Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile.",
+		Tags:          []string{"shares"},
+		DefaultStatus: 200,
+	}, func(ctx context.Context, in *resizeShareInput) (*resizeShareOutput, error) {
+		project, ok := sharesDB.shareProject(in.Name)
+		if !ok {
+			return nil, huma.Error404NotFound("share not found")
+		}
+		tenant, ok := tenantsDB.projectTenant(project)
+		if !ok {
+			return nil, huma.Error404NotFound("project not found")
+		}
+		u := auth.UserFromContext(ctx)
+		if !tenantsDB.isTenantAdmin(u, tenant) {
+			return nil, huma.Error403Forbidden("tenant admin required")
+		}
+		if err := sharesDB.resize(in.Name, in.Body.SizeGB, in.Body.ReadOnly); err != nil {
+			return nil, hideHTTPErr(err)
+		}
+		userActionCtx(ctx, "share.resize")
+		return &resizeShareOutput{Body: ResizeShareResp{
+			Name: in.Name, SizeGB: in.Body.SizeGB, ReadOnly: in.Body.ReadOnly,
+		}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "delete-share",
 		Method:        "DELETE",
 		Path:          "/api/shares/{name}",
@@ -536,6 +566,25 @@ type createShareInput struct {
 
 type shareNameInput struct {
 	Name string `path:"name" doc:"Share name" minLength:"1" maxLength:"128"`
+}
+
+type resizeShareInput struct {
+	Name string `path:"name" doc:"Share name" minLength:"1" maxLength:"128"`
+	Body struct {
+		SizeGB   int64 `json:"size_gb" doc:"New size in GiB (must be >= current ; shrinking is rejected)" minimum:"1"`
+		ReadOnly bool  `json:"read_only,omitempty" doc:"Re-fans to mounting VMs on the next reconcile"`
+	}
+}
+
+// ResizeShareResp is the typed response body for the resize endpoint.
+type ResizeShareResp struct {
+	Name     string `json:"name"`
+	SizeGB   int64  `json:"size_gb"`
+	ReadOnly bool   `json:"read_only"`
+}
+
+type resizeShareOutput struct {
+	Body ResizeShareResp
 }
 
 type listShareObjectsInput struct {

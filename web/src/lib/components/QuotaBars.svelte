@@ -15,14 +15,20 @@
     extra = {},
     omit = [],
     pulseOver = false,
+    dims: dimsProp,
   }: {
     bars: Bars;
     extra?: Partial<Record<keyof Quotas, number>>;
     omit?: (keyof Quotas)[];
     pulseOver?: boolean; // pulse the bar red when over capacity
+    // Override the dimension list. Pass a plugin-filtered slice when
+    // some dims depend on a plugin that isn't installed (e.g. drop
+    // shares_gib when no shares plugin is active). Defaults to the
+    // full QUOTA_DIMS for compatibility.
+    dims?: QuotaDimMeta[];
   } = $props();
 
-  const dims = $derived(QUOTA_DIMS.filter((d) => !omit.includes(d.key)));
+  const dims = $derived((dimsProp ?? QUOTA_DIMS).filter((d) => !omit.includes(d.key)));
 
   function color(used: number, cap: number): string {
     if (cap === 0) return 'progress-ghost';

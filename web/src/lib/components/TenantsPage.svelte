@@ -24,7 +24,8 @@
     setTenantQuota,
     getProjectQuota,
     setProjectQuota,
-    QUOTA_DIMS,
+    filterQuotaDims,
+    getResources,
     type ResourceMeta,
     type Row,
     type TenantDetail,
@@ -60,6 +61,16 @@
     }
   }
   onMount(refreshList);
+
+  // Track the resource catalogue so we can filter quota dims that
+  // depend on plugin-gated resources (shares_gib disappears when no
+  // shares plugin is installed, etc.). Refresh on plugin events
+  // could be wired later ; today the catalogue is fetched once.
+  let availableResources = $state<ResourceMeta[]>([]);
+  let liveDims = $derived(filterQuotaDims(availableResources));
+  onMount(async () => {
+    try { availableResources = await getResources(); } catch { /* leave empty */ }
+  });
 
   // Resolve the role flag once. cluster_admin == superadmin in /api/me's
   // vocabulary ; tenant-level admin is detected per-tenant via the
@@ -297,7 +308,7 @@
       <div class="alert alert-error">{error}</div>
     {:else}
       <div role="presentation" onclick={onRowClick} class="cursor-pointer">
-        <ResourceTable columns={meta.columns} rows={rows} />
+        <ResourceTable columns={meta.columns} rows={rows} onReload={refreshList} />
       </div>
     {/if}
   </div>
@@ -420,7 +431,7 @@
           {#if !tenantQuota}
             <div class="py-4 text-center text-base-content/50 text-sm">loading…</div>
           {:else}
-            <QuotaBars bars={tenantQuota.remaining} />
+            <QuotaBars bars={tenantQuota.remaining} dims={liveDims} />
           {/if}
         </div>
       </section>
@@ -566,7 +577,7 @@
       Cannot be lowered below current allocation ; shrink the projects first.
     </p>
     <div class="mt-4 grid gap-2 sm:grid-cols-2">
-      {#each QUOTA_DIMS as d (d.key)}
+      {#each liveDims as d (d.key)}
         <label class="form-control">
           <span class="label-text text-xs">{d.label}{d.unit ? ' (' + d.unit + ')' : ''}</span>
           <input type="number" min="0" class="input input-sm input-bordered tabular-nums"
@@ -602,12 +613,13 @@
             extra={projectExtra(projectQuotaView, projectQuotaDraft)}
             omit={['projects']}
             pulseOver={true}
+            dims={liveDims}
           />
         {/key}
       </div>
 
       <div class="mt-4 grid gap-2 sm:grid-cols-2">
-        {#each QUOTA_DIMS as d (d.key)}
+        {#each liveDims as d (d.key)}
           {#if !d.tenantOnly}
             <label class="form-control">
               <span class="label-text text-xs">{d.label}{d.unit ? ' (' + d.unit + ')' : ''}</span>

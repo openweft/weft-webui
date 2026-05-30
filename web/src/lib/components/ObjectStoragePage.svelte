@@ -1,4 +1,12 @@
 <script lang="ts">
+  // ObjectStoragePage — master-detail aligned on DNSPage / SharesPage :
+  //   left pane  : filter + N/Edit-policy/Delete + bucket list
+  //   right pane : metadata badges + FileBrowser for the selected bucket
+  //
+  // The Edit slot opens the bucket-policy modal (the only mutable
+  // surface buckets currently expose beyond create/delete). When a
+  // proper bucket-metadata layer lands (versioning, lifecycle, …),
+  // this becomes a tabbed modal.
   import { getRows, getMe, createBucket, deleteBucket, type Me, type Row } from '../api';
   import FileBrowser from './FileBrowser.svelte';
   import BucketPolicyModal from './BucketPolicyModal.svelte';
@@ -6,11 +14,6 @@
   let buckets = $state<Row[]>([]);
   let selected = $state<string>('');
   let me = $state<Me | null>(null);
-  let deleteError = $state('');
-
-  // Same gate as SharesPage : tenant admins (cluster admins included)
-  // see the "+ New bucket" button. Server enforces, this just hides
-  // the affordance that would 403.
   let canCreate = $derived(!!me && (me.cluster_admin || me.tenant_admin));
 
   async function loadBuckets(keep = selected) {
@@ -29,6 +32,9 @@
   let newName = $state('');
   let creating = $state(false);
   let bucketError = $state('');
+  let actionBusy = $state(false);
+  let actionErr = $state('');
+  let query = $state('');
 
   $effect(() => {
     if (createOpen) bucketDialog?.showModal();
@@ -55,75 +61,115 @@
   async function delSelected() {
     if (!current) return;
     if (!confirm(`Delete bucket "${current.name}" and all its objects?`)) return;
-    deleteError = '';
+    actionErr = ''; actionBusy = true;
     try {
       await deleteBucket(String(current.name));
       await loadBuckets(String(current.name) === selected ? '' : selected);
-    } catch (e) { deleteError = String(e); }
+    } catch (e) {
+      actionErr = String(e);
+    } finally {
+      actionBusy = false;
+    }
   }
+
+  let filtered = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return buckets;
+    return buckets.filter((b) => String(b.name).toLowerCase().includes(q));
+  });
 </script>
 
 <div class="flex items-center gap-3">
   <div>
     <h2 class="text-2xl font-bold">Object Storage</h2>
-    <p class="text-sm text-base-content/60">S3 buckets &amp; objects</p>
+    <p class="text-sm text-base-content/60">
+      S3 buckets &amp; objects — pick a bucket to browse its contents.
+    </p>
   </div>
-  {#if canCreate}
-    <button class="ml-auto btn btn-sm btn-primary gap-1" onclick={() => (createOpen = true)}>
-      <span class="text-base leading-none">+</span> New bucket
-    </button>
-  {/if}
 </div>
 
-{#if deleteError}
-  <div class="mt-2 alert alert-error text-sm">{deleteError}</div>
-{/if}
-
 <div class="mt-4 flex gap-4">
-  <aside class="w-60 shrink-0">
-    <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">Buckets</div>
+  <!-- Master : buckets list -->
+  <section class="w-80 shrink-0 flex flex-col gap-2">
+    <div class="flex items-center gap-2">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Buckets</h3>
+      <span class="ml-auto text-xs text-base-content/50">{filtered.length} of {buckets.length}</span>
+    </div>
+
+    <label class="input input-sm input-bordered flex items-center gap-2">
+      <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-50" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
+      </svg>
+      <input type="search" class="grow" placeholder="Filter buckets…" bind:value={query} />
+    </label>
+
+    {#if canCreate}
+      <div class="flex flex-wrap gap-2">
+        <button class="btn btn-sm btn-primary gap-1" onclick={() => (createOpen = true)}
+          title="Create a new bucket">
+          <span class="text-base leading-none">+</span> New
+        </button>
+        <button class="btn btn-sm btn-warning gap-1"
+          disabled={!current || actionBusy}
+          onclick={() => (policyOpen = true)}
+          title={current ? `Edit policy for "${current.name}"` : 'Select a bucket to edit'}>
+          Edit policy
+        </button>
+        <button class="btn btn-sm btn-error gap-1"
+          disabled={!current || actionBusy}
+          onclick={delSelected}
+          title={current ? `Delete "${current.name}"` : 'Select a bucket to delete'}>
+          {#if actionBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Delete
+        </button>
+      </div>
+    {/if}
+
+    {#if actionErr}<div class="alert alert-error py-2 text-sm">{actionErr}</div>{/if}
+
     <ul class="menu menu-sm w-full rounded-box border border-base-300 bg-base-100">
-      {#each buckets as b (b.name)}
+      {#each filtered as b (b.name)}
         <li>
           <button class:menu-active={selected === b.name} onclick={() => (selected = String(b.name))}>
             <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none" stroke="currentColor" stroke-width="1.7">
               <path d="M3 7h18v12H3zM3 7l2-3h6l2 3" stroke-linejoin="round" />
             </svg>
-            <div class="min-w-0">
-              <div class="truncate">{b.name}</div>
-              <div class="text-[10px] text-base-content/50">s3 · {b.objects} objects</div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium">{b.name}</div>
+              <div class="text-[10px] text-base-content/50">
+                s3 · {b.objects} objects · {b.size}
+              </div>
             </div>
           </button>
         </li>
       {:else}
-        <li class="px-3 py-2 text-sm text-base-content/50">No buckets yet.</li>
+        <li class="px-3 py-2 text-sm text-base-content/50">
+          {buckets.length === 0 ? 'No buckets yet.' : 'No buckets match the filter.'}
+        </li>
       {/each}
     </ul>
-  </aside>
+  </section>
 
-  <section class="min-w-0 flex-1">
+  <!-- Detail : object browser -->
+  <section class="min-w-0 flex-1 flex flex-col gap-2">
     {#if !selected}
       <div class="rounded-box border border-base-300 bg-base-100 p-10 text-center text-base-content/50">
         Select a bucket{canCreate ? ' or create one to get started' : ''}.
       </div>
-    {:else}
-      {#if current}
-        <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-base-content/60">
-          <span class="badge badge-sm badge-ghost">s3</span>
-          {#if current.project}<span class="badge badge-sm badge-ghost">project {current.project}</span>{/if}
-          <span>{current.objects} objects</span>
-          <span>· {current.size}</span>
-          {#if current.created}<span class="text-base-content/50">· created {current.created}</span>{/if}
-          {#if canCreate}
-            <button class="ml-auto btn btn-xs btn-ghost" onclick={() => (policyOpen = true)}>
-              Policy
-            </button>
-            <button class="btn btn-xs btn-ghost text-error" onclick={delSelected}>
-              Delete
-            </button>
-          {/if}
+    {:else if current}
+      <div class="flex items-center gap-2">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            Objects in <span class="font-mono normal-case text-base-content">{current.name}</span>
+          </h3>
+          <p class="text-xs text-base-content/50">
+            <span class="badge badge-xs badge-ghost">s3</span>
+            {#if current.project}project {current.project} · {/if}
+            {current.objects} objects · {current.size}
+            {#if current.created}· created {current.created}{/if}
+          </p>
         </div>
-      {/if}
+      </div>
       {#key selected}
         <FileBrowser kind="buckets" container={selected} />
       {/key}

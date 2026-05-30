@@ -6,9 +6,9 @@
 //
 // Operators define keys once in the catalogue (sshkeys_catalogue.go)
 // and assign them to VMs BY NAME from the drawer. The wire to the
-// in-guest weft-vm-agent is unchanged : the host resolves names to
+// in-guest weft-microvm-agent is unchanged : the host resolves names to
 // OpenSSH lines before publishing on weft.sshkeys.<vmID>, the guest
-// still sees the same KeySet shape (openweft/weft-vm-agent commit
+// still sees the same KeySet shape (openweft/weft-microvm-agent commit
 // 032f346).
 //
 // Storage shape :

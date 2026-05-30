@@ -26,6 +26,7 @@ type APISSHKey struct {
 	Source        string `json:"source" doc:"Provenance" example:"manual" enum:"manual,github,gitlab,forgejo"`
 	SourceAccount string `json:"source_account" doc:"Upstream login when imported" example:"alice"`
 	Fingerprint   string `json:"fingerprint" doc:"SHA256:<base64-no-pad>, server-computed" example:"SHA256:abc…" readOnly:"true"`
+	Owner         string `json:"owner,omitempty" doc:"Email of the user who owns the key. Drives group-based authz : a VM authorized for group G inherits keys whose owner is a member of G." example:"alice@weft.local"`
 	UpdatedAt     string `json:"updated_at" doc:"RFC3339, server-stamped" readOnly:"true"`
 	UpdatedBy     string `json:"updated_by" doc:"OIDC sub / email of the last editor" readOnly:"true"`
 }
@@ -34,7 +35,8 @@ func toAPISSHKey(k SSHKey) APISSHKey {
 	return APISSHKey{
 		Name: k.Name, PublicKey: k.PublicKey, Description: k.Description,
 		Source: k.Source, SourceAccount: k.SourceAccount,
-		Fingerprint: k.Fingerprint, UpdatedAt: k.UpdatedAt, UpdatedBy: k.UpdatedBy,
+		Fingerprint: k.Fingerprint, Owner: k.Owner,
+		UpdatedAt: k.UpdatedAt, UpdatedBy: k.UpdatedBy,
 	}
 }
 
@@ -42,7 +44,8 @@ func fromAPISSHKey(k APISSHKey) SSHKey {
 	return SSHKey{
 		Name: k.Name, PublicKey: k.PublicKey, Description: k.Description,
 		Source: k.Source, SourceAccount: k.SourceAccount,
-		Fingerprint: k.Fingerprint, UpdatedAt: k.UpdatedAt, UpdatedBy: k.UpdatedBy,
+		Fingerprint: k.Fingerprint, Owner: k.Owner,
+		UpdatedAt: k.UpdatedAt, UpdatedBy: k.UpdatedBy,
 	}
 }
 

@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { getRowsPage, type ResourceMeta, type Row } from '../api';
+  import {
+    getRowsPage, type ResourceMeta, type Row,
+    deleteVM, deleteVolume, deleteNetwork, deleteSchedulingRule,
+    deleteSecurityGroup, releaseFloatingIP, deleteRouter,
+    deleteLoadBalancer, deleteDNSZone, deleteDNSRecord,
+  } from '../api';
   import { lastEvents, eventToResource } from '../events';
   import { routeParams, go } from '../router';
   import ResourceTable from './ResourceTable.svelte';
@@ -18,6 +23,10 @@
   import MicroVMDrawer from './MicroVMDrawer.svelte';
   import SecurityGroupDrawer from './SecurityGroupDrawer.svelte';
   import LoadBalancerDrawer from './LoadBalancerDrawer.svelte';
+  import VolumeDrawer from './VolumeDrawer.svelte';
+  import EditableDrawer from './EditableDrawer.svelte';
+  import FloatingIPDrawer from './FloatingIPDrawer.svelte';
+  import SchedulingRuleDrawer from './SchedulingRuleDrawer.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -143,11 +152,38 @@
   // resources will get their own drawer components as the relevant
   // RPCs land (volumes → VolumeInfo, networks → NetworkInfo, …).
   let selectedRow = $state<Row | null>(null);
-  // selectableDrawer : resources that open a detail drawer on row click.
-  const selectableDrawer = ['microvms', 'security-groups', 'loadbalancers'];
+  // drawerRow : the row whose drawer is currently open. Decoupled
+  // from selectedRow so closing the drawer doesn't deselect — the
+  // header Edit / Delete keep operating on the last-clicked row.
+  let drawerRow = $state<Row | null>(null);
+  // Header-button busy + error states.
+  let actionBusy = $state(false);
+  let actionErr = $state('');
+  // selectableDrawer : resources that have a detail drawer. Click on
+  // a row in this set highlights it (selectedRow). The drawer opens
+  // exclusively via the header Edit button — no row-click shortcut.
+  // networks + security-groups + dns are handled by dedicated custom
+  // pages (NetworksPage / SecurityPage / DNSPage) — they don't pass
+  // through ResourcePage at all, so they're excluded here.
+  const selectableDrawer = [
+    'microvms', 'loadbalancers', 'volumes',
+    'routers', 'floating-ips', 'scheduling-rules',
+  ];
   function handleSelect(row: Row) {
-    if (selectableDrawer.includes(meta.id)) selectedRow = row;
+    // Toggle : a second click on the same row deselects, matching
+    // SSHKeysPage. Makes the "no selection" state reachable without
+    // clicking outside the table.
+    if (selectedRow && rowKey(selectedRow) === rowKey(row)) {
+      selectedRow = null;
+    } else {
+      selectedRow = row;
+    }
+    actionErr = '';
   }
+  function rowKey(r: Row): string {
+    return String(r.uuid ?? r.name ?? '');
+  }
+  let selectedKey = $derived(selectedRow ? rowKey(selectedRow) : '');
 
   // Deep-link : if the hash carries ?detail=<key>, try to open the
   // drawer for the row whose uuid OR name matches. The palette uses
@@ -157,19 +193,71 @@
   $effect(() => {
     const key = $routeParams.detail;
     if (!key) {
-      selectedRow = null;
+      drawerRow = null;
       return;
     }
     if (!selectableDrawer.includes(meta.id)) return;
     const hit = rows.find((r) => r.uuid === key || r.name === key);
-    if (hit) selectedRow = hit;
+    if (hit) {
+      drawerRow = hit;
+      selectedRow = hit;
+    }
   });
 
   function closeDrawer() {
-    selectedRow = null;
+    drawerRow = null;
     // Drop ?detail= from the URL so a refresh / back-button doesn't
     // pop it open again.
     if ($routeParams.detail) go(meta.id);
+  }
+
+  // Header Edit button — only meaningful for resources with a drawer
+  // (the drawer IS the editor). Re-opens the drawer for the selected
+  // row.
+  let canEdit = $derived(selectableDrawer.includes(meta.id));
+  function startEdit() {
+    if (!selectedRow) return;
+    if (!canEdit) return;
+    drawerRow = selectedRow;
+  }
+
+  // Header Delete — dispatches the per-resource delete RPC. Mirrors
+  // the per-row dropdown's runAction but lives at the page level so
+  // the button can sit next to + New / Edit.
+  async function startDelete() {
+    if (!selectedRow) return;
+    const r = selectedRow;
+    const name = String(r.name ?? r.uuid ?? '');
+    const uuid = String(r.uuid ?? '');
+    let confirmMsg = `Delete ${meta.label.replace(/s$/, '')} "${name}" ?`;
+    if (meta.id === 'floating-ips') confirmMsg = `Release ${r.address} ?`;
+    if (meta.id === 'dns-zones') confirmMsg += ' Removes every record inside it.';
+    if (!confirm(confirmMsg)) return;
+    actionBusy = true; actionErr = '';
+    try {
+      switch (meta.id) {
+        case 'microvms':         await deleteVM(name); break;
+        case 'volumes':          await deleteVolume(uuid); break;
+        case 'networks':         await deleteNetwork(uuid); break;
+        case 'scheduling-rules': await deleteSchedulingRule(name); break;
+        case 'security-groups':  await deleteSecurityGroup(uuid); break;
+        case 'floating-ips':     await releaseFloatingIP(uuid); break;
+        case 'routers':          await deleteRouter(uuid); break;
+        case 'loadbalancers':    await deleteLoadBalancer(uuid); break;
+        case 'dns-zones':        await deleteDNSZone(uuid); break;
+        case 'dns-records':      await deleteDNSRecord(uuid); break;
+        default:
+          actionErr = `Delete not wired for ${meta.id}`;
+          return;
+      }
+      selectedRow = null;
+      if (drawerRow && rowKey(drawerRow) === rowKey(r)) drawerRow = null;
+      refresh();
+    } catch (e) {
+      actionErr = String(e);
+    } finally {
+      actionBusy = false;
+    }
   }
 
   // Row dropdown intercept for FIP "Map" — ResourceTable invokes this
@@ -231,10 +319,29 @@
       title={canCreate ? '' : 'Creation flow not wired yet'}
       onclick={() => (createOpen = true)}
     >
-      <span class="text-base leading-none">+</span> New {createLabel}
+      <span class="text-base leading-none">+</span> New
+    </button>
+    {#if canEdit}
+      <button class="btn btn-sm btn-warning gap-1"
+        disabled={!selectedRow || actionBusy}
+        onclick={startEdit}
+        title={selectedRow ? `Edit "${selectedRow.name}"` : 'Select a row to edit'}>
+        Edit
+      </button>
+    {/if}
+    <button class="btn btn-sm btn-error gap-1"
+      disabled={!selectedRow || !canCreate || actionBusy}
+      onclick={startDelete}
+      title={selectedRow ? `Delete "${selectedRow.name}"` : 'Select a row to delete'}>
+      {#if actionBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+      Delete
     </button>
   </div>
 </div>
+
+{#if actionErr}
+  <div class="mt-2 alert alert-error text-sm">{actionErr}</div>
+{/if}
 
 <div class="mt-4">
   {#if loading}
@@ -243,9 +350,9 @@
     <div class="alert alert-error">{error}</div>
   {:else}
     <ResourceTable columns={meta.columns} rows={filtered}
-      resourceId={meta.id} onChange={refresh}
-      onSelect={selectableDrawer.includes(meta.id) ? handleSelect : undefined}
-      onAction={handleRowAction} />
+      onSelect={handleSelect}
+      selectedKey={selectedKey}
+      onReload={refresh} />
     {#if nextToken}
       <div class="mt-3 flex items-center justify-center">
         <button
@@ -297,21 +404,49 @@
   />
 {/if}
 
-{#if meta.id === 'microvms' && selectedRow}
+{#if meta.id === 'microvms' && drawerRow}
   <MicroVMDrawer
-    row={selectedRow}
+    row={drawerRow}
     onClose={closeDrawer}
     onChanged={refresh}
   />
-{:else if meta.id === 'security-groups' && selectedRow}
+{:else if meta.id === 'security-groups' && drawerRow}
   <SecurityGroupDrawer
-    row={selectedRow}
+    row={drawerRow}
     onClose={closeDrawer}
     onChanged={refresh}
   />
-{:else if meta.id === 'loadbalancers' && selectedRow}
+{:else if meta.id === 'loadbalancers' && drawerRow}
   <LoadBalancerDrawer
-    row={selectedRow}
+    row={drawerRow}
+    onClose={closeDrawer}
+    onChanged={refresh}
+  />
+{:else if meta.id === 'volumes' && drawerRow}
+  <VolumeDrawer
+    row={drawerRow}
+    onClose={closeDrawer}
+    onChanged={refresh}
+  />
+{:else if meta.id === 'routers' && drawerRow}
+  <EditableDrawer
+    resource="routers"
+    row={drawerRow}
+    title={String(drawerRow.name)}
+    subtitle={`${drawerRow.backend ?? '—'} · ${drawerRow.mode ?? '—'} · project ${drawerRow.project ?? '—'}`}
+    onClose={closeDrawer}
+    onChanged={refresh}
+  />
+{:else if meta.id === 'floating-ips' && drawerRow}
+  <FloatingIPDrawer
+    row={drawerRow}
+    onClose={closeDrawer}
+    onChanged={refresh}
+    onMapRequest={(uuid, address) => { mapFipTarget = { uuid, address }; }}
+  />
+{:else if meta.id === 'scheduling-rules' && drawerRow}
+  <SchedulingRuleDrawer
+    row={drawerRow}
     onClose={closeDrawer}
     onChanged={refresh}
   />

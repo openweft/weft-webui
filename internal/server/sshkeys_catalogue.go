@@ -7,9 +7,9 @@
 //
 // Wire to the guest is unchanged : when the host publishes a VM's
 // SSH-key set on weft.sshkeys.<vmID>, the catalogue names are
-// resolved to OpenSSH lines first. The in-guest weft-vm-agent never
+// resolved to OpenSSH lines first. The in-guest weft-microvm-agent never
 // sees a name — same `KeySet { Keys [{public_key: ...}] }` shape it
-// already speaks (see openweft/weft-vm-agent commit 032f346).
+// already speaks (see openweft/weft-microvm-agent commit 032f346).
 package server
 
 import (
@@ -34,9 +34,10 @@ type SSHKey struct {
 	Name          string `json:"name"`
 	PublicKey     string `json:"public_key"`
 	Description   string `json:"description"`
-	Source        string `json:"source"`         // "manual" | "github" | "gitlab" | "forgejo"
-	SourceAccount string `json:"source_account"` // upstream login, when imported
-	Fingerprint   string `json:"fingerprint"`    // "SHA256:<b64>"
+	Source        string `json:"source"`              // "manual" | "github" | "gitlab" | "forgejo"
+	SourceAccount string `json:"source_account"`      // upstream login, when imported
+	Fingerprint   string `json:"fingerprint"`         // "SHA256:<b64>"
+	Owner         string `json:"owner,omitempty"`     // email of the user who owns the key (drives group-based authz)
 	UpdatedAt     string `json:"updated_at"`
 	UpdatedBy     string `json:"updated_by"`
 }
@@ -66,9 +67,10 @@ func newMemSSHKeyCatalogue() *memSSHKeyCatalogue {
 func seedSSHKeys() []SSHKey {
 	now := "2026-05-20T12:00:00Z"
 	out := []SSHKey{}
-	demo := []struct{ name, comment, descr string }{
-		{"alice-laptop", "alice@laptop", "Alice's laptop key — primary admin access"},
-		{"ci-deploy", "ci@deploy", "CI deploy key — used by the deploy pipeline only"},
+	demo := []struct{ name, comment, descr, owner string }{
+		{"alice-laptop", "alice@laptop", "Alice's laptop key — primary admin access", "alice@weft.local"},
+		{"ci-deploy", "ci@deploy", "CI deploy key — used by the deploy pipeline only", ""},
+		{"bob-laptop", "bob@laptop", "Bob's laptop key", "bob@weft.local"},
 	}
 	for _, d := range demo {
 		line := generateDemoEd25519(d.comment)
@@ -79,6 +81,7 @@ func seedSSHKeys() []SSHKey {
 		out = append(out, SSHKey{
 			Name: d.name, PublicKey: line, Description: d.descr,
 			Source: "manual", Fingerprint: fp,
+			Owner:     d.owner,
 			UpdatedAt: now, UpdatedBy: "dev@weft.local",
 		})
 	}
@@ -102,7 +105,7 @@ func fingerprintForLine(line string) string {
 }
 
 // validSSHKeyTypes — same closed set as the guest-side validator
-// (openweft/weft-vm-agent pkg/sshkeys/sshkeys.go).
+// (openweft/weft-microvm-agent pkg/sshkeys/sshkeys.go).
 var validSSHKeyTypes = map[string]bool{
 	"ssh-rsa": true, "ssh-ed25519": true, "ssh-dss": true,
 	"ecdsa-sha2-nistp256": true, "ecdsa-sha2-nistp384": true,

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	netv1 "github.com/openweft/weft-network-proto"
-	vzclient "github.com/openweft/weft-client"
+	weftclient "github.com/openweft/weft-client"
 	"google.golang.org/grpc"
 )
 
@@ -52,7 +52,7 @@ func (c *NetworkClient) dial() (netv1.NetworkControlPlaneClient, error) {
 	// Reuse weft-client's Dial : it handles ssh:// transport, the
 	// bearer interceptor stack, etc. We only need a fresh
 	// NetworkControlPlaneClient on top of the resulting conn.
-	conn, err := vzclient.Dial(c.socket)
+	conn, err := weftclient.Dial(c.socket)
 	if err != nil {
 		return nil, err
 	}

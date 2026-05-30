@@ -30,6 +30,13 @@ import {
   type APIQuotas,
   type APIObjectEntry, type APIObjectListing, type APIObjectDetail,
   type APIBucketPolicy, type APIPolicyStatement,
+  type APIRegistryRemote, type APIRemoteSearchHit,
+  type APIPlugin,
+  type APIVolumeMetadata, type APIVolumeProperty,
+  type APINetworkMetadata,
+  type APIEditableMetadata,
+  type APISubnet,
+  type APIAuthorizedGroup, type APIEffectiveKey,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -734,6 +741,14 @@ export const deleteShare = async (name: string): Promise<void> => {
   if (error) throwErr(error);
 };
 
+export const resizeShare = async (name: string, sizeGB: number, readOnly: boolean): Promise<void> => {
+  const { error } = await client.PUT('/api/shares/{name}', {
+    params: { path: { name } },
+    body: { size_gb: sizeGB, read_only: readOnly },
+  });
+  if (error) throwErr(error);
+};
+
 // ---- Security groups ----------------------------------------------
 
 // Sourced from api.gen.ts — direction + protocol carry their narrow
@@ -756,6 +771,33 @@ export const deleteSecurityGroup = async (uuid: string): Promise<void> => {
   const { error } = await client.DELETE('/api/security-groups/{uuid}', { params: { path: { uuid } } });
   if (error) throwErr(error);
 };
+
+export const updateSecurityGroup = async (uuid: string, patch: {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+}): Promise<void> => {
+  // `enabled` is a tri-state on the wire (omitted = leave alone) so
+  // only forward it when the caller actually passed a value.
+  const body: { name: string; description: string; enabled?: boolean } = {
+    name: patch.name ?? '',
+    description: patch.description ?? '',
+  };
+  if (patch.enabled !== undefined) body.enabled = patch.enabled;
+  const { error } = await client.PUT('/api/security-groups/{uuid}', {
+    params: { path: { uuid } },
+    body,
+  });
+  if (error) throwErr(error);
+};
+
+// isEnabled treats a missing `enabled` field as true — the seed rows
+// don't all carry the column yet and we want the UI to default to the
+// permissive state.
+export function isEnabled(row: Row | { enabled?: boolean } | null | undefined): boolean {
+  if (!row) return false;
+  return (row as { enabled?: boolean }).enabled !== false;
+}
 
 export const getSecurityGroupRules = async (uuid: string): Promise<SecurityRule[]> => {
   const { data, error } = await client.GET('/api/security-groups/{uuid}/rules', { params: { path: { uuid } } });
@@ -1000,6 +1042,10 @@ export interface QuotaDimMeta {
   label: string;
   unit?: string;
   tenantOnly?: boolean;
+  // resource = the resource ID this dim depends on. If the resource
+  // is plugin-gated and no contributing plugin is installed+enabled,
+  // the dim disappears from QuotaBars (filterQuotaDims below).
+  resource?: string;
 }
 
 export const QUOTA_DIMS: QuotaDimMeta[] = [
@@ -1008,11 +1054,421 @@ export const QUOTA_DIMS: QuotaDimMeta[] = [
   { key: 'gpus',         label: 'GPUs' },
   { key: 'volumes',      label: 'Volumes' },
   { key: 'volumes_gib',  label: 'Volume capacity', unit: 'GiB' },
-  { key: 'shares',       label: 'Shares' },
-  { key: 'shares_gib',   label: 'Share capacity',  unit: 'GiB' },
-  { key: 'buckets',      label: 'Buckets' },
-  { key: 'buckets_gib',  label: 'Bucket capacity', unit: 'GiB' },
-  { key: 'registry_gib', label: 'Registry',  unit: 'GiB' },
+  { key: 'shares',       label: 'Shares',                       resource: 'shares' },
+  { key: 'shares_gib',   label: 'Share capacity',  unit: 'GiB', resource: 'shares' },
+  { key: 'buckets',      label: 'Buckets',                      resource: 'buckets' },
+  { key: 'buckets_gib',  label: 'Bucket capacity', unit: 'GiB', resource: 'buckets' },
+  { key: 'registry_gib', label: 'Registry',        unit: 'GiB', resource: 'registries' },
   { key: 'floating_ips', label: 'Floating IPs' },
   { key: 'projects',     label: 'Projects',  tenantOnly: true },
 ];
+
+// ---- Registries : remote-registry catalogue (proxy / replica) -----
+
+export type RegistryRemote = APIRegistryRemote;
+
+export const listRegistryRemotes = async (): Promise<RegistryRemote[]> => {
+  const { data, error } = await client.GET('/api/registries/remotes');
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const getRegistryRemote = async (name: string): Promise<RegistryRemote> => {
+  const { data, error } = await client.GET('/api/registries/remotes/{name}', { params: { path: { name } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const setRegistryRemote = async (r: {
+  name: string;
+  url: string;
+  kind: 'proxy' | 'replica';
+  enabled: boolean;
+  username?: string;
+}): Promise<RegistryRemote> => {
+  const { data, error } = await client.POST('/api/registries/remotes', {
+    body: {
+      name: r.name, url: r.url, kind: r.kind, enabled: r.enabled,
+      username: r.username ?? '',
+      // last_sync is server-owned ; updated_at/by are stamped by the
+      // server. Send empty strings so the validation passes.
+      last_sync: '', updated_at: '', updated_by: '',
+    },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const deleteRegistryRemote = async (name: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/registries/remotes/{name}', { params: { path: { name } } });
+  if (error) throwErr(error);
+};
+
+export type RemoteSearchHit = APIRemoteSearchHit;
+
+export const searchRegistryRemote = async (name: string, q: string): Promise<RemoteSearchHit[]> => {
+  const { data, error } = await client.GET('/api/registries/remotes/{name}/search', {
+    params: { path: { name }, query: { q } },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+// ---- Volumes : rename + editable metadata + property bag ---------
+
+export const renameVolumeByKey = async (key: string, newName: string): Promise<{ name: string }> => {
+  const { data, error } = await client.PUT('/api/volumes/{key}', {
+    params: { path: { key } },
+    body: { new_name: newName },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+
+export type VolumeMetadata = APIVolumeMetadata;
+export type VolumeProperty = APIVolumeProperty;
+
+export const getVolumeMetadata = async (key: string): Promise<VolumeMetadata> => {
+  const { data, error } = await client.GET('/api/volumes/{key}/metadata', { params: { path: { key } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const setVolumeMetadata = async (key: string, m: {
+  description: string;
+  mount_point: string;
+  filesystem: '' | 'ext4' | 'xfs' | 'btrfs' | 'ext3' | 'zfs';
+}): Promise<VolumeMetadata> => {
+  const { data, error } = await client.PUT('/api/volumes/{key}/metadata', {
+    params: { path: { key } },
+    body: {
+      description: m.description, mount_point: m.mount_point, filesystem: m.filesystem,
+      updated_at: '', updated_by: '',
+    },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const listVolumeProperties = async (key: string): Promise<VolumeProperty[]> => {
+  const { data, error } = await client.GET('/api/volumes/{key}/properties', { params: { path: { key } } });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const setVolumeProperty = async (key: string, propKey: string, value: string): Promise<VolumeProperty> => {
+  const { data, error } = await client.POST('/api/volumes/{key}/properties', {
+    params: { path: { key } },
+    body: { key: propKey, value, updated_at: '' },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const deleteVolumeProperty = async (key: string, propKey: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/volumes/{key}/properties/{prop_key}', {
+    params: { path: { key, prop_key: propKey } },
+  });
+  if (error) throwErr(error);
+};
+
+// ---- Networks : editable metadata + rename -------------------------
+
+export type NetworkMetadata = Omit<APINetworkMetadata, 'dns_servers'> & {
+  // openapi-typescript stamps `string[] | null` for nullable arrays ;
+  // the helper coerces null → [] so callers never see the null branch.
+  dns_servers: string[];
+};
+
+export const getNetworkMetadata = async (key: string): Promise<NetworkMetadata> => {
+  const { data, error } = await client.GET('/api/networks/{key}/metadata', { params: { path: { key } } });
+  if (error) throwErr(error);
+  return { ...data, dns_servers: data.dns_servers ?? [] };
+};
+
+export const setNetworkMetadata = async (key: string, m: {
+  description: string;
+  dns_servers: string[];
+}): Promise<NetworkMetadata> => {
+  const { data, error } = await client.PUT('/api/networks/{key}/metadata', {
+    params: { path: { key } },
+    body: {
+      description: m.description, dns_servers: m.dns_servers,
+      updated_at: '', updated_by: '',
+    },
+  });
+  if (error) throwErr(error);
+  return { ...data, dns_servers: data.dns_servers ?? [] };
+};
+
+export const renameNetworkByKey = async (key: string, newName: string): Promise<{ name: string }> => {
+  const { data, error } = await client.PUT('/api/networks/{key}', {
+    params: { path: { key } },
+    body: { new_name: newName },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+// ---- DNS : edit zones + records (mock-backed for now) -----------
+
+export const updateDNSZone = async (uuid: string, patch: {
+  name?: string;
+  role?: '' | 'primary' | 'secondary' | 'forward';
+  ttl_default?: number;
+  backend?: string;
+  push_target?: string;
+  enabled?: boolean;
+}): Promise<void> => {
+  const body: {
+    name: string;
+    role: 'primary' | 'secondary' | 'forward' | '';
+    ttl_default: number;
+    backend: string;
+    push_target: string;
+    enabled?: boolean;
+  } = {
+    name: patch.name ?? '',
+    role: (patch.role ?? '') as 'primary' | 'secondary' | 'forward' | '',
+    ttl_default: patch.ttl_default ?? 0,
+    backend: patch.backend ?? '',
+    push_target: patch.push_target ?? '',
+  };
+  if (patch.enabled !== undefined) body.enabled = patch.enabled;
+  const { error } = await client.PUT('/api/dns-zones/{uuid}', {
+    params: { path: { uuid } }, body,
+  });
+  if (error) throwErr(error);
+};
+
+export const updateDNSRecord = async (uuid: string, patch: {
+  name?: string;
+  type?: string;
+  value?: string;
+  ttl?: number;
+  enabled?: boolean;
+}): Promise<void> => {
+  const body: {
+    name: string; type: string; value: string; ttl: number; enabled?: boolean;
+  } = {
+    name: patch.name ?? '',
+    type: patch.type ?? '',
+    value: patch.value ?? '',
+    ttl: patch.ttl ?? 0,
+  };
+  if (patch.enabled !== undefined) body.enabled = patch.enabled;
+  const { error } = await client.PUT('/api/dns-records/{uuid}', {
+    params: { path: { uuid } }, body,
+  });
+  if (error) throwErr(error);
+};
+
+// ---- Generic editable metadata (routers / fips / scheduling-rules) -
+
+export type EditableMetadata = APIEditableMetadata;
+
+type EditableResource = 'routers' | 'floating-ips' | 'scheduling-rules';
+
+export const getEditableMetadata = async (
+  res: EditableResource, key: string,
+): Promise<EditableMetadata> => {
+  // The generated client doesn't union the path between the three
+  // resources (each has its own typed entry), so the helper dispatches
+  // by literal. Same payload shape across all three.
+  switch (res) {
+    case 'routers': {
+      const { data, error } = await client.GET('/api/routers/{key}/metadata', { params: { path: { key } } });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'floating-ips': {
+      const { data, error } = await client.GET('/api/floating-ips/{key}/metadata', { params: { path: { key } } });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'scheduling-rules': {
+      const { data, error } = await client.GET('/api/scheduling-rules/{key}/metadata', { params: { path: { key } } });
+      if (error) throwErr(error);
+      return data;
+    }
+  }
+};
+
+export const setEditableMetadata = async (
+  res: EditableResource, key: string, description: string,
+): Promise<EditableMetadata> => {
+  const body = { description, updated_at: '', updated_by: '' };
+  switch (res) {
+    case 'routers': {
+      const { data, error } = await client.PUT('/api/routers/{key}/metadata', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'floating-ips': {
+      const { data, error } = await client.PUT('/api/floating-ips/{key}/metadata', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'scheduling-rules': {
+      const { data, error } = await client.PUT('/api/scheduling-rules/{key}/metadata', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+  }
+};
+
+export const renameEditableRow = async (
+  res: EditableResource, key: string, newName: string,
+): Promise<{ name: string }> => {
+  const body = { new_name: newName };
+  switch (res) {
+    case 'routers': {
+      const { data, error } = await client.PUT('/api/routers/{key}', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'floating-ips': {
+      const { data, error } = await client.PUT('/api/floating-ips/{key}', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+    case 'scheduling-rules': {
+      const { data, error } = await client.PUT('/api/scheduling-rules/{key}', { params: { path: { key } }, body });
+      if (error) throwErr(error);
+      return data;
+    }
+  }
+};
+
+// ---- Subnets (network sub-resource) -------------------------------
+
+export type Subnet = APISubnet;
+
+export const listSubnets = async (networkKey: string): Promise<Subnet[]> => {
+  const { data, error } = await client.GET('/api/networks/{key}/subnets', { params: { path: { key: networkKey } } });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const setSubnet = async (networkKey: string, s: {
+  uuid?: string;
+  name: string;
+  cidr: string;
+  gateway?: string;
+  enabled?: boolean;
+}): Promise<Subnet> => {
+  const { data, error } = await client.POST('/api/networks/{key}/subnets', {
+    params: { path: { key: networkKey } },
+    body: {
+      uuid: s.uuid ?? '',
+      name: s.name, cidr: s.cidr,
+      gateway: s.gateway ?? '',
+      enabled: s.enabled ?? true,
+      updated_at: '', updated_by: '',
+    },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const deleteSubnet = async (networkKey: string, uuid: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/networks/{key}/subnets/{uuid}', {
+    params: { path: { key: networkKey, uuid } },
+  });
+  if (error) throwErr(error);
+};
+
+// ---- microVMs by scheduling-rule (the 'deployment' view) ---------
+
+export const listSchedulingRuleMicroVMs = async (key: string): Promise<Row[]> => {
+  const { data, error } = await client.GET('/api/scheduling-rules/{key}/microvms', {
+    params: { path: { key } },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+// ---- Per-VM authorized-groups + effective keys --------------------
+
+export type AuthorizedGroup = APIAuthorizedGroup;
+export type EffectiveKey    = APIEffectiveKey;
+
+export const listVMAuthorizedGroups = async (vmName: string): Promise<AuthorizedGroup[]> => {
+  const { data, error } = await client.GET('/api/microvms/{name}/authorized-groups', {
+    params: { path: { name: vmName } },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const addVMAuthorizedGroup = async (vmName: string, tenant: string, group: string): Promise<AuthorizedGroup> => {
+  const { data, error } = await client.POST('/api/microvms/{name}/authorized-groups', {
+    params: { path: { name: vmName } },
+    body: { tenant, group, added_at: '' },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const removeVMAuthorizedGroup = async (vmName: string, tenant: string, group: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/microvms/{name}/authorized-groups/{tenant}/{group}', {
+    params: { path: { name: vmName, tenant, group } },
+  });
+  if (error) throwErr(error);
+};
+
+export const listVMEffectiveKeys = async (vmName: string): Promise<EffectiveKey[]> => {
+  const { data, error } = await client.GET('/api/microvms/{name}/effective-keys', {
+    params: { path: { name: vmName } },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+// ---- Plugins (*-as-a-service marketplace) -------------------------
+
+export type Plugin = APIPlugin;
+
+export const listPlugins = async (): Promise<Plugin[]> => {
+  const { data, error } = await client.GET('/api/plugins');
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const installPlugin = async (id: string): Promise<Plugin> => {
+  const { data, error } = await client.POST('/api/plugins/{id}/install', { params: { path: { id } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const uninstallPlugin = async (id: string): Promise<Plugin> => {
+  const { data, error } = await client.POST('/api/plugins/{id}/uninstall', { params: { path: { id } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const enablePlugin = async (id: string): Promise<Plugin> => {
+  const { data, error } = await client.POST('/api/plugins/{id}/enable', { params: { path: { id } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const disablePlugin = async (id: string): Promise<Plugin> => {
+  const { data, error } = await client.POST('/api/plugins/{id}/disable', { params: { path: { id } } });
+  if (error) throwErr(error);
+  return data;
+};
+
+// filterQuotaDims hides dimensions whose backing resource is
+// plugin-gated and not currently available. The resource catalogue
+// (already plugin-filtered server-side) is the source of truth.
+//
+// Pass the catalogue you've already fetched via getResources(). Empty
+// catalogue (e.g. before App.svelte's first refresh) returns the full
+// list — the UI shows nothing rather than wrongly filtering.
+export function filterQuotaDims(catalogue: ResourceMeta[]): QuotaDimMeta[] {
+  if (catalogue.length === 0) return QUOTA_DIMS;
+  const available = new Set(catalogue.map((r) => r.id));
+  return QUOTA_DIMS.filter((d) => !d.resource || available.has(d.resource));
+}

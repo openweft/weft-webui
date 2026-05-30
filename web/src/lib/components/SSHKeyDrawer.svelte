@@ -195,7 +195,7 @@
       <!-- Two creation flows : Manual vs Import. Editing an
            existing entry skips this strip — there's only one path
            (edit in place). -->
-      <div role="tablist" class="tabs tabs-boxed mb-4">
+      <div role="tablist" class="tabs tabs-box mb-4">
         <button role="tab" class="tab"
           class:tab-active={createMode === 'manual'}
           onclick={() => { createMode = 'manual'; err = ''; importResult = null; }}>

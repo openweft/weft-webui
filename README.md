@@ -103,13 +103,13 @@ go run . --weft-socket "ssh://you@dc-a.example/.weft/weft.sock"
 
 | Resource         | Status | Backing RPC                          |
 | ---------------- | ------ | ------------------------------------ |
-| Projects         | live   | `VzdService.ListProjects`            |
-| microVMs         | live   | `VzdService.ListVMs`                 |
-| Networks         | live   | `VzdService.ListNetworks`            |
-| Hosts            | live   | `VzdService.ListHosts`               |
-| Volumes          | live   | `VzdService.ListVolumes`             |
-| Users            | live   | `VzdService.ListUsers`               |
-| Security Groups  | live   | `VzdService.ListSecurityGroups`      |
+| Projects         | live   | `WeftService.ListProjects`            |
+| microVMs         | live   | `WeftService.ListVMs`                 |
+| Networks         | live   | `WeftService.ListNetworks`            |
+| Hosts            | live   | `WeftService.ListHosts`               |
+| Volumes          | live   | `WeftService.ListVolumes`             |
+| Users            | live   | `WeftService.ListUsers`               |
+| Security Groups  | live   | `WeftService.ListSecurityGroups`      |
 | everything else  | mock   | —                                    |
 
 When a live RPC fails (daemon unreachable, permission denied, …) the handler
@@ -252,4 +252,4 @@ Every response gets : `Content-Security-Policy` (relaxed in dev for Vite HMR),
 
 Still TODO : create/edit/delete actions (the row menu is stubbed), detail
 drawers, per-project scoping in more list calls (ListProjects exposes the
-allowed set), and progressively wiring the remaining resources to `VzdService`.
+allowed set), and progressively wiring the remaining resources to `WeftService`.

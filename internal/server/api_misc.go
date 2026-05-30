@@ -79,6 +79,12 @@ func mountResourcesAPI(api huma.API, scope Scope) {
 			if !resolveScope(res.Scope).Has(scope) {
 				continue
 			}
+			if res.Hidden {
+				continue
+			}
+			if !isResourceGateOpen(res.ID) {
+				continue
+			}
 			out.Body = append(out.Body, resourceMeta{
 				ID: res.ID, Label: res.Label, Section: res.Section,
 				Columns: res.Columns, Count: rowCount(res),

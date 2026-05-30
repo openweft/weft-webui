@@ -120,7 +120,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update a DNS record (mock-friendly ; live wiring TBD)
+         * @description Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.
+         */
+        put: operations["update-dns-record"];
         post?: never;
         /** Delete a DNS record */
         delete: operations["delete-dns-record"];
@@ -154,7 +158,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update a DNS zone (mock-friendly ; live wiring TBD)
+         * @description Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.
+         */
+        put: operations["update-dns-zone"];
         post?: never;
         /** Delete a DNS zone */
         delete: operations["delete-dns-zone"];
@@ -211,6 +219,41 @@ export interface paths {
         put?: never;
         /** Allocate a floating IP (live-only) */
         post: operations["allocate-floating-ip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/floating-ips/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename one floating-ip (admin) */
+        put: operations["rename-floating-ips-row"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/floating-ips/{key}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get editable metadata for one floating-ip */
+        get: operations["get-floating-ips-metadata"];
+        /** Replace editable metadata for one floating-ip (admin) */
+        put: operations["set-floating-ips-metadata"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -367,7 +410,7 @@ export interface paths {
         put?: never;
         /**
          * Create a VM (flavor + image + scheduling)
-         * @description A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-vm-agent (pull model).
+         * @description A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-microvm-agent (pull model).
          */
         post: operations["create-vm"];
         delete?: never;
@@ -388,6 +431,61 @@ export interface paths {
         post?: never;
         /** Delete a VM (irreversible) */
         delete: operations["delete-vm"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/microvms/{name}/authorized-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List groups authorized to access one microVM */
+        get: operations["list-vm-authorized-groups"];
+        put?: never;
+        /** Authorize a (tenant, group) pair on this microVM (admin) */
+        post: operations["add-vm-authorized-group"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/microvms/{name}/authorized-groups/{tenant}/{group}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a (tenant, group) authorization from this microVM (admin) — idempotent */
+        delete: operations["remove-vm-authorized-group"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/microvms/{name}/effective-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Derived SSH key set this microVM will see
+         * @description Union of explicit per-VM assignments AND keys whose owner is a member of any authorized group. Same shape as the per-VM SSH-keys list.
+         */
+        get: operations["list-vm-effective-keys"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -636,6 +734,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/networks/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a network (admin)
+         * @description Updates the human-readable name. Attached VMs keep referencing by uuid.
+         */
+        put: operations["rename-network"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/networks/{key}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the editable metadata layer for one network */
+        get: operations["get-network-metadata"];
+        /**
+         * Replace the editable metadata for one network (admin)
+         * @description Description + DNS servers. UpdatedAt / UpdatedBy stamped server-side. Live wiring forwards DNS to SetNetworkDNS.
+         */
+        put: operations["set-network-metadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/networks/{key}/subnets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List subnets attached to one network */
+        get: operations["list-subnets"];
+        put?: never;
+        /**
+         * Create or update a subnet inside a network (admin)
+         * @description Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side.
+         */
+        post: operations["set-subnet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/networks/{key}/subnets/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a subnet (admin) — idempotent */
+        delete: operations["delete-subnet"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/networks/{uuid}": {
         parameters: {
             query?: never;
@@ -648,6 +825,94 @@ export interface paths {
         post?: never;
         /** Delete a network (live-only) */
         delete: operations["delete-network"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List installable plugins (*-as-a-service modules) */
+        get: operations["list-plugins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Temporarily disable an installed plugin (cluster-admin) — hides its sidebar entry without uninstalling */
+        post: operations["disable-plugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable an installed plugin (cluster-admin) */
+        post: operations["enable-plugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/{id}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install a plugin (cluster-admin) — exposes its resources in the sidebar */
+        post: operations["install-plugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/{id}/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uninstall a plugin (cluster-admin) — its resources disappear from the sidebar
+         * @description Resource rows belonging to the uninstalled plugin remain in the mock store ; reinstalling restores visibility instantly. Live wiring would drain workloads first.
+         */
+        post: operations["uninstall-plugin"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -723,6 +988,65 @@ export interface paths {
         };
         /** Readiness probe (returns mode=mock when no daemon is wired) */
         get: operations["readyz"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registries/remotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List remote OCI registries (proxy / replica configuration) */
+        get: operations["list-registry-remotes"];
+        put?: never;
+        /**
+         * Create or update a remote registry (cluster-admin)
+         * @description Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored.
+         */
+        post: operations["set-registry-remote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registries/remotes/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one remote registry by name */
+        get: operations["get-registry-remote"];
+        put?: never;
+        post?: never;
+        /** Delete a remote registry (cluster-admin) — idempotent */
+        delete: operations["delete-registry-remote"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registries/remotes/{name}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search a remote OCI registry for matching images
+         * @description Substring match on repository name. Live wiring routes to the remote's catalog API ; the mock returns canned results against a fixed corpus per remote.
+         */
+        get: operations["search-registry-remote"];
         put?: never;
         post?: never;
         delete?: never;
@@ -808,6 +1132,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/routers/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename one router (admin) */
+        put: operations["rename-routers-row"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/routers/{key}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get editable metadata for one router */
+        get: operations["get-routers-metadata"];
+        /** Replace editable metadata for one router (admin) */
+        put: operations["set-routers-metadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routers/{uuid}": {
         parameters: {
             query?: never;
@@ -836,6 +1195,61 @@ export interface paths {
         put?: never;
         /** Create a scheduling rule (live-first ; mem fallback on Unimplemented) */
         post: operations["create-scheduling-rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduling-rules/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename one scheduling-rule (admin) */
+        put: operations["rename-scheduling-rules-row"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduling-rules/{key}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get editable metadata for one scheduling-rule */
+        get: operations["get-scheduling-rules-metadata"];
+        /** Replace editable metadata for one scheduling-rule (admin) */
+        put: operations["set-scheduling-rules-metadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduling-rules/{key}/microvms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the microVMs deployed under one scheduling rule
+         * @description Filters the microvms catalogue by the row's `scheduling_rule` field (set when a rule expands to N replicas).
+         */
+        get: operations["list-scheduling-rule-microvms"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -929,9 +1343,13 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Rename / re-describe a security group (mock-friendly)
+         * @description Updates name and/or description in the seed catalogue. Live wiring will route to RenameSecurityGroup + SetSecurityGroupDescription once exposed via huma.
+         */
+        put: operations["update-security-group"];
         post?: never;
-        /** Delete a security group (live-only) */
+        /** Delete a security group */
         delete: operations["delete-security-group"];
         options?: never;
         head?: never;
@@ -950,7 +1368,10 @@ export interface paths {
          * @description Live-first ; on Unimplemented OR no daemon, falls back to the mock 'security-rules' resource (matched by group name) so the dashboard stays explorable before weft-agent's SG-rule embedding lands.
          */
         get: operations["get-security-group-rules"];
-        /** Atomically replace a security group's rules */
+        /**
+         * Atomically replace a security group's rules
+         * @description Live-first ; falls back to an in-memory mock store (seeded from the static security-rules table on first read) when no live agent is wired, so the SecurityPage edit affordance works through staged rollouts.
+         */
         put: operations["set-security-group-rules"];
         post?: never;
         delete?: never;
@@ -987,7 +1408,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Resize a share / toggle read-only (tenant admin)
+         * @description Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile.
+         */
+        put: operations["resize-share"];
         post?: never;
         /** Delete a share (tenant admin) */
         delete: operations["delete-share"];
@@ -1242,6 +1667,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/volumes/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a volume (admin)
+         * @description Updates the human-readable name. Attached VMs keep referencing the volume by uuid ; this is the dashboard label.
+         */
+        put: operations["rename-volume"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volumes/{key}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the editable metadata layer for one volume */
+        get: operations["get-volume-metadata"];
+        /**
+         * Replace the editable metadata for one volume (admin)
+         * @description Free-form description + suggested mount-point + filesystem hint. UpdatedAt / UpdatedBy are stamped server-side.
+         */
+        put: operations["set-volume-metadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volumes/{key}/properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the property bag attached to a volume */
+        get: operations["list-volume-properties"];
+        put?: never;
+        /**
+         * Upsert a property on a volume (admin)
+         * @description Inserts or updates by Key. The orchestration layer reads these to make placement / lifecycle decisions.
+         */
+        post: operations["set-volume-property"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volumes/{key}/properties/{prop_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one property on a volume (admin) — idempotent */
+        delete: operations["delete-volume-property"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/volumes/{uuid}": {
         parameters: {
             query?: never;
@@ -1358,6 +1862,11 @@ export interface components {
              */
             name: string;
             /**
+             * @description Email of the user who owns the key. Drives group-based authz : a VM authorized for group G inherits keys whose owner is a member of G.
+             * @example alice@weft.local
+             */
+            owner?: string;
+            /**
              * @description OpenSSH-format line : '<type> <b64> [comment]'
              * @example ssh-ed25519 AAAA… alice@laptop
              */
@@ -1452,7 +1961,7 @@ export interface components {
              * @example https://example.com/schemas/APIVMProperty.json
              */
             readonly $schema?: string;
-            /** @description When true, the in-guest weft-vm-agent can read this via NATS */
+            /** @description When true, the in-guest weft-microvm-agent can read this via NATS */
             guest_readable: boolean;
             /**
              * @description Operator-defined property key
@@ -1568,6 +2077,20 @@ export interface components {
             readonly $schema?: string;
             vm: string;
             volume: string;
+        };
+        AuthorizedGroup: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AuthorizedGroup.json
+             */
+            readonly $schema?: string;
+            /** @description RFC-3339, server-stamped */
+            readonly added_at: string;
+            /** @description Group name within the tenant */
+            group: string;
+            /** @description Tenant the group lives in */
+            tenant: string;
         };
         BucketNameResp: {
             /**
@@ -1866,6 +2389,15 @@ export interface components {
             /** Format: int64 */
             size_gib: number;
         };
+        DeleteRegistryRemoteOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteRegistryRemoteOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: string;
+        };
         DeleteSSHKeyOutputBody: {
             /**
              * Format: uri
@@ -1884,6 +2416,15 @@ export interface components {
             readonly $schema?: string;
             deleted: string;
         };
+        DeleteVolumePropertyOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteVolumePropertyOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: string;
+        };
         DeletedNameResp: {
             /**
              * Format: uri
@@ -1892,6 +2433,27 @@ export interface components {
              */
             readonly $schema?: string;
             deleted: string;
+        };
+        EditableMetadata: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EditableMetadata.json
+             */
+            readonly $schema?: string;
+            /** @description Operator-supplied prose ; surfaced in the dashboard. */
+            description: string;
+            /** @description RFC-3339 ; server-stamped */
+            readonly updated_at: string;
+            /** @description OIDC email of the last editor */
+            readonly updated_by: string;
+        };
+        EffectiveKey: {
+            fingerprint: string;
+            name: string;
+            owner: string;
+            /** @description 'direct' or 'group:<tenant>/<group>' */
+            source: string;
         };
         EmailResp: {
             /**
@@ -2070,6 +2632,22 @@ export interface components {
             email: string;
             groups: string[] | null;
         };
+        NetworkMetadata: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/NetworkMetadata.json
+             */
+            readonly $schema?: string;
+            /** @description Operator-supplied prose ; surfaced in the dashboard. */
+            description: string;
+            /** @description DNS resolvers handed to instances on this network. Empty = inherit cluster default. */
+            dns_servers: string[] | null;
+            /** @description RFC-3339 ; server-stamped */
+            readonly updated_at: string;
+            /** @description OIDC email of the last editor */
+            readonly updated_by: string;
+        };
         ObjectDetail: {
             /**
              * Format: uri
@@ -2116,6 +2694,39 @@ export interface components {
              */
             readonly $schema?: string;
             ok: boolean;
+        };
+        Plugin: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Plugin.json
+             */
+            readonly $schema?: string;
+            /** @description One-paragraph description ; shown in the install detail pane */
+            description: string;
+            /** @description When installed, can be temporarily disabled without uninstalling */
+            enabled: boolean;
+            /** @description Stable plugin slug, e.g. 'vitess-dbaas' */
+            id: string;
+            /**
+             * @description 'available' | 'installed'
+             * @enum {string}
+             */
+            install_status: "available" | "installed";
+            /** @description RFC-3339 ; set when InstallStatus transitions to installed */
+            installed_at?: string;
+            /** @description OIDC email of the installing admin */
+            installed_by?: string;
+            /** @description Display name */
+            name: string;
+            /** @description Resource IDs this plugin contributes — they appear in /api/resources once installed+enabled */
+            resources: string[] | null;
+            /** @description Sidebar section the plugin contributes to (e.g. 'Database') */
+            section: string;
+            /** @description Vendor / maintainer (e.g. 'openweft', 'planetscale', 'redis') */
+            vendor: string;
+            /** @description Plugin version (semver) */
+            version: string;
         };
         PolicyStatement: {
             /** @enum {string} */
@@ -2199,6 +2810,45 @@ export interface components {
             /** Format: int64 */
             volumes_gib: number;
         };
+        RegistryRemote: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegistryRemote.json
+             */
+            readonly $schema?: string;
+            /** @description Sync paused when false */
+            enabled: boolean;
+            /**
+             * @description 'proxy' (pull-through cache) or 'replica' (push mirror)
+             * @enum {string}
+             */
+            kind: "proxy" | "replica";
+            /** @description RFC-3339 timestamp of the last successful sync */
+            last_sync?: string;
+            /** @description Stable identifier (slug) */
+            name: string;
+            /** @description RFC-3339 */
+            updated_at: string;
+            /** @description Email of the last editor */
+            updated_by?: string;
+            /** @description OCI registry endpoint (https://…) */
+            url: string;
+            /** @description Basic-auth user (optional) */
+            username?: string;
+        };
+        RemoteSearchHit: {
+            /** @description Comma-separated arch list, e.g. 'amd64, arm64' */
+            arches: string;
+            /** @description Relative timestamp, e.g. '3d ago' */
+            pushed: string;
+            repository: string;
+            /** @description Human-readable size, e.g. '52 MiB' */
+            size: string;
+            tag: string;
+            /** @description container / raw / chart / model … */
+            type: string;
+        };
         RemovedOutputBody: {
             /**
              * Format: uri
@@ -2207,6 +2857,90 @@ export interface components {
              */
             readonly $schema?: string;
             removed: string;
+        };
+        RenameNetworkInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameNetworkInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description New human-readable name */
+            new_name: string;
+        };
+        RenameNetworkResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameNetworkResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        RenameRowInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameRowInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description New human-readable name */
+            new_name: string;
+        };
+        RenameRowResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameRowResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        RenameVolumeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameVolumeInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description New human-readable name ; must be unique within the project */
+            new_name: string;
+        };
+        RenameVolumeResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameVolumeResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        ResizeShareInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResizeShareInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Re-fans to mounting VMs on the next reconcile */
+            read_only?: boolean;
+            /**
+             * Format: int64
+             * @description New size in GiB (must be >= current ; shrinking is rejected)
+             */
+            size_gb: number;
+        };
+        ResizeShareResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResizeShareResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            read_only: boolean;
+            /** Format: int64 */
+            size_gb: number;
         };
         ResourceMeta: {
             columns: components["schemas"]["Column"][] | null;
@@ -2235,6 +2969,7 @@ export interface components {
         SecurityRule: {
             /** @enum {string} */
             direction: "ingress" | "egress";
+            enabled?: boolean;
             /** Format: int32 */
             port_max: number;
             /** Format: int32 */
@@ -2274,6 +3009,37 @@ export interface components {
             readonly $schema?: string;
             /** @description The exact set of catalogue names to assign (replace-set) */
             names: string[] | null;
+        };
+        Subnet: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Subnet.json
+             */
+            readonly $schema?: string;
+            /** @description e.g. 10.10.0.0/24 */
+            cidr: string;
+            /** @description Disabled subnets stay in the catalogue but the DHCP pool is parked. Missing = enabled. */
+            enabled?: boolean;
+            /** @description Gateway IP (optional ; first usable host if empty) */
+            gateway: string;
+            /** @description Operator-chosen handle, unique within the network */
+            name: string;
+            /** @description RFC-3339 ; server-stamped */
+            readonly updated_at: string;
+            /** @description OIDC email of the last editor */
+            readonly updated_by: string;
+            /** @description Server-stamped */
+            readonly uuid: string;
+        };
+        SubnetDeleteOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SubnetDeleteOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: string;
         };
         SummaryItem: {
             /** Format: int64 */
@@ -2371,6 +3137,111 @@ export interface components {
             networks: components["schemas"]["TopoNetwork"][] | null;
             nodes: components["schemas"]["TopoNode"][] | null;
         };
+        UpdateDNSRecordInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateDNSRecordInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Enable / disable this record. Omit to leave unchanged. */
+            enabled?: boolean;
+            /** @description Leaf name (or '@' for apex) */
+            name?: string;
+            /**
+             * Format: int64
+             * @description TTL in seconds
+             */
+            ttl?: number;
+            /** @description A / AAAA / CNAME / TXT / SRV / NS / MX */
+            type?: string;
+            /** @description Record value (IP, target, TXT data, …) */
+            value?: string;
+        };
+        UpdateDNSRecordResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateDNSRecordResp.json
+             */
+            readonly $schema?: string;
+            enabled: boolean;
+            name: string;
+            /** Format: int64 */
+            ttl: number;
+            type: string;
+            uuid: string;
+            value: string;
+            zone: string;
+        };
+        UpdateDNSZoneInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateDNSZoneInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Backend (coredns / bind9 / route53 …). Empty = keep current. */
+            backend?: string;
+            /** @description Enable / disable serving this zone. Omit to leave unchanged. */
+            enabled?: boolean;
+            /** @description New zone name (FQDN). Empty = keep current. */
+            name?: string;
+            /** @description External NS to fan updates to (RFC-2136). Empty string clears the target. */
+            push_target: string;
+            /**
+             * @description primary / secondary / forward
+             * @enum {string}
+             */
+            role?: "" | "primary" | "secondary" | "forward";
+            /**
+             * Format: int64
+             * @description Default TTL in seconds (>0 to change)
+             */
+            ttl_default?: number;
+        };
+        UpdateDNSZoneResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateDNSZoneResp.json
+             */
+            readonly $schema?: string;
+            backend: string;
+            enabled: boolean;
+            name: string;
+            push_target: string;
+            role: string;
+            /** Format: int64 */
+            ttl_default: number;
+            uuid: string;
+        };
+        UpdateSGInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateSGInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Free-form description. Empty string clears it. */
+            description: string;
+            /** @description Enable / disable the group. Omit to leave unchanged ; disabled groups stay in the catalogue but their rules don't apply. */
+            enabled?: boolean;
+            /** @description New name. Empty = keep current. */
+            name?: string;
+        };
+        UpdateSGResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateSGResp.json
+             */
+            readonly $schema?: string;
+            description: string;
+            enabled: boolean;
+            name: string;
+            uuid: string;
+        };
         VMInfo: {
             /**
              * Format: uri
@@ -2410,6 +3281,27 @@ export interface components {
             name: string;
             ts: string;
         };
+        VmAuthzAddInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VmAuthzAddInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Group name within the tenant */
+            group: string;
+            /** @description Tenant the group belongs to */
+            tenant: string;
+        };
+        VmAuthzRemoveOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VmAuthzRemoveOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: string;
+        };
         VmStateBody: {
             /**
              * Format: uri
@@ -2419,6 +3311,41 @@ export interface components {
             readonly $schema?: string;
             name: string;
             state: string;
+        };
+        VolumeMetadata: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VolumeMetadata.json
+             */
+            readonly $schema?: string;
+            /** @description Operator-supplied prose ; surfaced in the dashboard and the volume drawer */
+            description: string;
+            /**
+             * @description mkfs target when the guest claims a fresh volume
+             * @enum {string}
+             */
+            filesystem: "" | "ext4" | "xfs" | "btrfs" | "ext3" | "zfs";
+            /** @description Guest-side mount path the agent honours when attaching (e.g. /mnt/data) */
+            mount_point: string;
+            /** @description RFC-3339 ; server-stamped */
+            readonly updated_at: string;
+            /** @description OIDC email of the last editor */
+            readonly updated_by: string;
+        };
+        VolumeProperty: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VolumeProperty.json
+             */
+            readonly $schema?: string;
+            /** @description Free-form annotation key */
+            key: string;
+            /** @description RFC-3339 ; server-stamped */
+            readonly updated_at: string;
+            /** @description Annotation value (opaque to this layer) */
+            value: string;
         };
     };
     responses: never;
@@ -2739,6 +3666,42 @@ export interface operations {
             };
         };
     };
+    "update-dns-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Record uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDNSRecordInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateDNSRecordResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "delete-dns-record": {
         parameters: {
             query?: never;
@@ -2792,6 +3755,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateNameUUID"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-dns-zone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Zone uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDNSZoneInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateDNSZoneResp"];
                 };
             };
             /** @description Error */
@@ -2919,6 +3918,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AllocateFloatingIPResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "rename-floating-ips-row": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRowInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameRowResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-floating-ips-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier (name or uuid) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-floating-ips-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditableMetadata"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
                 };
             };
             /** @description Error */
@@ -3243,6 +4346,142 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-vm-authorized-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description microVM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizedGroup"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "add-vm-authorized-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description microVM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VmAuthzAddInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizedGroup"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "remove-vm-authorized-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description microVM name */
+                name: string;
+                /** @description Tenant */
+                tenant: string;
+                /** @description Group name */
+                group: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmAuthzRemoveOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-vm-effective-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description microVM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveKey"][] | null;
+                };
             };
             /** @description Error */
             default: {
@@ -3862,6 +5101,212 @@ export interface operations {
             };
         };
     };
+    "rename-network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current network identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameNetworkInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameNetworkResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-network-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network identifier (name today ; uuid once live wiring lands) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-network-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkMetadata"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-subnets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subnet"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-subnet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Subnet"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subnet"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-subnet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network identifier */
+                key: string;
+                /** @description Subnet uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetDeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "delete-network": {
         parameters: {
             query?: never;
@@ -3880,6 +5325,163 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "disable-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plugin id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "enable-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plugin id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "install-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plugin id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "uninstall-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plugin id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
             };
             /** @description Error */
             default: {
@@ -4055,6 +5657,167 @@ export interface operations {
             };
         };
     };
+    "list-registry-remotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryRemote"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-registry-remote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistryRemote"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryRemote"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-registry-remote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Remote-registry slug */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryRemote"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-registry-remote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Remote-registry slug */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteRegistryRemoteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "search-registry-remote": {
+        parameters: {
+            query?: {
+                /** @description Repository substring to search for. Empty returns a curated 'featured' subset. */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Remote-registry slug */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteSearchHit"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "registry-upload": {
         parameters: {
             query?: never;
@@ -4209,6 +5972,110 @@ export interface operations {
             };
         };
     };
+    "rename-routers-row": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRowInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameRowResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-routers-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier (name or uuid) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-routers-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditableMetadata"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "delete-router": {
         parameters: {
             query?: never;
@@ -4259,6 +6126,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateSchedRuleResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "rename-scheduling-rules-row": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRowInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameRowResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-scheduling-rules-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier (name or uuid) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-scheduling-rules-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditableMetadata"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditableMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-scheduling-rule-microvms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scheduling-rule name */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[] | null;
                 };
             };
             /** @description Error */
@@ -4463,6 +6468,42 @@ export interface operations {
             };
         };
     };
+    "update-security-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Security-group uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSGInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateSGResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "delete-security-group": {
         parameters: {
             query?: never;
@@ -4580,6 +6621,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateShareResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resize-share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Share name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResizeShareInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResizeShareResp"];
                 };
             };
             /** @description Error */
@@ -5183,6 +7260,212 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateVolumeResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "rename-volume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Current volume identifier (name today ; uuid once live wiring lands) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameVolumeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameVolumeResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-volume-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume identifier (name today ; uuid once live wiring lands) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-volume-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolumeMetadata"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeMetadata"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-volume-properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume identifier (name today ; uuid once live wiring lands) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeProperty"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-volume-property": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume identifier */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolumeProperty"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeProperty"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-volume-property": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume identifier */
+                key: string;
+                /** @description Property key to delete */
+                prop_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteVolumePropertyOutputBody"];
                 };
             };
             /** @description Error */

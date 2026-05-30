@@ -197,7 +197,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/microvms",
 		Summary:       "Create a VM (flavor + image + scheduling)",
-		Description:   "A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-vm-agent (pull model).",
+		Description:   "A microVM is the combination of a flavor (sizing envelope), an image, and a scheduling policy ; cpu/ram/disk are not independent fields — they're resolved from the flavor catalogue server-side. Ingress (floating-ip / load-balancer) is best-effort post-create ; failures show up as `warnings` rather than a hard error. First-boot provisioning stamps weft.boot/* properties read by the in-guest weft-microvm-agent (pull model).",
 		Tags:          []string{"microvms", "lifecycle"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createVMInput) (*createVMOutput, error) {
