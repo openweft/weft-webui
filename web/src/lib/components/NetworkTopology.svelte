@@ -33,116 +33,212 @@
     return '#94a3b8';
   }
 
-  interface Hub {
-    net: TopoNetwork;
+  // ---- base (computed) layout, keyed by id ----
+  interface Pt {
     x: number;
     y: number;
-    angle: number;
   }
-  interface Placed {
-    node: TopoNode;
-    x: number;
-    y: number;
-    hx: number;
-    hy: number;
-  }
-
-  let layout = $derived.by(() => {
+  let base = $derived.by(() => {
     const n = networks.length;
     const hubR = n <= 1 ? 0 : 210;
-    const hubs: Hub[] = networks.map((net, i) => {
-      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(n, 1);
-      return { net, x: CX + hubR * Math.cos(angle), y: CY + hubR * Math.sin(angle), angle };
+    const pts = new Map<string, Pt>();
+    const hubAngle = new Map<string, number>();
+    networks.forEach((net, i) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(n, 1);
+      pts.set(net.id, { x: CX + hubR * Math.cos(a), y: CY + hubR * Math.sin(a) });
+      hubAngle.set(net.id, a);
     });
-    const hubByName = new Map(hubs.map((h) => [h.net.id, h]));
-
-    const placed: Placed[] = [];
-    for (const h of hubs) {
-      const mine = nodes.filter((nd) => nd.network === h.net.id);
+    for (const net of networks) {
+      const mine = nodes.filter((nd) => nd.network === net.id);
       const m = mine.length;
       const spread = Math.min(Math.PI * 1.1, 0.6 + m * 0.22);
+      const h = pts.get(net.id)!;
+      const base = hubAngle.get(net.id)!;
       mine.forEach((node, j) => {
-        const a = h.angle + (m === 1 ? 0 : (j / (m - 1) - 0.5) * spread);
+        const a = base + (m === 1 ? 0 : (j / (m - 1) - 0.5) * spread);
         const r = 96 + (j % 2) * 26;
-        placed.push({ node, x: h.x + r * Math.cos(a), y: h.y + r * Math.sin(a), hx: h.x, hy: h.y });
+        pts.set(node.id, { x: h.x + r * Math.cos(a), y: h.y + r * Math.sin(a) });
       });
     }
+    return pts;
+  });
 
-    // WireGuard mesh : every hub peers with every other hub.
-    const links: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    for (let i = 0; i < hubs.length; i++)
-      for (let j = i + 1; j < hubs.length; j++)
-        links.push({ x1: hubs[i].x, y1: hubs[i].y, x2: hubs[j].x, y2: hubs[j].y });
+  // ---- user overrides (dragged elements) ----
+  let overrides = $state<Record<string, Pt>>({});
+  function pos(id: string): Pt {
+    return overrides[id] ?? base.get(id) ?? { x: CX, y: CY };
+  }
 
-    return { hubs, placed, links, hubByName };
+  // ---- pan / zoom transform ----
+  let scale = $state(1);
+  let tx = $state(0);
+  let ty = $state(0);
+
+  let svgEl = $state<SVGSVGElement>();
+  let mode = $state<'none' | 'pan' | 'drag'>('none');
+  let dragId = '';
+  let start = { x: 0, y: 0, tx: 0, ty: 0 };
+
+  // pointer → viewBox coords
+  function vb(e: PointerEvent | WheelEvent): Pt {
+    const ctm = svgEl?.getScreenCTM();
+    if (!svgEl || !ctm) return { x: 0, y: 0 };
+    const p = svgEl.createSVGPoint();
+    p.x = e.clientX;
+    p.y = e.clientY;
+    const u = p.matrixTransform(ctm.inverse());
+    return { x: u.x, y: u.y };
+  }
+  // viewBox → graph (pre-transform) coords
+  function graph(u: Pt): Pt {
+    return { x: (u.x - tx) / scale, y: (u.y - ty) / scale };
+  }
+
+  function startPan(e: PointerEvent) {
+    mode = 'pan';
+    const u = vb(e);
+    start = { x: u.x, y: u.y, tx, ty };
+    svgEl?.setPointerCapture(e.pointerId);
+  }
+  function startDrag(e: PointerEvent, id: string) {
+    e.stopPropagation();
+    mode = 'drag';
+    dragId = id;
+    svgEl?.setPointerCapture(e.pointerId);
+  }
+  function onMove(e: PointerEvent) {
+    if (mode === 'pan') {
+      const u = vb(e);
+      tx = start.tx + (u.x - start.x);
+      ty = start.ty + (u.y - start.y);
+    } else if (mode === 'drag') {
+      overrides = { ...overrides, [dragId]: graph(vb(e)) };
+    }
+  }
+  function endMove(e: PointerEvent) {
+    mode = 'none';
+    dragId = '';
+    try {
+      svgEl?.releasePointerCapture(e.pointerId);
+    } catch {
+      /* no-op */
+    }
+  }
+  function onWheel(e: WheelEvent) {
+    e.preventDefault();
+    const u = vb(e);
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const ns = Math.min(3, Math.max(0.4, scale * factor));
+    tx = u.x - (u.x - tx) * (ns / scale);
+    ty = u.y - (u.y - ty) * (ns / scale);
+    scale = ns;
+  }
+  function zoom(factor: number) {
+    const ns = Math.min(3, Math.max(0.4, scale * factor));
+    // zoom around the centre of the viewBox
+    tx = CX - (CX - tx) * (ns / scale);
+    ty = CY - (CY - ty) * (ns / scale);
+    scale = ns;
+  }
+  function reset() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    overrides = {};
+  }
+
+  // mesh links between hub pairs
+  let meshLinks = $derived.by(() => {
+    const out: [string, string][] = [];
+    for (let i = 0; i < networks.length; i++)
+      for (let j = i + 1; j < networks.length; j++) out.push([networks[i].id, networks[j].id]);
+    return out;
   });
 </script>
 
-<div>
-  <h2 class="text-2xl font-bold">Topology</h2>
-  <p class="text-sm text-base-content/60">
-    Overlay networks meshed over WireGuard, with the microVMs &amp; VMs attached to each.
-  </p>
+<div class="flex items-center gap-3">
+  <div>
+    <h2 class="text-2xl font-bold">Topology</h2>
+    <p class="text-sm text-base-content/60">
+      Overlay networks meshed over WireGuard, with the microVMs &amp; VMs attached to each.
+      Drag to pan, drag a node to rearrange, scroll to zoom.
+    </p>
+  </div>
 </div>
 
-<div class="relative mt-4 overflow-hidden rounded-box border border-base-300 bg-base-100">
+<div
+  class="relative mt-4 overflow-hidden rounded-box border border-base-300 bg-base-100"
+  style="resize: vertical; height: 540px; min-height: 360px;"
+>
   {#if loading}
     <div class="flex justify-center py-24"><span class="loading loading-spinner loading-lg"></span></div>
   {:else if error}
     <div class="alert alert-error m-4">{error}</div>
   {:else}
-    <svg viewBox={`0 0 ${W} ${H}`} class="block w-full">
-      <!-- mesh links between network hubs -->
-      {#each layout.links as l (`${l.x1}-${l.y1}-${l.x2}-${l.y2}`)}
-        <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-          stroke="#22d3ee" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 5" />
-      {/each}
+    <!-- toolbar -->
+    <div class="absolute right-3 top-3 z-10 flex gap-1">
+      <button class="btn btn-xs btn-ghost btn-circle bg-base-100/80" aria-label="Zoom out" onclick={() => zoom(1 / 1.2)}>−</button>
+      <button class="btn btn-xs btn-ghost btn-circle bg-base-100/80" aria-label="Zoom in" onclick={() => zoom(1.2)}>+</button>
+      <button class="btn btn-xs btn-ghost bg-base-100/80" onclick={reset}>Reset</button>
+    </div>
 
-      <!-- spokes : node → its hub -->
-      {#each layout.placed as p (p.node.id)}
-        <line x1={p.x} y1={p.y} x2={p.hx} y2={p.hy}
-          stroke="currentColor" stroke-opacity="0.18" stroke-width="1" />
-      {/each}
+    <svg
+      bind:this={svgEl}
+      viewBox={`0 0 ${W} ${H}`}
+      class="block h-full w-full touch-none select-none"
+      class:cursor-grab={mode === 'none'}
+      class:cursor-grabbing={mode === 'pan'}
+      onpointerdown={startPan}
+      onpointermove={onMove}
+      onpointerup={endMove}
+      onpointercancel={endMove}
+      onwheel={onWheel}
+      role="application"
+      aria-label="Network topology"
+    >
+      <g transform={`translate(${tx} ${ty}) scale(${scale})`}>
+        <!-- WireGuard mesh between hubs -->
+        {#each meshLinks as [a, b] (a + b)}
+          {@const pa = pos(a)}
+          {@const pb = pos(b)}
+          <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+            stroke="#22d3ee" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 5" />
+        {/each}
 
-      <!-- hubs -->
-      {#each layout.hubs as h (h.net.id)}
-        <g>
-          <circle cx={h.x} cy={h.y} r="28" fill="#0e7490" fill-opacity="0.14"
-            stroke="#22d3ee" stroke-width="1.6" />
-          <text x={h.x} y={h.y - 1} text-anchor="middle" class="fill-base-content text-[12px] font-semibold">
-            {h.net.name}
-          </text>
-          <text x={h.x} y={h.y + 12} text-anchor="middle" class="fill-base-content/60 text-[9px]">
-            {h.net.az}
-          </text>
-          <text x={h.x} y={h.y + 46} text-anchor="middle" class="fill-base-content/50 font-mono text-[9px]">
-            {h.net.cidr}
-          </text>
-        </g>
-      {/each}
+        <!-- spokes -->
+        {#each nodes as nd (nd.id)}
+          {@const p = pos(nd.id)}
+          {@const h = pos(nd.network)}
+          <line x1={p.x} y1={p.y} x2={h.x} y2={h.y} stroke="currentColor" stroke-opacity="0.18" stroke-width="1" />
+        {/each}
 
-      <!-- nodes -->
-      {#each layout.placed as p (p.node.id)}
-        <g
-          role="img"
-          aria-label={p.node.name}
-          onmouseenter={() => (hovered = p.node)}
-          onmouseleave={() => (hovered = null)}
-          class="cursor-pointer"
-        >
-          <circle cx={p.x} cy={p.y} r={hovered?.id === p.node.id ? 11 : 8}
-            fill={kindColor[p.node.kind] ?? '#94a3b8'}
-            stroke={statusStroke(p.node.status)} stroke-width="2.5" />
-          <text x={p.x} y={p.y + 20} text-anchor="middle" class="fill-base-content/70 text-[9px]">
-            {p.node.name}
-          </text>
-        </g>
-      {/each}
+        <!-- hubs -->
+        {#each networks as net (net.id)}
+          {@const p = pos(net.id)}
+          <g class="cursor-move" onpointerdown={(e) => startDrag(e, net.id)} role="img" aria-label={net.name}>
+            <circle cx={p.x} cy={p.y} r="28" fill="#0e7490" fill-opacity="0.14" stroke="#22d3ee" stroke-width="1.6" />
+            <text x={p.x} y={p.y - 1} text-anchor="middle" class="pointer-events-none fill-base-content text-[12px] font-semibold">{net.name}</text>
+            <text x={p.x} y={p.y + 12} text-anchor="middle" class="pointer-events-none fill-base-content/60 text-[9px]">{net.az}</text>
+            <text x={p.x} y={p.y + 46} text-anchor="middle" class="pointer-events-none fill-base-content/50 font-mono text-[9px]">{net.cidr}</text>
+          </g>
+        {/each}
+
+        <!-- nodes -->
+        {#each nodes as nd (nd.id)}
+          {@const p = pos(nd.id)}
+          <g class="cursor-move" role="img" aria-label={nd.name}
+            onpointerdown={(e) => startDrag(e, nd.id)}
+            onmouseenter={() => (hovered = nd)} onmouseleave={() => (hovered = null)}>
+            <circle cx={p.x} cy={p.y} r={hovered?.id === nd.id ? 11 : 8}
+              fill={kindColor[nd.kind] ?? '#94a3b8'} stroke={statusStroke(nd.status)} stroke-width="2.5" />
+            <text x={p.x} y={p.y + 20} text-anchor="middle" class="pointer-events-none fill-base-content/70 text-[9px]">{nd.name}</text>
+          </g>
+        {/each}
+      </g>
     </svg>
 
-    <!-- hover info -->
     {#if hovered}
-      <div class="absolute right-3 top-3 w-56 rounded-box border border-base-300 bg-base-100/95 p-3 text-sm shadow">
+      <div class="absolute left-3 top-3 z-10 w-56 rounded-box border border-base-300 bg-base-100/95 p-3 text-sm shadow">
         <div class="font-semibold">{hovered.name}</div>
         <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt class="text-base-content/50">kind</dt><dd>{hovered.kind}</dd>
@@ -154,8 +250,7 @@
       </div>
     {/if}
 
-    <!-- legend -->
-    <div class="absolute bottom-3 left-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-box border border-base-300 bg-base-100/90 px-3 py-2 text-xs">
+    <div class="absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-box border border-base-300 bg-base-100/90 px-3 py-2 text-xs">
       <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-full" style="background:#38bdf8"></span>microVM</span>
       <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-full" style="background:#a855f7"></span>VM</span>
       <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-full" style="background:#6366f1"></span>infra</span>
