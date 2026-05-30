@@ -199,18 +199,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("PUT /api/projects/{name}/quota", handleSetProjectQuota)
 
 	// --- Resource lifecycle (live gRPC only) ---------------------
-	// Row-action / create-modal endpoints. Each handler short-circuits
-	// to 503 when no daemon is wired, so a mock-mode operator can't
-	// silently mutate something that isn't there.
-	mux.HandleFunc("POST /api/microvms", handleCreateVM)
-	mux.HandleFunc("POST /api/microvms/{name}/start", handleStartVM)
-	mux.HandleFunc("POST /api/microvms/{name}/stop", handleStopVM)
-	mux.HandleFunc("DELETE /api/microvms/{name}", handleDeleteVM)
-	mux.HandleFunc("GET /api/microvms/{name}/status", handleVMStatus)
-	mux.HandleFunc("GET /api/microvms/{name}/timings", handleVMTimings)
-	mux.HandleFunc("GET /api/microvms/{name}/logs", handleVMLogs)
-	// (Per-VM SSH-key assignments, properties, UEFI vars all moved
-	// to huma — see api_microvm_metadata.go.)
+	// VM lifecycle + per-VM metadata routes all live in huma now.
+	// See api_microvms.go (create/start/stop/delete/status/timings/
+	// logs) and api_microvm_metadata.go (properties / UEFI vars /
+	// sshkey assignments).
 	mux.HandleFunc("POST /api/volumes", handleCreateVolume)
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
 	mux.HandleFunc("POST /api/volumes/{uuid}/attach", handleAttachVolume)
