@@ -60,9 +60,14 @@ type importResult struct {
 	Names           []string `json:"names"`
 }
 
-// handleImportSSHKeys — POST /api/ssh-keys/import. Admin-gated by
-// route registration (only mounted on the admin port).
+// handleImportSSHKeys — POST /api/ssh-keys/import. tenant-admin (or
+// cluster-admin) only. Server-side gate (matches the SPA's canEdit)
+// since the routes are mounted on both ports now ; relying on the
+// route registration alone would let any user fire the import.
 func handleImportSSHKeys(w http.ResponseWriter, r *http.Request) {
+	if !requireSSHKeyWriter(w, r) {
+		return
+	}
 	var body importBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
