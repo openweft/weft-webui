@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/openweft/weft-webui/internal/auth"
 )
 
 // Object Storage — the S3 face of CubeFS. Buckets hold objects keyed with
@@ -90,6 +93,104 @@ var (
 		"s3:DeleteObject": true, "s3:ListBucket": true,
 	}
 )
+
+// policyDecision is the result of evaluating a bucket's policy against
+// one request. "allow"/"deny" carry an optional human reason for the
+// 403 body so the operator sees which rule fired.
+type policyDecision struct {
+	allow  bool
+	reason string
+}
+
+// evaluatePolicy answers "may this principal perform action on this
+// key in this bucket?". The semantics are deliberately permissive for
+// the demo : no policy = allow ; otherwise an explicit Deny match
+// wins, an explicit Allow match grants, and a no-match falls back to
+// allow. AWS-style default-deny would be more correct, but lock-outs
+// from a single Allow-only statement would be confusing here — wire
+// strict mode behind a flag when the deployment needs it.
+//
+// key may be "" for bucket-level actions (s3:ListBucket).
+//
+// Cluster/tenant admins bypass policies — same shortcut Shares uses.
+func evaluatePolicy(ctx context.Context, bucket, action, key string) policyDecision {
+	u := auth.UserFromContext(ctx)
+	if u != nil && (isClusterAdmin(u) || tenantsDB.isAnyTenantAdmin(u.Email)) {
+		return policyDecision{allow: true}
+	}
+	bucketsMu.Lock()
+	p := policies[bucket]
+	bucketsMu.Unlock()
+	if p == nil || len(p.Statements) == 0 {
+		return policyDecision{allow: true}
+	}
+	principal := ""
+	if u != nil {
+		principal = u.Email
+		if principal == "" {
+			principal = u.Subject
+		}
+	}
+	var allowed *PolicyStatement
+	for i := range p.Statements {
+		s := &p.Statements[i]
+		if s.Action != action {
+			continue
+		}
+		if !principalMatch(s.Principal, principal) {
+			continue
+		}
+		if !resourceMatch(s.Resource, key) {
+			continue
+		}
+		if s.Effect == "Deny" {
+			return policyDecision{
+				allow:  false,
+				reason: "denied by policy : " + s.Principal + " " + s.Action + " " + s.Resource,
+			}
+		}
+		if s.Effect == "Allow" && allowed == nil {
+			allowed = s
+		}
+	}
+	if allowed != nil {
+		return policyDecision{allow: true}
+	}
+	return policyDecision{allow: true} // permissive default ; see comment
+}
+
+// principalMatch — "*" matches anyone (even unauthenticated callers),
+// otherwise exact (case-insensitive) match on the caller's email.
+func principalMatch(rule, caller string) bool {
+	if rule == "*" {
+		return true
+	}
+	return strings.EqualFold(rule, caller)
+}
+
+// resourceMatch supports three patterns : "*" (everything),
+// "prefix/*" (prefix glob), and exact-key. Bucket-level actions
+// (key == "") match "*" only.
+func resourceMatch(rule, key string) bool {
+	if rule == "*" {
+		return true
+	}
+	if strings.HasSuffix(rule, "/*") {
+		return strings.HasPrefix(key, strings.TrimSuffix(rule, "*"))
+	}
+	return rule == key
+}
+
+// requirePolicy is the request-side wrapper : evaluate, on deny write
+// a 403 + reason and return false so the caller exits the handler.
+func requirePolicy(w http.ResponseWriter, r *http.Request, bucket, action, key string) bool {
+	d := evaluatePolicy(r.Context(), bucket, action, key)
+	if d.allow {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": d.reason})
+	return false
+}
 
 func seedBuckets() []*bucket {
 	return []*bucket{
@@ -317,12 +418,17 @@ func itoaSafe(n int) string {
 }
 
 // handleListObjects returns the folders (common prefixes) and objects directly
-// under ?prefix= inside a bucket.
+// under ?prefix= inside a bucket. Policy gate : s3:ListBucket on the
+// bucket itself (no key — the resource match is bucket-level).
 func handleListObjects(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !requirePolicy(w, r, name, "s3:ListBucket", "") {
+		return
+	}
 	prefix := r.URL.Query().Get("prefix")
 	bucketsMu.Lock()
 	defer bucketsMu.Unlock()
-	b := findBucket(r.PathValue("name"))
+	b := findBucket(name)
 	if b == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
 		return
@@ -333,12 +439,17 @@ func handleListObjects(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleGetObject returns one object's metadata + a preview for text content.
+// handleGetObject returns one object's metadata + a preview for text
+// content. Policy gate : s3:GetObject on the requested key.
 func handleGetObject(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
 	key := r.URL.Query().Get("key")
+	if !requirePolicy(w, r, name, "s3:GetObject", key) {
+		return
+	}
 	bucketsMu.Lock()
 	defer bucketsMu.Unlock()
-	b := findBucket(r.PathValue("name"))
+	b := findBucket(name)
 	if b == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
 		return
@@ -351,15 +462,22 @@ func handleGetObject(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUploadObject stores uploaded files under ?prefix in the bucket.
+// Policy gate : s3:PutObject on the destination prefix (the upload
+// places files under <prefix>/<filename>, so the prefix is what the
+// rule has to match).
 func handleUploadObject(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		badUpload(w, "invalid multipart form")
 		return
 	}
 	prefix := strings.TrimSpace(r.FormValue("prefix"))
+	if !requirePolicy(w, r, name, "s3:PutObject", prefix) {
+		return
+	}
 	bucketsMu.Lock()
 	defer bucketsMu.Unlock()
-	b := findBucket(r.PathValue("name"))
+	b := findBucket(name)
 	if b == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such bucket"})
 		return
