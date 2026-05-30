@@ -137,6 +137,15 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("GET /api/healthz", handleHealthz)
 	mux.HandleFunc("GET /api/readyz", handleReadyz)
 
+	// Typed REST API : huma-generated handlers + OpenAPI 3.1 at
+	// /api/openapi + interactive docs at /api/docs. Mounted on the
+	// same mux so the existing middleware chain (security, logging,
+	// metrics, request-id, panic recovery, auth) wraps it unchanged.
+	// One huma.API per listener — scope drives which operations get
+	// registered, so the user listener never even acknowledges
+	// admin-only endpoints (404 instead of 403).
+	mountAPI(mux, scope)
+
 	// --- Auth routes (no auth) ---
 	if d.OIDC != nil {
 		mux.HandleFunc("GET /api/auth/login", d.OIDC.LoginHandler)
@@ -257,33 +266,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("POST /api/shares", handleCreateShare)
 	mux.HandleFunc("DELETE /api/shares/{name}", handleDeleteShare)
 
-	// Flavors catalogue — exposed on BOTH listeners so the user UI's
-	// CreateVMModal can offer the flavor picker even when the user UI
-	// hides the read-only sidebar entry. Same data the admin's
-	// /api/resources/flavors returns.
-	mux.HandleFunc("GET /api/flavors", handleListFlavors)
-
-	// Provisioning scripts catalogue. Read endpoints on both ports
-	// (CreateVMModal needs them on the user UI) ; write endpoints only
-	// on the admin port (mounted below). Mirror of the flavors split.
-	mux.HandleFunc("GET /api/scripts", handleListScripts)
-	mux.HandleFunc("GET /api/scripts/{name}", handleGetScript)
-	if scope == ScopeAdmin {
-		mux.HandleFunc("POST /api/scripts", handleSetScript)
-		mux.HandleFunc("DELETE /api/scripts/{name}", handleDeleteScript)
-	}
-
-	// SSH-keys catalogue. Visible on BOTH ports — every user needs
-	// to push their own keys ; restricting to admins blocked the
-	// self-service flow operators expect. Write surface mounted on
-	// both ports too ; the handlers enforce tenant_admin (or
-	// cluster_admin) server-side, so a non-admin curl sees the same
-	// 403 a non-admin SPA would never surface.
-	mux.HandleFunc("GET /api/ssh-keys", handleListSSHKeyCatalogue)
-	mux.HandleFunc("GET /api/ssh-keys/{name}", handleGetSSHKeyCatalogue)
-	mux.HandleFunc("POST /api/ssh-keys", handleSetSSHKeyCatalogue)
-	mux.HandleFunc("DELETE /api/ssh-keys/{name}", handleDeleteSSHKeyCatalogue)
-	mux.HandleFunc("POST /api/ssh-keys/import", handleImportSSHKeys)
+	// (Flavors, scripts, ssh-keys catalogues moved to huma — see
+	// api_flavors.go / api_scripts.go / api_sshkeys.go.)
 
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
@@ -907,15 +891,6 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		// tenant the user belongs to, each with its projects.
 		"scopes": tenantsDB.userScopes(u),
 	})
-}
-
-// handleListFlavors returns the flavor catalogue via flavorsCatalogue
-// (see flavors.go). Both this endpoint and the admin sidebar's
-// /api/resources/flavors path share the same source, so the day
-// weft-agent's ListFlavors RPC ships, swapping the implementation is
-// a single var assignment.
-func handleListFlavors(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, flavorRows(r.Context()))
 }
 
 func devLogin(w http.ResponseWriter, r *http.Request) {

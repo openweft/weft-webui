@@ -17,15 +17,12 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/openweft/weft-webui/internal/auth"
 )
 
 // importClient is the HTTP client used to hit the forge endpoints.
@@ -60,90 +57,9 @@ type importResult struct {
 	Names           []string `json:"names"`
 }
 
-// handleImportSSHKeys — POST /api/ssh-keys/import. tenant-admin (or
-// cluster-admin) only. Server-side gate (matches the SPA's canEdit)
-// since the routes are mounted on both ports now ; relying on the
-// route registration alone would let any user fire the import.
-func handleImportSSHKeys(w http.ResponseWriter, r *http.Request) {
-	if !requireSSHKeyWriter(w, r) {
-		return
-	}
-	var body importBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
-		return
-	}
-	body.Account = strings.TrimSpace(body.Account)
-	if body.Account == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account is required"})
-		return
-	}
-	endpoint, err := importEndpoint(body)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-
-	lines, err := fetchKeysFile(r.Context(), endpoint)
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{
-			"error": "fetch " + endpoint + ": " + err.Error(),
-		})
-		return
-	}
-
-	// Build a fingerprint→entry index from the existing catalogue so
-	// we can dedup against keys the operator already has under any
-	// name (manual or from a previous import).
-	existing, _ := sshKeysCatalogue.List(r.Context())
-	byFp := map[string]SSHKey{}
-	for _, k := range existing {
-		if k.Fingerprint != "" {
-			byFp[k.Fingerprint] = k
-		}
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	editor := ""
-	if u := auth.UserFromContext(r.Context()); u != nil {
-		editor = u.Email
-		if editor == "" {
-			editor = u.Subject
-		}
-	}
-
-	res := importResult{TotalSeen: len(lines)}
-	for i, line := range lines {
-		_, comment, fp, ok := parseSSHLine(line)
-		if !ok {
-			continue
-		}
-		if _, dup := byFp[fp]; dup {
-			res.SkippedExisting++
-			continue
-		}
-		name := fmt.Sprintf("%s:%s/%d", body.Provider, body.Account, i)
-		descr := comment
-		if descr == "" {
-			descr = fmt.Sprintf("imported from %s/%s", body.Provider, body.Account)
-		}
-		entry := SSHKey{
-			Name: name, PublicKey: line, Description: descr,
-			Source: body.Provider, SourceAccount: body.Account,
-			Fingerprint: fp, UpdatedAt: now, UpdatedBy: editor,
-		}
-		if err := sshKeysCatalogue.Set(r.Context(), entry); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{
-				"error": "set " + name + ": " + err.Error(),
-			})
-			return
-		}
-		res.Added++
-		res.Names = append(res.Names, name)
-		byFp[fp] = entry
-	}
-	writeJSON(w, http.StatusOK, res)
-}
+// (Import handler moved to huma — see api_sshkeys.go. importBody +
+// importResult + importEndpoint + fetchKeysFile stay here because
+// the huma handler reuses them verbatim.)
 
 // importEndpoint maps a (provider, account, forgejo_base) tuple to
 // the canonical .keys URL. The Forgejo flavour requires an explicit
