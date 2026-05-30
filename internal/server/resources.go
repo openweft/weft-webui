@@ -118,28 +118,10 @@ var registry = []Resource{
 		},
 	},
 	{
-		// Mirrors VMInfo (name, image, state → status, cpu, mem_mb, disk_gb,
-		// ip, project). flavor/host/network stay on mock rows (not as columns)
-		// so the topology view still finds the network attachment.
-		ID: "microvms", Label: "microVMs", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
-		Rows: []map[string]any{
-			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
-			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
-			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
-		},
-	},
-	{
-		ID: "instances", Label: "Instances (VM)", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
-		Rows: []map[string]any{
-			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
-			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
-		},
-	},
-	{
 		// Scheduling rules — declarative constraints the weft scheduler
-		// honours when picking hosts for the matched workloads.
+		// honours when picking hosts for the matched workloads. Placed
+		// above microVMs because the rule is conceptually upstream : it
+		// shapes where new VMs will land before they exist.
 		//
 		// Each rule carries :
 		//   count       desired replicas of the matching VMs
@@ -159,37 +141,27 @@ var registry = []Resource{
 		Columns: cols("name", "Name", "count", "Count",
 			"placement", "Placement", "selector", "Selector",
 			"project", "Project", "status", "Status"),
+		// Rows nil — served from schedulingDB (scheduling.go) so the
+		// table can mutate. Seed fixtures live in the store.
+	},
+	{
+		// Mirrors VMInfo (name, image, state → status, cpu, mem_mb, disk_gb,
+		// ip, project). flavor/host/network stay on mock rows (not as columns)
+		// so the topology view still finds the network attachment.
+		ID: "microvms", Label: "microVMs", Section: "Compute",
+		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
 		Rows: []map[string]any{
-			row("name", "nats-quorum",
-				"count", "3/3",
-				"placement", "az=different, rack=different, host=different",
-				"selector", "app=nats",
-				"project", "platform", "status", "compliant"),
-			row("name", "etcd-quorum",
-				"count", "3/3",
-				"placement", "az=different, rack=different, host=different",
-				"selector", "app=etcd",
-				"project", "platform", "status", "compliant"),
-			row("name", "cubefs-meta",
-				"count", "3/3",
-				"placement", "az=different, host=different",
-				"selector", "app=cubefs-master",
-				"project", "platform", "status", "compliant"),
-			row("name", "web-tier",
-				"count", "2/2",
-				"placement", "host=different",
-				"selector", "project=team-alpha, app=web",
-				"project", "team-alpha", "status", "compliant"),
-			row("name", "research-batch",
-				"count", "4/5",
-				"placement", "az=DC-C",
-				"selector", "project=research, kind=batch",
-				"project", "research", "status", "drifting"),
-			row("name", "ci-burst",
-				"count", "0/0",
-				"placement", "any",
-				"selector", "kind=ci-job",
-				"project", "team-beta", "status", "compliant"),
+			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
+			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
+			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
+		},
+	},
+	{
+		ID: "instances", Label: "Instances (VM)", Section: "Compute",
+		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
+		Rows: []map[string]any{
+			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
+			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
 		},
 	},
 

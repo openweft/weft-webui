@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { startVM, stopVM, deleteVM, deleteVolume, deleteNetwork, type Column, type Row } from '../api';
+  import {
+    startVM, stopVM, deleteVM,
+    deleteVolume, deleteNetwork, deleteSchedulingRule,
+    type Column, type Row,
+  } from '../api';
 
   let {
     columns,
@@ -112,6 +116,13 @@
           await deleteNetwork(uuid);
           break;
         }
+        case 'scheduling-rules': {
+          if (action !== 'delete') break;
+          const name = r.name as string;
+          if (!confirm(`Delete scheduling rule ${name} ?`)) break;
+          await deleteSchedulingRule(name);
+          break;
+        }
       }
       onChange?.();
     } catch (e) {
@@ -123,7 +134,7 @@
 
   // Which actions does the row dropdown surface, given the resource ?
   const showStartStop = $derived(resourceId === 'microvms');
-  const showDelete    = $derived(['microvms', 'volumes', 'networks'].includes(resourceId));
+  const showDelete    = $derived(['microvms', 'volumes', 'networks', 'scheduling-rules'].includes(resourceId));
   const liveWired     = $derived(showStartStop || showDelete);
 </script>
 
