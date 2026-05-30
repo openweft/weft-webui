@@ -68,6 +68,18 @@ export type APIVMLogsResult = components['schemas']['VMLogsResult'];
 export type APISecurityRule = components['schemas']['SecurityRule'];
 export type APIImportResult = components['schemas']['ImportResult'];
 
+// Tenant / project store views — typed shapes for the quota +
+// detail endpoints. Replaces the legacy hand-rolled aliases in
+// api.ts.
+export type APITenantDetail = components['schemas']['TenantDetail'];
+export type APITenantMember = components['schemas']['TenantMember'];
+export type APITenantProjectEntry = components['schemas']['TenantProjectEntry'];
+export type APITenantGroup = components['schemas']['TenantGroup'];
+export type APITenantCaller = components['schemas']['TenantCaller'];
+export type APITenantQuotaView = components['schemas']['TenantQuotaView'];
+export type APIProjectQuotaView = components['schemas']['ProjectQuotaView'];
+export type APIQuotas = components['schemas']['Quotas'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };

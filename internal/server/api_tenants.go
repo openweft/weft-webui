@@ -246,7 +246,7 @@ func mountTenantsReadAPI(api huma.API) {
 		Summary:     "Tenant detail (projects + members + groups + roles)",
 		Description: "Non-members get 404 (don't-acknowledge). The response annotates the caller's effective role so the SPA knows which affordances to render — saves a round-trip.",
 		Tags:        []string{"tenants"},
-	}, func(ctx context.Context, in *tenantNameInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *tenantNameInput) (*tenantDetailOutput, error) {
 		u := auth.UserFromContext(ctx)
 		detail, ok := tenantsDB.tenantDetail(in.Name)
 		if !ok {
@@ -255,12 +255,12 @@ func mountTenantsReadAPI(api huma.API) {
 		if !isClusterAdmin(u) && !tenantsDB.isMember(u, in.Name) {
 			return nil, huma.Error404NotFound("tenant not found")
 		}
-		detail["caller"] = map[string]any{
-			"email":         emailOf(u),
-			"cluster_admin": isClusterAdmin(u),
-			"tenant_admin":  tenantsDB.isTenantAdmin(u, in.Name),
+		detail.Caller = &TenantCaller{
+			Email:        emailOf(u),
+			ClusterAdmin: isClusterAdmin(u),
+			TenantAdmin:  tenantsDB.isTenantAdmin(u, in.Name),
 		}
-		return &passthroughOutput{Body: detail}, nil
+		return &tenantDetailOutput{Body: detail}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -269,7 +269,7 @@ func mountTenantsReadAPI(api huma.API) {
 		Path:        "/api/tenants/{name}/quota",
 		Summary:     "Get a tenant's quota view (cap + allocated + remaining)",
 		Tags:        []string{"tenants", "quotas"},
-	}, func(ctx context.Context, in *tenantNameInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *tenantNameInput) (*tenantQuotaOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !tenantsDB.isMember(u, in.Name) {
 			return nil, huma.Error404NotFound("tenant not found")
@@ -278,7 +278,7 @@ func mountTenantsReadAPI(api huma.API) {
 		if !ok {
 			return nil, huma.Error404NotFound("tenant not found")
 		}
-		return &passthroughOutput{Body: v}, nil
+		return &tenantQuotaOutput{Body: v}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -288,7 +288,7 @@ func mountTenantsReadAPI(api huma.API) {
 		Summary:     "Set a tenant's quota (cluster admin)",
 		Description: "Rejects a cap below current allocation so tenant admins don't end up with negative remaining.",
 		Tags:        []string{"tenants", "quotas"},
-	}, func(ctx context.Context, in *setTenantQuotaInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *setTenantQuotaInput) (*tenantQuotaOutput, error) {
 		u := auth.UserFromContext(ctx)
 		if !isClusterAdmin(u) {
 			return nil, huma.Error403Forbidden("cluster admin required")
@@ -297,9 +297,10 @@ func mountTenantsReadAPI(api huma.API) {
 			if uuid := liveLookupTenantUUID(ctx, in.Name); uuid != "" {
 				if err := live.SetTenantQuota(ctx, uuid, quotasMap(in.Body)); err == nil {
 					cap, alloc, _ := live.GetTenantQuota(ctx, uuid)
-					return &passthroughOutput{Body: map[string]any{
-						"cap": cap, "allocated": alloc,
-						"remaining": remainingMapFromMaps(cap, alloc),
+					return &tenantQuotaOutput{Body: TenantQuotaView{
+						Cap:       quotasFromMap(cap),
+						Allocated: quotasFromMap(alloc),
+						Remaining: remainingMapFromMaps(cap, alloc),
 					}}, nil
 				} else if !wclient.IsUnimplemented(err) {
 					return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -310,7 +311,7 @@ func mountTenantsReadAPI(api huma.API) {
 			return nil, hideHTTPErr(err)
 		}
 		v, _ := tenantsDB.tenantQuotaView(in.Name)
-		return &passthroughOutput{Body: v}, nil
+		return &tenantQuotaOutput{Body: v}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -319,7 +320,7 @@ func mountTenantsReadAPI(api huma.API) {
 		Path:        "/api/projects/{name}/quota",
 		Summary:     "Get a project's quota view",
 		Tags:        []string{"projects", "quotas"},
-	}, func(ctx context.Context, in *projectNameInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *projectNameInput) (*projectQuotaOutput, error) {
 		u := auth.UserFromContext(ctx)
 		tenant, ok := tenantsDB.projectTenant(in.Name)
 		if !ok {
@@ -332,7 +333,7 @@ func mountTenantsReadAPI(api huma.API) {
 		if !ok {
 			return nil, huma.Error404NotFound("project not found")
 		}
-		return &passthroughOutput{Body: v}, nil
+		return &projectQuotaOutput{Body: v}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -342,7 +343,7 @@ func mountTenantsReadAPI(api huma.API) {
 		Summary:     "Set a project's quota (tenant admin)",
 		Description: "Validated against the tenant cap : sum(other projects) + new ≤ cap.",
 		Tags:        []string{"projects", "quotas"},
-	}, func(ctx context.Context, in *setProjectQuotaInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *setProjectQuotaInput) (*projectQuotaOutput, error) {
 		u := auth.UserFromContext(ctx)
 		tenant, ok := tenantsDB.projectTenant(in.Name)
 		if !ok {
@@ -356,7 +357,7 @@ func mountTenantsReadAPI(api huma.API) {
 			if lerr == nil && uuid != "" {
 				if err := live.SetProjectQuota(ctx, uuid, quotasMap(in.Body)); err == nil {
 					v, _ := tenantsDB.projectQuotaView(in.Name)
-					return &passthroughOutput{Body: v}, nil
+					return &projectQuotaOutput{Body: v}, nil
 				} else if !wclient.IsUnimplemented(err) {
 					return nil, huma.Error502BadGateway("live: " + err.Error())
 				}
@@ -366,9 +367,15 @@ func mountTenantsReadAPI(api huma.API) {
 			return nil, hideHTTPErr(err)
 		}
 		v, _ := tenantsDB.projectQuotaView(in.Name)
-		return &passthroughOutput{Body: v}, nil
+		return &projectQuotaOutput{Body: v}, nil
 	})
 }
+
+// tenantDetailOutput / tenantQuotaOutput / projectQuotaOutput surface
+// the typed views from tenants.go in the OpenAPI.
+type tenantDetailOutput struct{ Body TenantDetail }
+type tenantQuotaOutput  struct{ Body TenantQuotaView }
+type projectQuotaOutput struct{ Body ProjectQuotaView }
 
 // ---- /api/quotas (overview scope-aware) --------------------------
 
@@ -389,13 +396,11 @@ func mountQuotasAPI(api huma.API) {
 		}
 		if tenant != "" {
 			if view, ok := tenantsDB.tenantQuotaView(tenant); ok {
-				cap, _ := view["cap"].(Quotas)
-				alloc, _ := view["allocated"].(Quotas)
 				out := make([]Quota, 0, len(tenantQuotaDims))
 				for _, d := range tenantQuotaDims {
 					out = append(out, Quota{
 						ID: d.ID, Label: d.Label, Icon: d.Icon, Unit: d.Unit,
-						Used: d.Get(alloc), Limit: d.Get(cap),
+						Used: d.Get(view.Allocated), Limit: d.Get(view.Cap),
 					})
 				}
 				return &quotasOutput{Body: out}, nil
