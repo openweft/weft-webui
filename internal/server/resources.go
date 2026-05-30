@@ -164,6 +164,15 @@ var registry = []Resource{
 		},
 	},
 
+	// ---------- Object Storage ----------
+	{
+		// Rows = bucket summaries (see objectstorage.go). The dashboard uses
+		// a custom browser view ; this entry drives the sidebar + count.
+		ID: "buckets", Label: "Buckets", Section: "Object Storage",
+		Columns: cols("name", "Name", "objects", "Objects", "size", "Size", "created", "Created"),
+		Rows:    nil,
+	},
+
 	// ---------- Registry ----------
 	{
 		// Rows are served from the images store (see images.go) so uploads

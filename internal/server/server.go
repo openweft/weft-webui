@@ -25,7 +25,14 @@ func New(logger *slog.Logger, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/resources", handleResources)         // metadata (sidebar + columns)
 	mux.HandleFunc("GET /api/resources/{id}", handleResourceRows) // rows for one type
 	mux.HandleFunc("GET /api/summary", handleSummary)             // counts for the overview
-	mux.HandleFunc("POST /api/images/upload", handleImageUpload)  // push a container / raw multi-arch image
+	mux.HandleFunc("POST /api/images/upload", handleImageUpload) // push a container / raw multi-arch image
+
+	// --- Object storage (CubeFS S3) ---
+	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
+	mux.HandleFunc("DELETE /api/buckets/{name}", handleDeleteBucket)
+	mux.HandleFunc("GET /api/buckets/{name}/objects", handleListObjects)
+	mux.HandleFunc("POST /api/buckets/{name}/objects", handleUploadObject)
+	mux.HandleFunc("GET /api/buckets/{name}/object", handleGetObject)
 
 	// --- SPA (everything else) ---
 	mux.Handle("/", spaHandler(static))
@@ -49,8 +56,11 @@ type resourceMeta struct {
 // rowCount returns the live count for a resource. The "images" type is backed
 // by the mutable images store (uploads), everything else by static rows.
 func rowCount(res *Resource) int {
-	if res.ID == "images" {
+	switch res.ID {
+	case "images":
 		return imagesCount()
+	case "buckets":
+		return bucketsCount()
 	}
 	return len(res.Rows)
 }
@@ -74,8 +84,12 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown resource"})
 		return
 	}
-	if id == "images" {
+	switch id {
+	case "images":
 		writeJSON(w, http.StatusOK, imagesList())
+		return
+	case "buckets":
+		writeJSON(w, http.StatusOK, bucketSummaries())
 		return
 	}
 	rows := res.Rows
@@ -98,6 +112,12 @@ func handleSummary(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item{ID: res.ID, Label: res.Label, Count: rowCount(res)})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func decodeJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

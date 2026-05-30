@@ -6,6 +6,7 @@
   import Topbar from './lib/components/Topbar.svelte';
   import ResourcePage from './lib/components/ResourcePage.svelte';
   import ImagesPage from './lib/components/ImagesPage.svelte';
+  import ObjectStoragePage from './lib/components/ObjectStoragePage.svelte';
   import Overview from './lib/components/Overview.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
@@ -59,6 +60,8 @@
         {#key active}
           <ImagesPage meta={byId.get(active)!} />
         {/key}
+      {:else if active === 'buckets'}
+        <ObjectStoragePage />
       {:else}
         {#key active}
           <ResourcePage meta={byId.get(active)!} />
