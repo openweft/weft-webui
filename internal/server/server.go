@@ -158,6 +158,8 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	mux.HandleFunc("DELETE /api/volumes/{uuid}", handleDeleteVolume)
 	mux.HandleFunc("POST /api/networks", handleCreateNetwork)
 	mux.HandleFunc("DELETE /api/networks/{uuid}", handleDeleteNetwork)
+	mux.HandleFunc("POST /api/security-groups", handleCreateSecurityGroup)
+	mux.HandleFunc("DELETE /api/security-groups/{uuid}", handleDeleteSecurityGroup)
 
 	// Scheduling rules (mock store ; no daemon RPC yet).
 	mux.HandleFunc("POST /api/scheduling-rules", handleCreateSchedulingRule)

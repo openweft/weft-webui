@@ -400,14 +400,22 @@ var registry = []Resource{
 		},
 	},
 	{
-		// Mirrors SecurityGroupInfo (name, description, rules count, project,
-		// created).
+		// Mirrors SecurityGroupInfo (uuid, name, description, rules count,
+		// project, created). `uuid` is on the row so the row-action
+		// dropdown's Delete can hit /api/security-groups/{uuid}.
 		ID: "security-groups", Label: "Security Groups", Section: "Network",
-		Columns: cols("name", "Name", "description", "Description", "rules", "Rules", "project", "Project", "created", "Created"),
+		Columns: cols("name", "Name", "description", "Description",
+			"rules", "Rules", "project", "Project", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "default", "description", "Default deny-in / allow-out", "rules", 2, "project", "team-alpha", "created", "2026-04-12"),
-			row("name", "web", "description", "HTTP/HTTPS ingress", "rules", 3, "project", "team-alpha", "created", "2026-04-14"),
-			row("name", "db", "description", "Postgres from web only", "rules", 1, "project", "team-beta", "created", "2026-04-20"),
+			row("name", "default", "uuid", "a1c0e7d2-9f01-4811-b6a5-101010101010",
+				"description", "Default deny-in / allow-out", "rules", 2,
+				"project", "team-alpha", "created", "2026-04-12"),
+			row("name", "web", "uuid", "a1c0e7d2-9f01-4811-b6a5-202020202020",
+				"description", "HTTP/HTTPS ingress", "rules", 3,
+				"project", "team-alpha", "created", "2026-04-14"),
+			row("name", "db", "uuid", "a1c0e7d2-9f01-4811-b6a5-303030303030",
+				"description", "Postgres from web only", "rules", 1,
+				"project", "team-beta", "created", "2026-04-20"),
 		},
 	},
 	{
