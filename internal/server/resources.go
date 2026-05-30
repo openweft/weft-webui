@@ -190,11 +190,11 @@ var registry = []Resource{
 	// ---------- Admin ----------
 	{
 		ID: "hosts", Label: "Hosts", Section: "Admin",
-		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "cpu", "CPU", "ram_gb", "RAM (GB)", "microvms", "microVMs", "status", "Status"),
+		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack", "arch", "Arch", "cpu", "CPU", "ram_gb", "RAM (GB)", "microvms", "microVMs", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "cpu", 64, "ram_gb", 512, "microvms", 18, "status", "up"),
-			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "cpu", 64, "ram_gb", 512, "microvms", 22, "status", "up"),
-			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "cpu", 96, "ram_gb", 768, "microvms", 11, "status", "draining"),
+			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "cpu", 64, "ram_gb", 512, "microvms", 18, "status", "up"),
+			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "cpu", 64, "ram_gb", 512, "microvms", 22, "status", "up"),
+			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "cpu", 96, "ram_gb", 768, "microvms", 11, "status", "draining"),
 		},
 	},
 }
