@@ -230,11 +230,38 @@ func handleGetSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, k)
 }
 
-// handleSetSSHKeyCatalogue : admin-gated (route only mounted on admin
-// port). Validates the public_key against the closed type whitelist
-// and computes the fingerprint server-side ; clients can't pre-fill it.
+// requireSSHKeyWriter is the server-side gate for the write surface.
+// Now that the routes are mounted on both ports (so regular users see
+// the page in the sidebar), we have to enforce admin / tenant-admin
+// in the handler itself ; the route-level gate from before only
+// worked because only admins ever hit the admin port. Returns true
+// when the caller is allowed and the handler can proceed ; on a deny
+// it writes a 403 with a message + returns false.
+func requireSSHKeyWriter(w http.ResponseWriter, r *http.Request) bool {
+	u := auth.UserFromContext(r.Context())
+	if u == nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "ssh-keys writes require an authenticated user",
+		})
+		return false
+	}
+	if isClusterAdmin(u) || tenantsDB.isAnyTenantAdmin(u.Email) {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{
+		"error": "ssh-keys writes are restricted to tenant admins (or cluster admins) ; ask yours to add the key, or import via your own tenant's account.",
+	})
+	return false
+}
+
+// handleSetSSHKeyCatalogue : tenant-admin (or cluster-admin) only.
+// Validates the public_key against the closed type whitelist and
+// computes the fingerprint server-side ; clients can't pre-fill it.
 // Description / Source / SourceAccount are pass-through.
 func handleSetSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
+	if !requireSSHKeyWriter(w, r) {
+		return
+	}
 	var body SSHKey
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
@@ -277,6 +304,9 @@ func handleSetSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteSSHKeyCatalogue(w http.ResponseWriter, r *http.Request) {
+	if !requireSSHKeyWriter(w, r) {
+		return
+	}
 	name := r.PathValue("name")
 	if err := sshKeysCatalogue.Delete(r.Context(), name); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

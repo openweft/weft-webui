@@ -259,21 +259,17 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		mux.HandleFunc("DELETE /api/scripts/{name}", handleDeleteScript)
 	}
 
-	// SSH-keys catalogue. Named keys defined ONCE here ; per-VM
-	// attribution picks them by name. Same split as flavors / scripts :
-	// read on both ports, write on admin only. Import from gh / gl /
-	// forgejo lands as a follow-on commit on this catalogue.
+	// SSH-keys catalogue. Visible on BOTH ports — every user needs
+	// to push their own keys ; restricting to admins blocked the
+	// self-service flow operators expect. Write surface mounted on
+	// both ports too ; the handlers enforce tenant_admin (or
+	// cluster_admin) server-side, so a non-admin curl sees the same
+	// 403 a non-admin SPA would never surface.
 	mux.HandleFunc("GET /api/ssh-keys", handleListSSHKeyCatalogue)
 	mux.HandleFunc("GET /api/ssh-keys/{name}", handleGetSSHKeyCatalogue)
-	if scope == ScopeAdmin {
-		mux.HandleFunc("POST /api/ssh-keys", handleSetSSHKeyCatalogue)
-		mux.HandleFunc("DELETE /api/ssh-keys/{name}", handleDeleteSSHKeyCatalogue)
-		// Bulk-import from forge accounts. Same admin gate as the
-		// rest of the write surface ; outbound HTTP to the forge
-		// happens server-side so the SPA never speaks to GitHub
-		// from the browser.
-		mux.HandleFunc("POST /api/ssh-keys/import", handleImportSSHKeys)
-	}
+	mux.HandleFunc("POST /api/ssh-keys", handleSetSSHKeyCatalogue)
+	mux.HandleFunc("DELETE /api/ssh-keys/{name}", handleDeleteSSHKeyCatalogue)
+	mux.HandleFunc("POST /api/ssh-keys/import", handleImportSSHKeys)
 
 	// Object storage (CubeFS S3)
 	mux.HandleFunc("POST /api/buckets", handleCreateBucket)
