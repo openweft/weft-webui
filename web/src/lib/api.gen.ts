@@ -1559,6 +1559,16 @@ export interface components {
             readonly $schema?: string;
             vm_uuid: string;
         };
+        AttachVolumeResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AttachVolumeResp.json
+             */
+            readonly $schema?: string;
+            vm: string;
+            volume: string;
+        };
         BucketPolicy: {
             /**
              * Format: uri
@@ -1740,6 +1750,21 @@ export interface components {
             /** Format: int64 */
             size_gb?: number;
         };
+        CreateShareResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateShareResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            project: string;
+            read_only: boolean;
+            /** Format: int64 */
+            size_gb: number;
+            status: string;
+            uuid?: string;
+        };
         CreateTenantInputBody: {
             /**
              * Format: uri
@@ -1749,6 +1774,16 @@ export interface components {
             readonly $schema?: string;
             domain?: string;
             name: string;
+        };
+        CreateTenantResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateTenantResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            uuid?: string;
         };
         CreateVMInputBody: {
             /**
@@ -1776,11 +1811,11 @@ export interface components {
             /** @description Nominal binding to a SchedulingRule (k8s PVC volumeName pattern) */
             scheduling_rule?: string;
         };
-        CreateVMOutputBody: {
+        CreateVMResp: {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/CreateVMOutputBody.json
+             * @example https://example.com/schemas/CreateVMResp.json
              */
             readonly $schema?: string;
             name: string;
@@ -1797,6 +1832,18 @@ export interface components {
             readonly $schema?: string;
             format?: string;
             name: string;
+            /** Format: int64 */
+            size_gib: number;
+        };
+        CreateVolumeResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVolumeResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            project: string;
             /** Format: int64 */
             size_gib: number;
         };
@@ -1817,6 +1864,15 @@ export interface components {
              */
             readonly $schema?: string;
             deleted: string;
+        };
+        EmailResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EmailResp.json
+             */
+            readonly $schema?: string;
+            email: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -1966,6 +2022,16 @@ export interface components {
             /** @description True when the user is admin of at least one tenant */
             tenant_admin: boolean;
         };
+        MemberResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MemberResp.json
+             */
+            readonly $schema?: string;
+            email: string;
+            groups: string[] | null;
+        };
         OkBody: {
             /**
              * Format: uri
@@ -2050,6 +2116,16 @@ export interface components {
             label: string;
             section: string;
         };
+        RoleResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RoleResp.json
+             */
+            readonly $schema?: string;
+            email: string;
+            role: string;
+        };
         ScopeEntry: {
             domain: string;
             name: string;
@@ -2081,6 +2157,18 @@ export interface components {
             count: number;
             id: string;
             label: string;
+        };
+        TenantProjectResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TenantProjectResp.json
+             */
+            readonly $schema?: string;
+            created: string;
+            name: string;
+            tenant: string;
+            uuid: string;
         };
         TopoNetwork: {
             az: string;
@@ -2907,7 +2995,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CreateVMOutputBody"];
+                    "application/json": components["schemas"]["CreateVMResp"];
                 };
             };
             /** @description Error */
@@ -3658,7 +3746,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RoleResp"];
                 };
             };
             /** @description Error */
@@ -4257,7 +4345,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateShareResp"];
                 };
             };
             /** @description Error */
@@ -4620,7 +4708,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateTenantResp"];
                 };
             };
             /** @description Error */
@@ -4687,7 +4775,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EmailResp"];
                 };
             };
             /** @description Error */
@@ -4722,7 +4810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemberResp"];
                 };
             };
             /** @description Error */
@@ -4757,7 +4845,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TenantProjectResp"];
                 };
             };
             /** @description Error */
@@ -4860,7 +4948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateVolumeResp"];
                 };
             };
             /** @description Error */
@@ -4925,7 +5013,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AttachVolumeResp"];
                 };
             };
             /** @description Error */

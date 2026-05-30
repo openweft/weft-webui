@@ -385,7 +385,7 @@ export const createTenant = async (name: string, domain: string) => {
     body: { name, domain },
   });
   if (error) throwErr(error);
-  return data as unknown as { name: string };
+  return data;
 };
 
 export const addTenantAdmin = async (tenant: string, email: string) => {
@@ -394,7 +394,7 @@ export const addTenantAdmin = async (tenant: string, email: string) => {
     body: { email },
   });
   if (error) throwErr(error);
-  return data as unknown as { email: string };
+  return data;
 };
 
 export const addTenantProject = async (tenant: string, name: string) => {
@@ -403,7 +403,7 @@ export const addTenantProject = async (tenant: string, name: string) => {
     body: { name },
   });
   if (error) throwErr(error);
-  return data as unknown as TenantProject;
+  return data;
 };
 
 export const addTenantMember = async (tenant: string, email: string, groups: string[]) => {
@@ -412,7 +412,7 @@ export const addTenantMember = async (tenant: string, email: string, groups: str
     body: { email, groups },
   });
   if (error) throwErr(error);
-  return data as unknown as { email: string; groups: string[] };
+  return data;
 };
 
 export const grantProjectRole = async (project: string, email: string, role: string) => {
@@ -421,7 +421,7 @@ export const grantProjectRole = async (project: string, email: string, role: str
     body: { email, role },
   });
   if (error) throwErr(error);
-  return data as unknown as { email: string; role: string };
+  return data;
 };
 
 // ---- Quotas (typed views) -----------------------------------------
@@ -524,7 +524,7 @@ export interface CreateVMBody {
 export const createVM = async (b: CreateVMBody) => {
   const { data, error } = await client.POST('/api/microvms', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; project: string };
+  return data;
 };
 
 // ---- Volumes ------------------------------------------------------
@@ -538,7 +538,7 @@ export interface CreateVolumeBody {
 export const createVolume = async (b: CreateVolumeBody) => {
   const { data, error } = await client.POST('/api/volumes', { body: b });
   if (error) throwErr(error);
-  return data as unknown as { name: string; project: string; size_gib: number };
+  return data;
 };
 
 export const deleteVolume = async (uuid: string): Promise<void> => {
@@ -554,7 +554,7 @@ export const attachVolume = async (uuid: string, vmUUID: string) => {
     body: { vm_uuid: vmUUID },
   });
   if (error) throwErr(error);
-  return data as unknown as { volume: string; vm: string };
+  return data;
 };
 
 export const detachVolume = async (uuid: string) => {
