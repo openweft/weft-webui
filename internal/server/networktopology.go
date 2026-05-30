@@ -32,10 +32,11 @@ func handleNetworkTopology(w http.ResponseWriter, r *http.Request) {
 	// service). The OTel trio sits alongside the rest : otel-collector
 	// scrapes /metrics from each weft-webui admin port (over WG),
 	// victoriametrics is the long-term Prometheus-compatible store,
-	// grafana surfaces dashboards (SSO via dex).
+	// perses surfaces dashboards (SSO via dex). All three are CNCF
+	// projects, in line with the rest of the platform.
 	for _, name := range []string{
 		"etcd", "nats", "dex", "weft", "cubefs",
-		"otel-collector", "victoriametrics", "grafana",
+		"otel-collector", "victoriametrics", "perses",
 	} {
 		nodes = append(nodes, map[string]any{
 			"id": name, "name": name, "kind": "infra",
