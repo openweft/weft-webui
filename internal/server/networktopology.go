@@ -28,8 +28,15 @@ func handleNetworkTopology(w http.ResponseWriter, r *http.Request) {
 	addRows("microvms", "microvm")
 	addRows("instances", "instance")
 
-	// Platform infra microVMs live on the mgmt network (one shown per service).
-	for _, name := range []string{"etcd", "nats", "dex", "weft", "cubefs"} {
+	// Platform infra microVMs live on the mgmt network (one shown per
+	// service). The OTel trio sits alongside the rest : otel-collector
+	// scrapes /metrics from each weft-webui admin port (over WG),
+	// victoriametrics is the long-term Prometheus-compatible store,
+	// grafana surfaces dashboards (SSO via dex).
+	for _, name := range []string{
+		"etcd", "nats", "dex", "weft", "cubefs",
+		"otel-collector", "victoriametrics", "grafana",
+	} {
 		nodes = append(nodes, map[string]any{
 			"id": name, "name": name, "kind": "infra",
 			"network": "mgmt", "status": "running", "project": "platform", "host": "—",
