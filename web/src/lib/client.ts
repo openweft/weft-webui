@@ -66,6 +66,7 @@ export type APIVMInfo = components['schemas']['VMInfo'];
 export type APIVMTimingEvent = components['schemas']['VMTimingEvent'];
 export type APIVMLogsResult = components['schemas']['VMLogsResult'];
 export type APISecurityRule = components['schemas']['SecurityRule'];
+export type APIImportResult = components['schemas']['ImportResult'];
 
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.

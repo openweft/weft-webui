@@ -586,6 +586,27 @@
         ],
         "type": "object"
       },
+      "BucketNameResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/BucketNameResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "BucketPolicy": {
         "additionalProperties": false,
         "properties": {
@@ -981,6 +1002,31 @@
         },
         "required": [
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateSchedRuleResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateSchedRuleResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project"
         ],
         "type": "object"
       },
@@ -1388,6 +1434,27 @@
         ],
         "type": "object"
       },
+      "DeletedNameResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeletedNameResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "EmailResp": {
         "additionalProperties": false,
         "properties": {
@@ -1652,6 +1719,31 @@
         },
         "required": [
           "flavors"
+        ],
+        "type": "object"
+      },
+      "MapFIPResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MapFIPResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "target"
         ],
         "type": "object"
       },
@@ -2136,6 +2228,54 @@
         ],
         "type": "object"
       },
+      "SetLBBackendsResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetLBBackendsResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backends": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "backends"
+        ],
+        "type": "object"
+      },
+      "SetSGRulesResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetSGRulesResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "rules": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "rules"
+        ],
+        "type": "object"
+      },
       "SetVMKeysInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2486,7 +2626,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BucketNameResp"
+                }
               }
             },
             "description": "Created"
@@ -2529,7 +2671,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedNameResp"
+                }
               }
             },
             "description": "OK"
@@ -3248,7 +3392,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MapFIPResp"
+                }
               }
             },
             "description": "OK"
@@ -3464,7 +3610,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SetLBBackendsResp"
+                }
               }
             },
             "description": "OK"
@@ -5192,7 +5340,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSchedRuleResp"
+                }
               }
             },
             "description": "Created"
@@ -5598,7 +5748,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SetSGRulesResp"
+                }
               }
             },
             "description": "OK"

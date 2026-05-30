@@ -199,7 +199,7 @@ func mountSecurityGroupsAPI(api huma.API) {
 		Path:        "/api/security-groups/{uuid}/rules",
 		Summary:     "Atomically replace a security group's rules",
 		Tags:        []string{"security-groups"},
-	}, func(ctx context.Context, in *setSGRulesInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *setSGRulesInput) (*setSGRulesOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -207,7 +207,7 @@ func mountSecurityGroupsAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "security-group.set-rules")
-		return &passthroughOutput{Body: map[string]any{"uuid": in.UUID, "rules": len(in.Body)}}, nil
+		return &setSGRulesOutput{Body: SetSGRulesResp{UUID: in.UUID, Rules: len(in.Body)}}, nil
 	})
 }
 
@@ -266,7 +266,7 @@ func mountFloatingIPsAPI(api huma.API) {
 		Path:        "/api/floating-ips/{uuid}/map",
 		Summary:     "Map a floating IP to a target",
 		Tags:        []string{"floating-ips"},
-	}, func(ctx context.Context, in *mapFloatingIPInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *mapFloatingIPInput) (*mapFIPOutput, error) {
 		if err := requireLiveCtx(); err != nil {
 			return nil, err
 		}
@@ -280,7 +280,7 @@ func mountFloatingIPsAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "floating-ip.map")
-		return &passthroughOutput{Body: map[string]string{"uuid": in.UUID, "target": in.Body.TargetName}}, nil
+		return &mapFIPOutput{Body: MapFIPResp{UUID: in.UUID, Target: in.Body.TargetName}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -406,7 +406,7 @@ func mountLoadBalancersAPI(api huma.API) {
 		Path:        "/api/loadbalancers/{uuid}/backends",
 		Summary:     "Atomically replace a load balancer's backend list",
 		Tags:        []string{"loadbalancers"},
-	}, func(ctx context.Context, in *setLBBackendsInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *setLBBackendsInput) (*setLBBackendsOutput, error) {
 		if err := requireLiveNetCtx(); err != nil {
 			return nil, err
 		}
@@ -414,7 +414,7 @@ func mountLoadBalancersAPI(api huma.API) {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
 		userActionCtx(ctx, "lb.set-backends")
-		return &passthroughOutput{Body: map[string]int{"backends": len(in.Body)}}, nil
+		return &setLBBackendsOutput{Body: SetLBBackendsResp{Backends: len(in.Body)}}, nil
 	})
 }
 
@@ -519,7 +519,7 @@ func mountSchedulingRulesAPI(api huma.API) {
 		Summary:       "Create a scheduling rule (live-first ; mem fallback on Unimplemented)",
 		Tags:          []string{"scheduling-rules"},
 		DefaultStatus: 201,
-	}, func(ctx context.Context, in *createSchedulingRuleInput) (*passthroughOutput, error) {
+	}, func(ctx context.Context, in *createSchedulingRuleInput) (*createSchedRuleOutput, error) {
 		project := in.Body.Project
 		if project == "" {
 			project = resolveProjectOrPlatform(ctx, "")
@@ -531,8 +531,8 @@ func mountSchedulingRulesAPI(api huma.API) {
 			})
 			if err == nil {
 				userActionCtx(ctx, "scheduling-rule.create")
-				return &passthroughOutput{Body: map[string]any{
-					"name": in.Body.Name, "project": project,
+				return &createSchedRuleOutput{Body: CreateSchedRuleResp{
+					Name: in.Body.Name, Project: project,
 				}}, nil
 			}
 			if !wclient.IsUnimplemented(err) {
@@ -548,7 +548,9 @@ func mountSchedulingRulesAPI(api huma.API) {
 			return nil, hideHTTPErr(err)
 		}
 		userActionCtx(ctx, "scheduling-rule.create")
-		return &passthroughOutput{Body: ruleToRow(rule)}, nil
+		return &createSchedRuleOutput{Body: CreateSchedRuleResp{
+			Name: rule.Name, Project: rule.Project,
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -727,6 +729,37 @@ type createSGOutput              struct{ Body CreateSecurityGroupResp }
 type allocateFloatingIPOutput    struct{ Body AllocateFloatingIPResp }
 type createDNSRecordOutput       struct{ Body CreateDNSRecordResp }
 type sgRulesOutput               struct{ Body []wclient.SecurityRule }
+
+// Tiny ack-style shapes for set/map endpoints.
+
+// MapFIPResp confirms which target a floating IP got mapped to.
+type MapFIPResp struct {
+	UUID   string `json:"uuid"`
+	Target string `json:"target"`
+}
+type mapFIPOutput struct{ Body MapFIPResp }
+
+// SetSGRulesResp echoes the SG UUID + the count of rules applied.
+type SetSGRulesResp struct {
+	UUID  string `json:"uuid"`
+	Rules int    `json:"rules"`
+}
+type setSGRulesOutput struct{ Body SetSGRulesResp }
+
+// SetLBBackendsResp surfaces the post-write backend count.
+type SetLBBackendsResp struct {
+	Backends int `json:"backends"`
+}
+type setLBBackendsOutput struct{ Body SetLBBackendsResp }
+
+// CreateSchedRuleResp is the intersection of the live-mode and
+// mock-mode return shapes — both paths set name + project, so the
+// SPA can refresh the rule listing keyed on those.
+type CreateSchedRuleResp struct {
+	Name    string `json:"name"`
+	Project string `json:"project"`
+}
+type createSchedRuleOutput struct{ Body CreateSchedRuleResp }
 
 type createNetworkInput struct {
 	Project string `query:"project" doc:"Override the session project"`
