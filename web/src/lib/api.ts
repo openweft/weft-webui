@@ -442,13 +442,21 @@ export const startVM  = (name: string) => postJSON<{ name: string }>(`/microvms/
 export const stopVM   = (name: string) => postJSON<{ name: string }>(`/microvms/${encodeURIComponent(name)}/stop`,  {});
 export const deleteVM = (name: string) => deleteJSON(`/microvms/${encodeURIComponent(name)}`);
 
+// microVM = flavor + image + scheduling policy + network + (optional)
+// public ingress. CPU / RAM / disk are properties of the flavor and
+// never set independently. SSH keys are pushed at runtime via the
+// drawer's "SSH keys" tab — not a create-time field.
+export type VMIngressKind = 'none' | 'floating_ip' | 'loadbalancer';
+
 export interface CreateVMBody {
   Name: string;
   Image: string;
-  CPU: number;
-  MemMB: number;
-  DiskGB: number;
-  SSHPub?: string;
+  Flavor: string;          // name from the flavor catalogue
+  SchedulingRule?: string; // name of the scheduling rule to honour, empty = no constraint
+  Network?: string;        // private network name to attach the NIC to, empty = project default
+  IngressKind?: VMIngressKind;
+  IngressFloatingIP?: string;   // FIP uuid when Kind=floating_ip ; empty = allocate
+  IngressLoadBalancer?: string; // LB uuid when Kind=loadbalancer ; required in that mode
 }
 export const createVM = (b: CreateVMBody) => postJSON<{ name: string; project: string }>('/microvms', b);
 

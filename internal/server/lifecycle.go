@@ -17,6 +17,8 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
@@ -184,8 +186,93 @@ func handleVMLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleCreateVM : POST /api/microvms  {name, image, cpu, mem_mb,
-// disk_gb, ssh_pub}. Project comes from the session scope.
+// flavorSpec is the resolved view of a flavor row : the three numbers
+// weft-agent's CreateVMRequest still takes by hand (until the proto
+// gains a Flavor field). nil = unknown flavor name.
+type flavorSpec struct {
+	CPU    uint32
+	MemMB  uint64
+	DiskGB uint64
+}
+
+// resolveFlavor looks up a flavor by name in the catalogue served at
+// /api/flavors and returns its CPU / RAM / ephemeral-disk envelope.
+// The registry stores RAM as "<n>Gi" or "<n>Mi" ; parsed here so the
+// agent gets megabytes regardless of how the operator wrote it.
+func resolveFlavor(name string) (flavorSpec, bool) {
+	res, ok := resourceByID["flavors"]
+	if !ok {
+		return flavorSpec{}, false
+	}
+	for _, row := range res.Rows {
+		n, _ := row["name"].(string)
+		if n != name {
+			continue
+		}
+		s := flavorSpec{}
+		if v, ok := row["vcpu"].(int); ok {
+			s.CPU = uint32(v)
+		}
+		if v, ok := row["ephemeral_gb"].(int); ok {
+			s.DiskGB = uint64(v)
+		}
+		if v, ok := row["ram"].(string); ok {
+			s.MemMB = parseRAMtoMB(v)
+		}
+		return s, true
+	}
+	return flavorSpec{}, false
+}
+
+// parseRAMtoMB turns "4Gi" / "256Mi" / "4096" into megabytes. Unrecognised
+// strings come back as 0 — the handler treats that as an invalid flavor
+// row, not a 0-MB VM.
+func parseRAMtoMB(s string) uint64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	mult := uint64(1)
+	switch {
+	case strings.HasSuffix(s, "Gi"):
+		mult = 1024
+		s = strings.TrimSuffix(s, "Gi")
+	case strings.HasSuffix(s, "G"):
+		mult = 1024
+		s = strings.TrimSuffix(s, "G")
+	case strings.HasSuffix(s, "Mi"):
+		s = strings.TrimSuffix(s, "Mi")
+	case strings.HasSuffix(s, "M"):
+		s = strings.TrimSuffix(s, "M")
+	}
+	n, err := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n * mult
+}
+
+// handleCreateVM : POST /api/microvms
+//
+//	{name, image, flavor, scheduling_rule, network,
+//	 ingress_kind, ingress_floating_ip, ingress_load_balancer}
+//
+// A microVM is the combination of a flavor (sizing envelope), an
+// image, and a scheduling policy ; cpu/ram/disk aren't independent
+// fields — they're resolved from the flavor catalogue on the server.
+// SSH keys are pushed at runtime via /api/microvms/{name}/keys.
+//
+// Wire status of the optional fields :
+//   - scheduling_rule : captured but not yet threaded to weft-agent
+//     (proto extension pending). The selector-based rules in
+//     weft-network still apply to every VM matching their selector.
+//   - network         : captured but not yet threaded to weft-agent
+//     (proto extension pending).
+//   - ingress         : best-effort orchestration post-create using
+//     existing endpoints — mapFloatingIP for kind=floating_ip,
+//     SetLoadBalancerBackends for kind=loadbalancer. Failures here
+//     don't unwind the create ; the VM exists and the operator can
+//     re-do the mapping from the dashboard.
 func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
 		return
@@ -196,9 +283,10 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name, Image, SSHPub string
-		CPU                 uint32
-		MemMB, DiskGB       uint64
+		Name, Image, Flavor                                string
+		SchedulingRule, Network                            string
+		IngressKind                                        string // "none" | "floating_ip" | "loadbalancer"
+		IngressFloatingIP, IngressLoadBalancer             string
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, errBadReq("invalid body: "+err.Error()))
@@ -208,16 +296,87 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errBadReq("name and image are required"))
 		return
 	}
+	if body.Flavor == "" {
+		writeErr(w, errBadReq("flavor is required (microVM = flavor + image + scheduling)"))
+		return
+	}
+	spec, ok := resolveFlavor(body.Flavor)
+	if !ok {
+		writeErr(w, errBadReq("unknown flavor: "+body.Flavor))
+		return
+	}
+	if spec.CPU == 0 || spec.MemMB == 0 {
+		writeErr(w, errBadReq("flavor "+body.Flavor+" has incomplete spec (cpu/ram)"))
+		return
+	}
 	if cerr := live.CreateVM(r.Context(), wclient.CreateVMOpts{
 		Name: body.Name, Image: body.Image, Project: project,
-		SSHPubKey: body.SSHPub,
-		CPU:       body.CPU, MemMB: body.MemMB, DiskGB: body.DiskGB,
+		CPU: spec.CPU, MemMB: spec.MemMB, DiskGB: spec.DiskGB,
 	}); cerr != nil {
 		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + cerr.Error()})
 		return
 	}
 	userAction(r, "microvm.create")
-	writeJSON(w, http.StatusCreated, map[string]string{"name": body.Name, "project": project})
+
+	// Best-effort ingress orchestration. Errors are warnings on the
+	// response, not failures : the VM is already up.
+	var warnings []string
+	switch body.IngressKind {
+	case "", "none":
+		// nothing to do
+	case "floating_ip":
+		if body.IngressFloatingIP == "" {
+			warnings = append(warnings, "ingress=floating_ip but no IngressFloatingIP UUID — allocation flow not wired here ; allocate then Map from the Floating IPs page")
+			break
+		}
+		if err := live.MapFloatingIP(r.Context(), body.IngressFloatingIP, "vm", body.Name); err != nil {
+			warnings = append(warnings, "MapFloatingIP: "+err.Error())
+		}
+	case "loadbalancer":
+		if body.IngressLoadBalancer == "" {
+			warnings = append(warnings, "ingress=loadbalancer but no IngressLoadBalancer UUID")
+			break
+		}
+		if liveNet == nil {
+			warnings = append(warnings, "ingress=loadbalancer requires --weft-network-socket")
+			break
+		}
+		// No incremental "add backend" RPC yet ; read the LB's current
+		// backends, append, re-set. Tolerate the LB not being in the
+		// first page — pages don't fan out at the LB count this
+		// installation realistically sees.
+		rows, _, lerr := liveNet.ListLoadBalancers(r.Context(), project, wclient.ListOpts{Limit: 1000})
+		if lerr != nil {
+			warnings = append(warnings, "list LBs: "+lerr.Error())
+			break
+		}
+		backends := []string{body.Name}
+		for _, row := range rows {
+			if u, _ := row["uuid"].(string); u != body.IngressLoadBalancer {
+				continue
+			}
+			if cur, _ := row["backends"].(string); cur != "" {
+				for _, b := range strings.Split(cur, ",") {
+					b = strings.TrimSpace(b)
+					if b != "" && b != body.Name {
+						backends = append([]string{b}, backends...)
+					}
+				}
+			}
+			break
+		}
+		if err := liveNet.SetLoadBalancerBackends(r.Context(), body.IngressLoadBalancer, backends); err != nil {
+			warnings = append(warnings, "SetLoadBalancerBackends: "+err.Error())
+		}
+	default:
+		warnings = append(warnings, "unknown ingress kind: "+body.IngressKind)
+	}
+
+	out := map[string]any{"name": body.Name, "project": project}
+	if len(warnings) > 0 {
+		out["warnings"] = warnings
+	}
+	writeJSON(w, http.StatusCreated, out)
 }
 
 // --- Volume / Network mutators -------------------------------------
