@@ -106,6 +106,60 @@ When a live RPC fails (daemon unreachable, permission denied, …) the handler
 returns **502 Bad Gateway** with the underlying error message — easier to
 debug than silently falling back to mock.
 
+## Two-port split (user / admin)
+
+`weft-webui` binds **two listeners** :
+
+| Listener | Default               | Visibility                           | Surfaces                                                |
+| -------- | --------------------- | ------------------------------------ | ------------------------------------------------------- |
+| user     | `WEBUI_USER_ADDR=:8080` | public-facing                       | project-scoped resources, OIDC login                    |
+| admin    | `WEBUI_ADMIN_ADDR`    | bind to a WireGuard endpoint only    | everything the user sees + Hosts/Users/Tenants/Groups + `/metrics` |
+
+Leave `WEBUI_ADMIN_ADDR` empty to disable the admin port entirely.
+A non-empty value should be a **trusted interface** — typically the
+host's WireGuard address (e.g. `10.0.0.1:8088`). Never bind it to
+`0.0.0.0` ; the admin listener has the same auth gate but exposes the
+TSDB and cluster-wide queries that don't belong on the public Internet.
+
+Resource visibility is tagged in [`resources.go`](internal/server/resources.go)
+via a `Scope` field. The user listener filters `/api/resources` and
+`/api/resources/{id}` ; admin-only types return 404 (not 403, no
+acknowledgement) when queried over the public port.
+
+## Telemetry
+
+The admin listener exposes Prometheus metrics on `/metrics` :
+
+```
+weft_webui_http_requests_total{persona,method,route,status}
+weft_webui_http_request_duration_seconds{persona,method,route}    # histogram
+weft_webui_http_in_flight_requests
+weft_webui_grpc_calls_total{method,status}
+weft_webui_grpc_call_duration_seconds{method}                      # histogram
+weft_webui_auth_logins_total{result}                               # success|failure
+weft_webui_auth_active_sessions
+weft_webui_user_actions_total{sub,action}                          # per OIDC sub
+weft_webui_build_info{version}
+go_*  process_*                                                    # stdlib collectors
+```
+
+Route labels are pre-normalised (`/api/resources/:id`, `/api/buckets/:name/objects`,
+…) so cardinality stays bounded. The user-facing port does **not** mount
+`/metrics` — the SPA's catch-all returns `index.html` instead, so a
+scraper on the public port gets nothing useful.
+
+Scrape from inside the WireGuard endpoint :
+
+```yaml
+- job_name: weft-webui
+  static_configs:
+    - targets: ['10.0.0.1:8088']
+  scheme: http
+  authorization:                # the admin port still requires a session
+    type: Bearer
+    credentials: file:/etc/prometheus/weft-token
+```
+
 ## Production deployment
 
 `weft-webui` runs in two modes, picked by `WEBUI_DEV_MODE` :
@@ -119,7 +173,8 @@ Configuration is env-first ; flags override env for the common knobs.
 
 | Variable                    | Default                  | Notes                                                       |
 | --------------------------- | ------------------------ | ----------------------------------------------------------- |
-| `WEBUI_LISTEN_ADDR`         | `:8080`                  | also `--addr`                                               |
+| `WEBUI_USER_ADDR`           | `:8080`                  | public listener ; also `--addr` (legacy `WEBUI_LISTEN_ADDR` still honoured) |
+| `WEBUI_ADMIN_ADDR`          | _empty_                  | admin listener ; bind on a WireGuard interface ; also `--admin-addr` |
 | `WEBUI_WEFT_SOCKET`         | _empty_                  | unix path or `ssh://…` ; required in prod                   |
 | `WEBUI_TLS_CERT` / `_KEY`   | _empty_                  | optional ; set both or neither                              |
 | `WEBUI_DEV_MODE`            | `false`                  | dev mode                                                    |
@@ -141,7 +196,7 @@ Generate a session key:
 head -c 32 /dev/urandom | xxd -p -c 64
 ```
 
-Minimal prod invocation :
+Minimal prod invocation (user UI only) :
 
 ```sh
 WEBUI_WEFT_SOCKET=/var/run/vzd.sock \
@@ -150,6 +205,16 @@ WEBUI_OIDC_CLIENT_ID=weft-webui \
 WEBUI_OIDC_CLIENT_SECRET=… \
 WEBUI_PUBLIC_URL=https://weft.example \
 WEBUI_SESSION_KEY=$(head -c 32 /dev/urandom | xxd -p -c 64) \
+  ./weft-webui
+```
+
+Adding the admin UI on a WireGuard endpoint :
+
+```sh
+WEBUI_USER_ADDR=:8080 \
+WEBUI_ADMIN_ADDR=10.0.0.1:8088 \      # WG-only ; not 0.0.0.0
+WEBUI_WEFT_SOCKET=/var/run/vzd.sock \
+…                                       # same OIDC + session vars as above
   ./weft-webui
 ```
 
