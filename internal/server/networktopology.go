@@ -29,13 +29,21 @@ func handleNetworkTopology(w http.ResponseWriter, r *http.Request) {
 	addRows("instances", "instance")
 
 	// Platform infra microVMs live on the mgmt network (one shown per
-	// service). The OTel trio sits alongside the rest : otel-collector
-	// scrapes /metrics from each weft-webui admin port (over WG),
-	// victoriametrics is the long-term Prometheus-compatible store,
-	// perses surfaces dashboards (SSO via dex). All three are CNCF
-	// projects, in line with the rest of the platform.
+	// service).
+	//
+	// Networking control plane :
+	//   weft-network  — bespoke controller, watches vzd events, reconciles
+	//                   LoadBalancer/Router/Network into Envoy xDS +
+	//                   WireGuard configs. One per DC (HA via etcd leader).
+	//   envoy-dc{a,b,c} — data plane LBs, programmed by weft-network.
+	//
+	// Observability :
+	//   otel-collector scrapes /metrics from each weft-webui admin port
+	//   (over WG), victoriametrics stores long-term, perses dashboards
+	//   (SSO via dex). All CNCF, like the rest of the platform.
 	for _, name := range []string{
 		"etcd", "nats", "dex", "weft", "cubefs",
+		"weft-network", "envoy-dca", "envoy-dcb", "envoy-dcc",
 		"otel-collector", "victoriametrics", "perses",
 	} {
 		nodes = append(nodes, map[string]any{
