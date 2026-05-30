@@ -29,6 +29,12 @@ import (
 // applies its own RBAC based on the forwarded bearer.
 var live *wclient.Client
 
+// liveNet is the optional client to the sibling weft-network
+// controller (Routers, Load Balancers, DNS, Scheduling Rules).
+// Independent socket / process from weft-agent ; nil when the
+// operator hasn't set --weft-network-socket.
+var liveNet *wclient.NetworkClient
+
 // metrics mirrors the Recorder from Deps so the mutation handlers
 // (lifecycle.go) can record per-user action counters without having
 // the struct threaded through every signature.
@@ -47,9 +53,13 @@ var (
 // Deps carries everything the HTTP layer needs at construction time.
 // Treat it as immutable post-New / NewAdmin ; concurrent reads only.
 type Deps struct {
-	Logger *slog.Logger
-	Static fs.FS
-	Live   *wclient.Client
+	Logger  *slog.Logger
+	Static  fs.FS
+	Live    *wclient.Client
+	// LiveNet is the optional sibling controller client (Routers /
+	// LBs / DNS / Scheduling Rules). nil = fall back to mock stores
+	// for those resources.
+	LiveNet *wclient.NetworkClient
 
 	// Auth is the request-context provider for /api/*. Must be non-nil ;
 	// in dev-mode it's configured with ModeNone + a synthetic user.
@@ -88,6 +98,7 @@ func NewAdmin(d Deps) http.Handler {
 // /metrics is mounted on this listener.
 func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.Handler {
 	live = d.Live
+	liveNet = d.LiveNet
 	metrics = d.Metrics
 	mux := http.NewServeMux()
 
@@ -410,14 +421,82 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, tenantsDB.listGroups())
 		return
 	case "scheduling-rules":
-		// Store-only (weft-agent has no ListSchedulingRules yet). Project
-		// filter mirrors the topbar scope ; cluster admin sees all.
+		// Live-first via weft-network ; fall back to the in-memory
+		// store on Unimplemented / no controller wired.
+		_, project := scopeFromRequest(r)
+		if liveNet != nil {
+			rows, err := liveNet.ListSchedulingRules(r.Context(), project)
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "net: " + err.Error()})
+				return
+			}
+		}
 		filter := ""
 		if u := auth.UserFromContext(r.Context()); u != nil && !isClusterAdmin(u) {
-			_, filter = scopeFromRequest(r)
+			filter = project
 		}
 		writeJSON(w, http.StatusOK, schedulingDB.list(filter))
 		return
+	case "routers":
+		// Live-first via weft-network ; otherwise fall through to the
+		// inline mock rows in the registry.
+		_, project := scopeFromRequest(r)
+		if liveNet != nil {
+			rows, err := liveNet.ListRouters(r.Context(), project)
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "net: " + err.Error()})
+				return
+			}
+		}
+	case "loadbalancers":
+		_, project := scopeFromRequest(r)
+		if liveNet != nil {
+			rows, err := liveNet.ListLoadBalancers(r.Context(), project)
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "net: " + err.Error()})
+				return
+			}
+		}
+	case "dns-zones":
+		_, project := scopeFromRequest(r)
+		if liveNet != nil {
+			rows, err := liveNet.ListDNSZones(r.Context(), project)
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "net: " + err.Error()})
+				return
+			}
+		}
+	case "dns-records":
+		// Records query is zone-scoped at the wire ; the UI's "filter
+		// by zone" picks up via the existing front-end dropdown.
+		// Pass empty = every zone (the controller does the filtering).
+		if liveNet != nil {
+			rows, err := liveNet.ListDNSRecords(r.Context(), "")
+			if err == nil {
+				writeJSON(w, http.StatusOK, rows)
+				return
+			}
+			if !wclient.IsUnimplemented(err) {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "net: " + err.Error()})
+				return
+			}
+		}
 	case "shares":
 		// Live-first ; fall back to the mock store on Unimplemented.
 		// Scope filtering applies on both paths.

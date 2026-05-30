@@ -45,6 +45,11 @@ type Config struct {
 	// Weft daemon (empty = mock mode, only allowed in DevMode)
 	WeftSocket string
 
+	// Optional weft-network controller socket. Same convention as
+	// WeftSocket (unix path or ssh://). When empty the webui falls
+	// back to mock data for Routers / LBs / DNS / Scheduling Rules.
+	WeftNetworkSocket string
+
 	// Auth mode : "oidc" (default in prod) or "none" (dev only).
 	AuthMode string
 
@@ -94,7 +99,8 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		AdminAddr: os.Getenv("WEBUI_ADMIN_ADDR"),
 		TLSCert:   os.Getenv("WEBUI_TLS_CERT"),
 		TLSKey:    os.Getenv("WEBUI_TLS_KEY"),
-		WeftSocket:    os.Getenv("WEBUI_WEFT_SOCKET"),
+		WeftSocket:        os.Getenv("WEBUI_WEFT_SOCKET"),
+		WeftNetworkSocket: os.Getenv("WEBUI_WEFT_NETWORK_SOCKET"),
 		OIDCIssuer:    os.Getenv("WEBUI_OIDC_ISSUER"),
 		OIDCClientID:  os.Getenv("WEBUI_OIDC_CLIENT_ID"),
 		OIDCClientSecret: os.Getenv("WEBUI_OIDC_CLIENT_SECRET"),
@@ -152,6 +158,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.UserAddr, "addr", cfg.UserAddr, "user-UI listen address (public)")
 	flagSet.StringVar(&cfg.AdminAddr, "admin-addr", cfg.AdminAddr, "admin-UI listen address (bind to a WireGuard interface ; empty disables the admin port)")
 	flagSet.StringVar(&cfg.WeftSocket, "weft-socket", cfg.WeftSocket, "weft daemon socket (unix path or ssh://) ; empty = mock mode (dev only)")
+	flagSet.StringVar(&cfg.WeftNetworkSocket, "weft-network-socket", cfg.WeftNetworkSocket, "weft-network controller socket ; empty = mock data for routers/LBs/DNS/scheduling-rules")
 	flagSet.BoolVar(&cfg.DevMode, "dev", cfg.DevMode, "dev mode : disables auth, allows mock fallback")
 	flagSet.StringVar(&cfg.AuthMode, "auth-mode", cfg.AuthMode, `"oidc" or "none" ("none" is dev-only)`)
 	flagSet.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "external base URL (used to compute the OIDC redirect when not set explicitly)")
