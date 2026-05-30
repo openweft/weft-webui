@@ -1,0 +1,6 @@
+# Build output
+/weft-webui
+
+# The embedded SPA is a build artifact — `task build-web` regenerates it.
+# (go:embed needs web/dist to exist at compile time ; see README.)
+/web/dist/
