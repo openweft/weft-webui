@@ -106,58 +106,35 @@ var registry = []Resource{
 			"description", "Description", "members", "Members"),
 	},
 
-	// ---------- Network ----------
+	// ---------- Compute ----------
 	{
-		// Graphical mesh map (custom SVG view). Rows are unused ; the sidebar
-		// badge shows the number of networks (see rowCount). Served by
-		// /api/network-topology.
-		//
-		// Admin-only : the node payload exposes host placement (which
-		// host runs which microVM), which is infrastructure info that
-		// project users don't need and shouldn't see.
-		ID: "topology", Label: "Topology", Section: "Network", Scope: ScopeAdmin,
-		Columns: nil,
-		Rows:    nil,
-	},
-	{
-		// Mirrors NetworkInfo (name, cidr, type, gateway, created). The "az"
-		// field stays on mock rows (not as a column) because the topology
-		// view reads it from the registry to label hubs.
-		ID: "networks", Label: "Networks", Section: "Network",
-		Columns: cols("name", "Name", "cidr", "CIDR", "type", "Type", "gateway", "Gateway", "created", "Created"),
+		ID: "flavors", Label: "Flavors", Section: "Compute",
+		Columns: cols("name", "Name", "vcpu", "vCPU", "ram", "RAM", "ephemeral_gb", "Ephemeral (GB)"),
 		Rows: []map[string]any{
-			row("name", "mgmt", "cidr", "10.0.0.0/16", "type", "wireguard", "gateway", "10.0.0.1", "created", "2026-03-01", "az", "DC-A"),
-			row("name", "tenant-net-1", "cidr", "10.10.0.0/16", "type", "overlay", "gateway", "10.10.0.1", "created", "2026-03-10", "az", "DC-A"),
-			row("name", "tenant-net-2", "cidr", "10.20.0.0/16", "type", "overlay", "gateway", "10.20.0.1", "created", "2026-03-12", "az", "DC-B"),
+			row("name", "small", "vcpu", 2, "ram", "4Gi", "ephemeral_gb", 8),
+			row("name", "medium", "vcpu", 4, "ram", "8Gi", "ephemeral_gb", 16),
+			row("name", "large", "vcpu", 8, "ram", "32Gi", "ephemeral_gb", 32),
+			row("name", "xlarge", "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64),
 		},
 	},
 	{
-		ID: "floating-ips", Label: "Floating IPs", Section: "Network",
-		Columns: cols("address", "Address", "network", "Network", "mapped_to", "Mapped to", "status", "Status"),
+		// Mirrors VMInfo (name, image, state → status, cpu, mem_mb, disk_gb,
+		// ip, project). flavor/host/network stay on mock rows (not as columns)
+		// so the topology view still finds the network attachment.
+		ID: "microvms", Label: "microVMs", Section: "Compute",
+		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
 		Rows: []map[string]any{
-			row("address", "203.0.113.10", "network", "edge", "mapped_to", "web-1", "status", "active"),
-			row("address", "203.0.113.11", "network", "edge", "mapped_to", "", "status", "available"),
-			row("address", "203.0.113.12", "network", "edge", "mapped_to", "nb-1", "status", "active"),
+			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
+			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
+			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
 		},
 	},
 	{
-		// Mirrors SecurityGroupInfo (name, description, rules count, project,
-		// created).
-		ID: "security-groups", Label: "Security Groups", Section: "Network",
-		Columns: cols("name", "Name", "description", "Description", "rules", "Rules", "project", "Project", "created", "Created"),
+		ID: "instances", Label: "Instances (VM)", Section: "Compute",
+		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "default", "description", "Default deny-in / allow-out", "rules", 2, "project", "team-alpha", "created", "2026-04-12"),
-			row("name", "web", "description", "HTTP/HTTPS ingress", "rules", 3, "project", "team-alpha", "created", "2026-04-14"),
-			row("name", "db", "description", "Postgres from web only", "rules", 1, "project", "team-beta", "created", "2026-04-20"),
-		},
-	},
-	{
-		ID: "security-rules", Label: "Security Rules", Section: "Network",
-		Columns: cols("group", "Group", "direction", "Direction", "protocol", "Protocol", "port_range", "Ports", "remote", "Remote"),
-		Rows: []map[string]any{
-			row("group", "web", "direction", "ingress", "protocol", "tcp", "port_range", "443", "remote", "0.0.0.0/0"),
-			row("group", "web", "direction", "ingress", "protocol", "tcp", "port_range", "80", "remote", "0.0.0.0/0"),
-			row("group", "db", "direction", "ingress", "protocol", "tcp", "port_range", "5432", "remote", "web"),
+			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
+			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
 		},
 	},
 
@@ -200,35 +177,90 @@ var registry = []Resource{
 		Rows: nil,
 	},
 
-	// ---------- Compute ----------
+	// ---------- Network ----------
 	{
-		// Mirrors VMInfo (name, image, state → status, cpu, mem_mb, disk_gb,
-		// ip, project). flavor/host/network stay on mock rows (not as columns)
-		// so the topology view still finds the network attachment.
-		ID: "microvms", Label: "microVMs", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
+		// Graphical mesh map (custom SVG view). Rows are unused ; the sidebar
+		// badge shows the number of networks (see rowCount). Served by
+		// /api/network-topology.
+		//
+		// Admin-only : the node payload exposes host placement (which
+		// host runs which microVM), which is infrastructure info that
+		// project users don't need and shouldn't see.
+		ID: "topology", Label: "Topology", Section: "Network", Scope: ScopeAdmin,
+		Columns: nil,
+		Rows:    nil,
+	},
+	{
+		// Mirrors NetworkInfo (name, cidr, type, gateway, created). The "az"
+		// field stays on mock rows (not as a column) because the topology
+		// view reads it from the registry to label hubs.
+		ID: "networks", Label: "Networks", Section: "Network",
+		Columns: cols("name", "Name", "cidr", "CIDR", "type", "Type", "gateway", "Gateway", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "web-1", "image", "alpine:3.21", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 10, "ip", "10.10.0.21", "project", "team-alpha", "host", "dc-a-r1-h2", "network", "tenant-net-1", "flavor", "small"),
-			row("name", "nb-1", "image", "jupyter:latest", "status", "running", "cpu", 2, "mem_mb", 4096, "disk_gb", 20, "ip", "10.20.0.13", "project", "research", "host", "dc-c-r2-h1", "network", "tenant-net-2", "flavor", "small"),
-			row("name", "ci-job-7f3", "image", "buildkit:latest", "status", "running", "cpu", 4, "mem_mb", 8192, "disk_gb", 30, "ip", "10.10.0.42", "project", "team-beta", "host", "dc-b-r1-h3", "network", "tenant-net-1", "flavor", "medium"),
+			row("name", "mgmt", "cidr", "10.0.0.0/16", "type", "wireguard", "gateway", "10.0.0.1", "created", "2026-03-01", "az", "DC-A"),
+			row("name", "tenant-net-1", "cidr", "10.10.0.0/16", "type", "overlay", "gateway", "10.10.0.1", "created", "2026-03-10", "az", "DC-A"),
+			row("name", "tenant-net-2", "cidr", "10.20.0.0/16", "type", "overlay", "gateway", "10.20.0.1", "created", "2026-03-12", "az", "DC-B"),
 		},
 	},
 	{
-		ID: "instances", Label: "Instances (VM)", Section: "Compute",
-		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
+		// Routers stitch meshes together (inter-tenant peering, mesh ↔ outside)
+		// or expose a mesh to the public Internet. backend is the data-plane
+		// realisation : "wireguard" for mesh ↔ mesh peering, "linux-fou" or
+		// "vyos" for outbound NAT/BGP. Mock data : one egress router per DC.
+		ID: "routers", Label: "Routers", Section: "Network",
+		Columns: cols("name", "Name", "type", "Type", "backend", "Backend",
+			"networks", "Networks", "external", "External", "project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "legacy-app", "image", "debian-12.qcow2", "flavor", "large", "host", "dc-a-r3-h1", "network", "tenant-net-1", "project", "team-beta", "status", "running"),
-			row("name", "win-build", "image", "windows-2022.qcow2", "flavor", "xlarge", "host", "dc-b-r2-h2", "network", "tenant-net-2", "project", "team-beta", "status", "stopped"),
+			row("name", "edge-dca", "type", "egress", "backend", "vyos", "networks", "tenant-net-1, mgmt", "external", "AS65010", "project", "platform", "status", "active"),
+			row("name", "edge-dcb", "type", "egress", "backend", "vyos", "networks", "tenant-net-2, mgmt", "external", "AS65010", "project", "platform", "status", "active"),
+			row("name", "peer-alpha-beta", "type", "peer", "backend", "wireguard",
+				"networks", "tenant-net-1, tenant-net-2", "external", "—", "project", "team-alpha", "status", "active"),
 		},
 	},
 	{
-		ID: "flavors", Label: "Flavors", Section: "Compute",
-		Columns: cols("name", "Name", "vcpu", "vCPU", "ram", "RAM", "ephemeral_gb", "Ephemeral (GB)"),
+		// Load balancers : programmable L4/L7 in front of microVMs/instances.
+		// Backed by Envoy on dedicated infra microVMs (one per DC, picked via
+		// SRV records — same shape as the weft agent endpoints). The "mode"
+		// column tells L4 (tcp/udp passthrough) from L7 (HTTP routing).
+		ID: "loadbalancers", Label: "Load Balancers", Section: "Network",
+		Columns: cols("name", "Name", "mode", "Mode", "address", "VIP",
+			"port", "Port", "backends", "Backends", "az", "AZ", "project", "Project", "status", "Status"),
 		Rows: []map[string]any{
-			row("name", "small", "vcpu", 2, "ram", "4Gi", "ephemeral_gb", 8),
-			row("name", "medium", "vcpu", 4, "ram", "8Gi", "ephemeral_gb", 16),
-			row("name", "large", "vcpu", 8, "ram", "32Gi", "ephemeral_gb", 32),
-			row("name", "xlarge", "vcpu", 16, "ram", "64Gi", "ephemeral_gb", 64),
+			row("name", "web-prod", "mode", "L7", "address", "203.0.113.20", "port", 443,
+				"backends", "web-1, web-2", "az", "multi", "project", "team-alpha", "status", "active"),
+			row("name", "pg-rw", "mode", "L4", "address", "10.10.0.100", "port", 5432,
+				"backends", "db-1, db-2", "az", "DC-A", "project", "team-alpha", "status", "active"),
+			row("name", "jupyter", "mode", "L7", "address", "203.0.113.21", "port", 443,
+				"backends", "nb-1", "az", "DC-C", "project", "research", "status", "active"),
+		},
+	},
+	{
+		ID: "floating-ips", Label: "Floating IPs", Section: "Network",
+		Columns: cols("address", "Address", "network", "Network", "mapped_to", "Mapped to", "status", "Status"),
+		Rows: []map[string]any{
+			row("address", "203.0.113.10", "network", "edge", "mapped_to", "web-1", "status", "active"),
+			row("address", "203.0.113.11", "network", "edge", "mapped_to", "", "status", "available"),
+			row("address", "203.0.113.12", "network", "edge", "mapped_to", "nb-1", "status", "active"),
+		},
+	},
+	{
+		// Mirrors SecurityGroupInfo (name, description, rules count, project,
+		// created).
+		ID: "security-groups", Label: "Security Groups", Section: "Network",
+		Columns: cols("name", "Name", "description", "Description", "rules", "Rules", "project", "Project", "created", "Created"),
+		Rows: []map[string]any{
+			row("name", "default", "description", "Default deny-in / allow-out", "rules", 2, "project", "team-alpha", "created", "2026-04-12"),
+			row("name", "web", "description", "HTTP/HTTPS ingress", "rules", 3, "project", "team-alpha", "created", "2026-04-14"),
+			row("name", "db", "description", "Postgres from web only", "rules", 1, "project", "team-beta", "created", "2026-04-20"),
+		},
+	},
+	{
+		ID: "security-rules", Label: "Security Rules", Section: "Network",
+		Columns: cols("group", "Group", "direction", "Direction", "protocol", "Protocol", "port_range", "Ports", "remote", "Remote"),
+		Rows: []map[string]any{
+			row("group", "web", "direction", "ingress", "protocol", "tcp", "port_range", "443", "remote", "0.0.0.0/0"),
+			row("group", "web", "direction", "ingress", "protocol", "tcp", "port_range", "80", "remote", "0.0.0.0/0"),
+			row("group", "db", "direction", "ingress", "protocol", "tcp", "port_range", "5432", "remote", "web"),
 		},
 	},
 
