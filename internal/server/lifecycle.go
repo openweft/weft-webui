@@ -429,6 +429,91 @@ func handleCreateSecurityGroup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleGetSecurityGroupRules : GET /api/security-groups/{uuid}/rules
+//
+// Returns the rule list for one SG. Live-first ; on Unimplemented OR
+// no daemon, falls back to reading the "security-rules" mock resource
+// and filtering by group name. (The mock SG rows don't carry rules
+// themselves ; the rules live in a sibling resource, which mirrors
+// vzd's SecurityGroupInfo.rules embedding.)
+func handleGetSecurityGroupRules(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if live != nil {
+		rules, err := live.GetSecurityGroup(r.Context(), uuid)
+		if err == nil {
+			writeJSON(w, http.StatusOK, rules)
+			return
+		}
+		if !wclient.IsUnimplemented(err) {
+			writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+			return
+		}
+	}
+	// Mock fallback : look up the SG name from the security-groups
+	// resource, then filter the security-rules resource by `group`.
+	var groupName string
+	for _, row := range resourceByID["security-groups"].Rows {
+		if row["uuid"] == uuid {
+			groupName, _ = row["name"].(string)
+			break
+		}
+	}
+	out := make([]map[string]any, 0)
+	if groupName != "" {
+		for _, row := range resourceByID["security-rules"].Rows {
+			if row["group"] == groupName {
+				// Translate the security-rules columns to the
+				// SecurityRule shape the drawer expects.
+				portMin, portMax := parsePortRange(row["port_range"])
+				out = append(out, map[string]any{
+					"direction":         row["direction"],
+					"protocol":          row["protocol"],
+					"port_min":          portMin,
+					"port_max":          portMax,
+					"remote_cidr":       row["remote"],
+					"remote_group_uuid": "",
+				})
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// parsePortRange turns "80", "8000-8100", or "" into (min, max).
+func parsePortRange(v any) (int, int) {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return 0, 0
+	}
+	var lo, hi int
+	if _, err := fmt.Sscanf(s, "%d-%d", &lo, &hi); err == nil {
+		return lo, hi
+	}
+	if _, err := fmt.Sscanf(s, "%d", &lo); err == nil {
+		return lo, lo
+	}
+	return 0, 0
+}
+
+// handleSetSecurityGroupRules : PUT /api/security-groups/{uuid}/rules
+// Body : []SecurityRule. Replaces the SG's rule list atomically.
+func handleSetSecurityGroupRules(w http.ResponseWriter, r *http.Request) {
+	if !requireLive(w) {
+		return
+	}
+	var body []wclient.SecurityRule
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, errBadReq("invalid body: "+err.Error()))
+		return
+	}
+	if err := live.SetSecurityGroupRules(r.Context(), r.PathValue("uuid"), body); err != nil {
+		writeErr(w, &httpErr{http.StatusBadGateway, "live: " + err.Error()})
+		return
+	}
+	userAction(r, "security-group.set-rules")
+	writeJSON(w, http.StatusOK, map[string]any{"uuid": r.PathValue("uuid"), "rules": len(body)})
+}
+
 // handleDeleteSecurityGroup : DELETE /api/security-groups/{uuid}
 func handleDeleteSecurityGroup(w http.ResponseWriter, r *http.Request) {
 	if !requireLive(w) {
