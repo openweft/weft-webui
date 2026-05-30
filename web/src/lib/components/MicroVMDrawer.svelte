@@ -16,7 +16,10 @@
     startVM, stopVM, deleteVM,
     attachVolume, detachVolume,
     listVMKeys, addVMKey, removeVMKey,
+    listVMProperties, setVMProperty, removeVMProperty,
+    listUEFIVars, setUEFIVar, removeUEFIVar,
     type VMStatus, type VMTimingEvent, type VMLogs, type Row, type VMSSHKey,
+    type VMProperty, type UEFIVar,
   } from '../api';
   import { openScopedEvents } from '../events';
 
@@ -35,7 +38,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'volumes' | 'keys' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'volumes' | 'keys' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -75,6 +78,31 @@
   let newKey = $state('');
   let addKeyBusy = $state(false);
   let addKeyErr = $state('');
+
+  // Properties tab : host-set key/value annotations. The guest_readable
+  // flag opts the entry into the guest-side read surface (NATS).
+  let vmProperties = $state<VMProperty[] | null>(null);
+  let propsErr = $state('');
+  let propsBusy = $state(false);
+  let propKey = $state('');
+  let propValue = $state('');
+  let propGuestReadable = $state(false);
+  let propBusy = $state(false);
+  let propAddErr = $state('');
+
+  // UEFI vars tab : firmware NVRAM editor. Values stay in hex on the
+  // wire ; we let the operator paste hex pairs (with optional spaces
+  // for readability) and validate server-side.
+  let uefi = $state<UEFIVar[] | null>(null);
+  let uefiErr = $state('');
+  let uefiBusy = $state(false);
+  let uefiName = $state('');
+  let uefiNS = $state('');         // empty → server defaults to EFI Global
+  let uefiValueHex = $state('');
+  let uefiAttrs = $state<string[]>(['NonVolatile', 'BootServiceAccess', 'RuntimeAccess']);
+  const allAttrs = ['NonVolatile', 'BootServiceAccess', 'RuntimeAccess', 'HardwareErrorRecord', 'AuthenticatedWriteAccess', 'TimeBasedAuthenticatedWriteAccess', 'AppendWrite'];
+  let uefiAddBusy = $state(false);
+  let uefiAddErr = $state('');
 
   async function loadStatus() {
     statusBusy = true; statusErr = '';
@@ -125,6 +153,70 @@
     } catch (e) { keysErr = String(e); }
   }
 
+  async function loadProps() {
+    propsBusy = true; propsErr = '';
+    try { vmProperties = await listVMProperties(name); }
+    catch (e) { propsErr = String(e); }
+    finally { propsBusy = false; }
+  }
+  async function submitProp() {
+    const k = propKey.trim();
+    if (!k) return;
+    propBusy = true; propAddErr = '';
+    try {
+      await setVMProperty(name, { key: k, value: propValue, guest_readable: propGuestReadable });
+      propKey = ''; propValue = ''; propGuestReadable = false;
+      await loadProps();
+    } catch (e) { propAddErr = String(e); }
+    finally { propBusy = false; }
+  }
+  async function delProp(k: string) {
+    if (!confirm(`Remove property "${k}" ?`)) return;
+    try {
+      await removeVMProperty(name, k);
+      await loadProps();
+    } catch (e) { propsErr = String(e); }
+  }
+  async function toggleGuestReadable(p: VMProperty) {
+    try {
+      await setVMProperty(name, { key: p.key, value: p.value, guest_readable: !p.guest_readable });
+      await loadProps();
+    } catch (e) { propsErr = String(e); }
+  }
+
+  async function loadUEFI() {
+    uefiBusy = true; uefiErr = '';
+    try { uefi = await listUEFIVars(name); }
+    catch (e) { uefiErr = String(e); }
+    finally { uefiBusy = false; }
+  }
+  async function submitUEFI() {
+    const n = uefiName.trim();
+    if (!n) return;
+    uefiAddBusy = true; uefiAddErr = '';
+    try {
+      await setUEFIVar(name, {
+        namespace: uefiNS.trim() || undefined,
+        name: n,
+        value_hex: uefiValueHex.replace(/\s+/g, ''),
+        attributes: uefiAttrs,
+      });
+      uefiName = ''; uefiNS = ''; uefiValueHex = '';
+      await loadUEFI();
+    } catch (e) { uefiAddErr = String(e); }
+    finally { uefiAddBusy = false; }
+  }
+  async function delUEFI(v: UEFIVar) {
+    if (!confirm(`Remove UEFI variable ${v.name} ? Next boot will see the firmware default.`)) return;
+    try {
+      await removeUEFIVar(name, v.namespace, v.name);
+      await loadUEFI();
+    } catch (e) { uefiErr = String(e); }
+  }
+  function toggleAttr(a: string) {
+    uefiAttrs = uefiAttrs.includes(a) ? uefiAttrs.filter(x => x !== a) : [...uefiAttrs, a];
+  }
+
   onMount(loadStatus);
 
   // Per-VM event subscription : the agent's WatchEvents stream is
@@ -153,16 +245,18 @@
   });
   onDestroy(() => scopedClose?.());
 
-  // Lazy-load timings / logs / volumes / keys the first time their tab is shown.
+  // Lazy-load each tab the first time it's opened.
   $effect(() => {
     if (tab === 'timings' && !timings && !timingsErr) loadTimings();
     if (tab === 'logs' && !logs && !logsErr) loadLogs();
     if (tab === 'volumes' && !volumes && !volumesErr) loadVolumes();
     if (tab === 'keys' && !keys && !keysErr) loadKeys();
+    if (tab === 'props' && !vmProperties && !propsErr) loadProps();
+    if (tab === 'uefi' && !uefi && !uefiErr) loadUEFI();
   });
 
   async function refreshAll() {
-    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs(), loadVolumes(), loadKeys()]);
+    await Promise.allSettled([loadStatus(), loadTimings(), loadLogs(), loadVolumes(), loadKeys(), loadProps(), loadUEFI()]);
   }
 
   // Volume sets : attached to this VM, vs available (detached) in
@@ -300,6 +394,14 @@
     <button role="tab" class="tab" class:tab-active={tab === 'keys'} onclick={() => (tab = 'keys')}>
       SSH keys
       {#if keys && keys.length > 0}<span class="ml-1 badge badge-xs">{keys.length}</span>{/if}
+    </button>
+    <button role="tab" class="tab" class:tab-active={tab === 'props'} onclick={() => (tab = 'props')}>
+      Properties
+      {#if vmProperties && vmProperties.length > 0}<span class="ml-1 badge badge-xs">{vmProperties.length}</span>{/if}
+    </button>
+    <button role="tab" class="tab" class:tab-active={tab === 'uefi'} onclick={() => (tab = 'uefi')}>
+      UEFI
+      {#if uefi && uefi.length > 0}<span class="ml-1 badge badge-xs">{uefi.length}</span>{/if}
     </button>
     <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>
       Timings
@@ -453,6 +555,142 @@
           >
             {#if addKeyBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
             Add key
+          </button>
+        </div>
+      </div>
+
+    {:else if tab === 'props'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Properties</h3>
+        <span class="text-xs text-base-content/50">
+          host-set annotations · guest-readable ones flow to weft-vm-agent via NATS
+        </span>
+        <button class="ml-auto btn btn-xs btn-ghost" disabled={propsBusy} onclick={loadProps}>
+          {#if propsBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
+        </button>
+      </div>
+      {#if propsErr}
+        <div class="mt-2 alert alert-error text-sm">{propsErr}</div>
+      {:else if !vmProperties}
+        <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+      {:else if vmProperties.length === 0}
+        <p class="mt-3 text-sm text-base-content/50">No properties set.</p>
+      {:else}
+        <table class="table table-sm mt-2">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Value</th>
+              <th class="w-24 text-center" title="Guest-readable : the in-VM agent can read this">Guest</th>
+              <th class="w-16"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each vmProperties as p (p.key)}
+              <tr>
+                <td class="font-mono text-xs">{p.key}</td>
+                <td class="font-mono text-xs">{p.value}</td>
+                <td class="text-center">
+                  <input type="checkbox" class="checkbox checkbox-xs"
+                    checked={p.guest_readable}
+                    onchange={() => toggleGuestReadable(p)} />
+                </td>
+                <td>
+                  <button class="btn btn-xs btn-ghost text-error" onclick={() => delProp(p.key)}>×</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+
+      <div class="mt-4 rounded-box border border-base-300 p-3">
+        <div class="text-xs font-semibold mb-2">Add / update a property</div>
+        <div class="grid grid-cols-[1fr_1fr] gap-2">
+          <input class="input input-xs input-bordered font-mono" placeholder="key (e.g. owner)" bind:value={propKey} />
+          <input class="input input-xs input-bordered font-mono" placeholder="value" bind:value={propValue} />
+        </div>
+        <label class="label cursor-pointer justify-start gap-2 mt-2">
+          <input type="checkbox" class="checkbox checkbox-xs" bind:checked={propGuestReadable} />
+          <span class="label-text text-xs">Guest-readable (weft-vm-agent inside the VM can read this value)</span>
+        </label>
+        {#if propAddErr}<div class="mt-2 alert alert-error py-2 text-xs">{propAddErr}</div>{/if}
+        <div class="mt-2 text-right">
+          <button class="btn btn-xs btn-primary"
+            disabled={propBusy || !propKey.trim()}
+            onclick={submitProp}>
+            {#if propBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+            Save
+          </button>
+        </div>
+      </div>
+
+    {:else if tab === 'uefi'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">UEFI variables</h3>
+        <span class="text-xs text-base-content/50">
+          firmware NVRAM · raw bytes shown as hex
+        </span>
+        <button class="ml-auto btn btn-xs btn-ghost" disabled={uefiBusy} onclick={loadUEFI}>
+          {#if uefiBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
+        </button>
+      </div>
+      {#if uefiErr}
+        <div class="mt-2 alert alert-error text-sm">{uefiErr}</div>
+      {:else if !uefi}
+        <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+      {:else if uefi.length === 0}
+        <p class="mt-3 text-sm text-base-content/50">No UEFI variables stored. Firmware defaults apply.</p>
+      {:else}
+        <ul class="mt-2 divide-y divide-base-300">
+          {#each uefi as v (v.namespace + '/' + v.name)}
+            <li class="py-2 text-sm">
+              <div class="flex items-baseline gap-2">
+                <span class="font-mono font-semibold">{v.name}</span>
+                <span class="text-xs text-base-content/50 font-mono truncate" title={v.namespace}>{v.namespace.slice(0, 8)}…</span>
+                <button class="ml-auto btn btn-xs btn-ghost text-error" onclick={() => delUEFI(v)}>Remove</button>
+              </div>
+              <div class="mt-1 flex flex-wrap gap-1">
+                {#each v.attributes as a (a)}
+                  <span class="badge badge-xs badge-ghost">{a}</span>
+                {/each}
+              </div>
+              <div class="mt-1 font-mono text-xs break-all text-base-content/70">
+                {v.value_hex || '(empty)'}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <div class="mt-4 rounded-box border border-base-300 p-3">
+        <div class="text-xs font-semibold mb-2">Add / update a variable</div>
+        <div class="grid grid-cols-[1fr_2fr] gap-2">
+          <input class="input input-xs input-bordered font-mono" placeholder="name (e.g. BootOrder)" bind:value={uefiName} />
+          <input class="input input-xs input-bordered font-mono"
+            placeholder="namespace GUID (empty = EFI Global)" bind:value={uefiNS} />
+        </div>
+        <label class="form-control mt-2">
+          <span class="label-text text-xs">Value (hex pairs, spaces allowed)</span>
+          <textarea class="textarea textarea-sm textarea-bordered font-mono text-xs"
+            rows="2" placeholder="0000  or  01 00 00 00 58 00 …" bind:value={uefiValueHex}></textarea>
+        </label>
+        <div class="mt-2 flex flex-wrap gap-2">
+          {#each allAttrs as a (a)}
+            <label class="label cursor-pointer gap-1">
+              <input type="checkbox" class="checkbox checkbox-xs"
+                checked={uefiAttrs.includes(a)} onchange={() => toggleAttr(a)} />
+              <span class="label-text text-xs">{a}</span>
+            </label>
+          {/each}
+        </div>
+        {#if uefiAddErr}<div class="mt-2 alert alert-error py-2 text-xs">{uefiAddErr}</div>{/if}
+        <div class="mt-2 text-right">
+          <button class="btn btn-xs btn-primary"
+            disabled={uefiAddBusy || !uefiName.trim()}
+            onclick={submitUEFI}>
+            {#if uefiAddBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+            Save
           </button>
         </div>
       </div>
