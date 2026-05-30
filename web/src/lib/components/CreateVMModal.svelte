@@ -29,7 +29,11 @@
   // Inputs.
   let name = $state('');
   let image = $state('alpine:3.21');
-  let flavor = $state<Row | null>(null);
+  // Selected flavor : bound as the name (string) so the native <select>
+  // doesn't need object identity. `flavor` is derived after `flavors`
+  // is declared (see below) so the rest of the form keeps its
+  // object-shape view.
+  let flavorName = $state('');
   let schedulingRule = $state('');
   let network = $state('');
   let ingressKind = $state<VMIngressKind>('none');
@@ -72,6 +76,21 @@
   let freeFIPs = $derived.by<Row[]>(() => {
     return fips.filter((f) => String(f.mapped_to ?? '') === '');
   });
+
+  // Group flavors by the GPU/no-GPU axis so the <select> scales past
+  // a handful of entries. Native <optgroup> means no extra widget code
+  // and works at 7 or 700 flavors. The grouping is derived (not seeded)
+  // so a future "ai-mig" or "spot" tier shows up as soon as the
+  // catalogue carries it.
+  let cpuFlavors = $derived(flavors.filter((f) => !f.gpu));
+  let gpuFlavors = $derived(flavors.filter((f) => !!f.gpu));
+
+  // Picked flavor as an object — drives the detail panel + the submit
+  // payload. Declared here (after `flavors`) to avoid the use-before-
+  // declaration that bit the first try.
+  let flavor = $derived<Row | null>(
+    flavors.find((f) => String(f.name) === flavorName) ?? null,
+  );
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -124,7 +143,7 @@
 
   function reset() {
     name = ''; image = 'alpine:3.21';
-    flavor = null;
+    flavorName = '';
     schedulingRule = ''; network = '';
     ingressKind = 'none'; ingressFIP = ''; ingressLB = '';
     error = ''; warnings = [];
@@ -155,36 +174,67 @@
       </label>
     </div>
 
-    <!-- Flavor : tile picker. Picking sets the spec ; cpu/ram/disk
-         are read-only properties of the chosen tile. -->
+    <!-- Flavor : combo + detail panel. Native <select> + <optgroup>
+         scales past the 7-tile demo to the hundreds-of-flavors case
+         a real catalogue grows to. The right panel shows the picked
+         flavor's compute envelope so the operator confirms before
+         submit. -->
     <div class="mt-4">
       <span class="label-text text-xs">Flavor <span class="text-error">*</span></span>
       {#if flavors.length === 0}
         <p class="mt-1 text-xs text-base-content/50">No flavor catalogue loaded.</p>
       {:else}
-        <div class="mt-1 grid gap-2 sm:grid-cols-4">
-          {#each flavors as f (f.name)}
-            <button
-              type="button"
-              class="rounded-box border p-2 text-left text-sm hover:bg-base-200"
-              class:border-primary={flavor?.name === f.name}
-              class:border-base-300={flavor?.name !== f.name}
-              onclick={() => (flavor = f)}
-            >
-              <div class="font-medium">{f.name}</div>
-              <div class="text-xs text-base-content/60">
-                {f.vcpu} vCPU · {f.ram} · {f.ephemeral_gb} GB
-                {#if f.gpu}<br /><span class="text-base-content/80">{f.gpu}</span>{/if}
-              </div>
-            </button>
-          {/each}
-        </div>
-        {#if flavor}
-          <div class="mt-2 text-xs text-base-content/60">
-            Selected : <span class="font-mono">{flavor.name}</span> — these
-            values are fixed by the flavor and not editable here.
+        <div class="mt-1 grid gap-3 sm:grid-cols-[1fr_1.2fr]">
+          <select
+            class="select select-sm select-bordered"
+            bind:value={flavorName}
+            size={Math.min(8, flavors.length + (cpuFlavors.length > 0 && gpuFlavors.length > 0 ? 2 : 1))}
+          >
+            <option value="" disabled>— pick a flavor —</option>
+            {#if cpuFlavors.length > 0 && gpuFlavors.length > 0}
+              <optgroup label="CPU">
+                {#each cpuFlavors as f (f.name)}
+                  <option value={String(f.name)}>{f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}</option>
+                {/each}
+              </optgroup>
+              <optgroup label="GPU">
+                {#each gpuFlavors as f (f.name)}
+                  <option value={String(f.name)}>{f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}  ·  {f.gpu}</option>
+                {/each}
+              </optgroup>
+            {:else}
+              {#each flavors as f (f.name)}
+                <option value={String(f.name)}>
+                  {f.name}  ·  {f.vcpu} vCPU  ·  {f.ram}{f.gpu ? '  ·  ' + f.gpu : ''}
+                </option>
+              {/each}
+            {/if}
+          </select>
+
+          <div class="rounded-box border border-base-300 bg-base-200/40 p-3 text-sm">
+            {#if flavor}
+              <div class="font-mono font-semibold">{flavor.name}</div>
+              <dl class="mt-2 grid grid-cols-[6rem_1fr] gap-y-1 text-xs">
+                <dt class="text-base-content/60">vCPU</dt>
+                <dd class="tabular-nums">{flavor.vcpu}</dd>
+                <dt class="text-base-content/60">Memory</dt>
+                <dd class="tabular-nums">{flavor.ram}</dd>
+                <dt class="text-base-content/60">Ephemeral</dt>
+                <dd class="tabular-nums">{flavor.ephemeral_gb} GB</dd>
+                <dt class="text-base-content/60">GPU</dt>
+                <dd>{flavor.gpu || '—'}</dd>
+              </dl>
+              <p class="mt-2 text-xs text-base-content/50">
+                Fixed by the flavor. To run something off-envelope, edit
+                the catalogue (admin) rather than the VM here.
+              </p>
+            {:else}
+              <p class="text-xs text-base-content/50">
+                Pick a flavor on the left to see its compute envelope.
+              </p>
+            {/if}
           </div>
-        {/if}
+        </div>
       {/if}
     </div>
 
