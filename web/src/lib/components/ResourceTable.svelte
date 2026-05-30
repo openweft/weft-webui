@@ -76,7 +76,9 @@
     </thead>
     <tbody>
       {#each sorted as r, i (i)}
-        <tr class="hover">
+        <!-- data-name carries the row's `name` cell so a wrapper can
+             intercept clicks (e.g. TenantsPage drill-down). -->
+        <tr class="hover" data-name={typeof r.name === 'string' ? r.name : ''}>
           {#each columns as c (c.key)}
             <td>
               {#if isStatus(c.key)}
