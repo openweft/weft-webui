@@ -21,6 +21,7 @@ import (
 
 	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/ratelimit"
 	"github.com/openweft/weft-webui/internal/telemetry"
 	"github.com/openweft/weft-webui/internal/wclient"
 )
@@ -86,6 +87,13 @@ type Deps struct {
 	// helper collapses to audit.NopLogger). Wire a FileLogger via
 	// audit.NewFileLogger to persist admin-classified actions.
 	Audit audit.Logger
+
+	// RateLimit is optional ; when non-nil its Middleware wraps the
+	// /api/* mux (after auth so we have a session identity to key
+	// off). When nil, no limiting — safe for tests and embedded
+	// dev runs, NOT recommended in production. Pin defaults in
+	// main.go via ratelimit.NewLimiter(ratelimit.Options{}).
+	RateLimit *ratelimit.Limiter
 
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
@@ -229,10 +237,15 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// SPA (everything else)
 	mux.Handle("/", spaHandler(d.Static))
 
-	// Middleware chain : panic → log → metrics → request-id →
-	// security-headers → json-defaults → auth → mux. Outer-most wraps
-	// run first. Metrics sits outside auth so 401s are counted too.
+	// Middleware chain : panic → log → metrics → request-id → http-req
+	// → security-headers → json-defaults → auth → rate-limit → mux.
+	// Outer-most wraps run first. Metrics sits outside auth so 401s
+	// are counted too. Rate-limit sits BETWEEN auth and the mux so
+	// the per-user key has the session identity to read.
 	var h http.Handler = mux
+	if d.RateLimit != nil {
+		h = d.RateLimit.Middleware(h)
+	}
 	h = d.Auth.Wrap(h)
 	h = withJSONDefaults(h)
 	h = withSecurityHeaders(d.DevMode, h)
