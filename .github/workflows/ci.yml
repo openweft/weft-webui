@@ -88,6 +88,25 @@ jobs:
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: go test -race -count=1 ./...
 
+  docker:
+    # Smoke-build the production image so a broken Dockerfile is caught
+    # on every push. No registry push from here ; release-tag pushes
+    # happen in a separate publish workflow gated on `tags: ['v*']`.
+    needs: go-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: weft-webui:ci
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+
   gen-api-drift:
     # Doesn't strictly need web-frontend's artifact (tools/dump-openapi
     # doesn't compile main.go's embed), but keeping the dep avoids the
