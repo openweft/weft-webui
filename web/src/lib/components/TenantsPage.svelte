@@ -21,6 +21,7 @@
     addTenantMember,
     grantProjectRole,
     getTenantQuota,
+    getTenantUsage,
     setTenantQuota,
     getProjectQuota,
     setProjectQuota,
@@ -30,10 +31,10 @@
     type Row,
     type TenantDetail,
     type TenantQuotaView,
+    type TenantUsageView,
     type ProjectQuotaView,
     type Quotas,
   } from '../api';
-  import ResourceTable from './ResourceTable.svelte';
   import QuotaBars from './QuotaBars.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
@@ -50,10 +51,27 @@
   // affordance wherever they're working from.
   let canCreateTenant = $state(false);
 
+  // usageByTenant : populated in parallel after the listing returns.
+  // Keyed by tenant name so the card grid can render bars without an
+  // extra await per tile. The fetch is fire-and-forget per row so a
+  // single 404 doesn't sink the whole dashboard.
+  let usageByTenant = $state<Record<string, TenantUsageView>>({});
+
   async function refreshList() {
     loading = true;
     try {
       rows = await getRows('tenants');
+      // Kick off per-tenant usage fetches in parallel ; the cards
+      // render placeholders until each settles.
+      const out: Record<string, TenantUsageView> = {};
+      await Promise.all(rows.map(async (r) => {
+        const name = String(r.name ?? '');
+        if (!name) return;
+        try {
+          out[name] = await getTenantUsage(name);
+        } catch { /* tenant we can't see ; skip */ }
+      }));
+      usageByTenant = out;
     } catch (e) {
       error = String(e);
     } finally {
@@ -61,6 +79,24 @@
     }
   }
   onMount(refreshList);
+
+  // ---- card-grid helpers ----
+  //
+  // Percent of cap consumed for one usage dimension. Returns -1 when
+  // there's no cap so the bar template can render a neutral state
+  // (quotas aren't enforced yet — many tenants have a zero cap).
+  function pct(used: number, cap: number | undefined): number {
+    if (!cap || cap <= 0) return -1;
+    return Math.min(100, Math.round((used / cap) * 100));
+  }
+  // daisyUI progress colour : green <80%, yellow 80-95%, red >95%.
+  // -1 (no cap) → ghost / neutral.
+  function progressClass(p: number): string {
+    if (p < 0)   return 'progress-info opacity-40';
+    if (p > 95)  return 'progress-error';
+    if (p >= 80) return 'progress-warning';
+    return 'progress-success';
+  }
 
   // Track the resource catalogue so we can filter quota dims that
   // depend on plugin-gated resources (shares_gib disappears when no
@@ -107,13 +143,6 @@
     refreshList();
   }
 
-  // Catch click on a row : ResourceTable renders the rows, we listen on
-  // the wrapper.
-  function onRowClick(e: MouseEvent) {
-    const cell = (e.target as HTMLElement).closest('tr');
-    if (!cell || !cell.dataset.name) return;
-    openTenant(cell.dataset.name);
-  }
 
   // ---------- modals ----------
   let createDlg: HTMLDialogElement;
@@ -307,9 +336,65 @@
     {:else if error}
       <div class="alert alert-error">{error}</div>
     {:else}
-      <div role="presentation" onclick={onRowClick} class="cursor-pointer">
-        <ResourceTable columns={meta.columns} rows={rows} onReload={refreshList} />
+      <!-- Tenant card grid : one card per tenant with live usage bars
+           (VMs / CPU / RAM / storage). Bars colour-code by % consumed
+           of the tenant cap when one is set ; otherwise render in
+           muted info colour so it's clear no quota is enforced. -->
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {#each rows as r (r.name)}
+          {@const name = String(r.name)}
+          {@const usage = usageByTenant[name]}
+          {@const cap = usage?.cap}
+          <button type="button"
+            class="card bg-base-100 shadow text-left hover:shadow-lg transition-shadow"
+            onclick={() => openTenant(name)}>
+            <div class="card-body p-4">
+              <div class="flex items-baseline gap-2">
+                <h3 class="card-title text-base">{name}</h3>
+                <span class="text-xs text-base-content/50">{r.domain ?? '—'}</span>
+                <span class="badge badge-xs ml-auto {String(r.status) === 'active' ? 'badge-success' : 'badge-ghost'}">
+                  {r.status ?? '—'}
+                </span>
+              </div>
+              <p class="text-xs text-base-content/60">
+                {r.projects ?? 0} projects · {r.members ?? 0} members · {r.admins ?? 0} admins
+              </p>
+
+              {#if !usage}
+                <div class="py-2 text-center text-xs text-base-content/50">loading usage…</div>
+              {:else}
+                <dl class="mt-2 space-y-2 text-xs">
+                  {#each [
+                    { label: 'microVMs',    used: usage.vms,         capV: cap?.vcpu === undefined ? 0 : 0,   showCap: false },
+                    { label: 'vCPU cores',  used: usage.cpu_cores,   capV: cap?.vcpu ?? 0,                    showCap: true  },
+                    { label: 'RAM (GiB)',   used: usage.ram_gib,     capV: cap?.ram_gib ?? 0,                 showCap: true  },
+                    { label: 'Storage (GiB)', used: usage.storage_gib, capV: cap?.volumes_gib ?? 0,            showCap: true  },
+                  ] as bar (bar.label)}
+                    {@const p = bar.showCap ? pct(bar.used, bar.capV) : -1}
+                    <div>
+                      <div class="flex justify-between font-mono">
+                        <span class="text-base-content/70">{bar.label}</span>
+                        <span class="tabular-nums">
+                          {bar.used}{#if bar.showCap && bar.capV > 0} / {bar.capV}{:else if !bar.showCap}{:else} <span class="text-base-content/40">(no cap)</span>{/if}
+                        </span>
+                      </div>
+                      {#if bar.showCap}
+                        <progress class="progress {progressClass(p)} h-1.5"
+                          value={p < 0 ? 0 : p} max="100"></progress>
+                      {:else}
+                        <progress class="progress progress-info opacity-30 h-1.5" value="0" max="100"></progress>
+                      {/if}
+                    </div>
+                  {/each}
+                </dl>
+              {/if}
+            </div>
+          </button>
+        {/each}
       </div>
+      {#if rows.length === 0}
+        <div class="py-12 text-center text-base-content/50 text-sm">No tenants yet.</div>
+      {/if}
     {/if}
   </div>
 {:else}

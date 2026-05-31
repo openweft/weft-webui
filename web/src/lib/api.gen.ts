@@ -1654,6 +1654,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tenants/{name}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live usage roll-up for one tenant (VMs / CPU cores / storage GiB)
+         * @description Aggregates rows across the microvm + volume registries, keyed on the tenant a project belongs to. Quotas live on the tenant ; usage is computed here so the dashboard renders bars against the cap without a second round-trip. Non-members get 404 (don't-acknowledge).
+         */
+        get: operations["get-tenant-usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/volumes": {
         parameters: {
             query?: never;
@@ -3128,6 +3148,42 @@ export interface components {
             remaining: {
                 [key: string]: components["schemas"]["QuotaDim"];
             };
+        };
+        TenantUsageView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TenantUsageView.json
+             */
+            readonly $schema?: string;
+            /** @description Tenant quota cap (omitted when no quota is set) */
+            cap?: components["schemas"]["Quotas"];
+            /**
+             * Format: int64
+             * @description Sum of vCPU cores allocated across the tenant's VMs
+             */
+            cpu_cores: number;
+            /**
+             * Format: int64
+             * @description Sum of RAM GiB allocated across the tenant's VMs
+             */
+            ram_gib: number;
+            /**
+             * Format: int64
+             * @description Sum of root-disk + volume GiB
+             */
+            storage_gib: number;
+            tenant: string;
+            /**
+             * Format: int64
+             * @description Total microVMs registered against the tenant
+             */
+            vms: number;
+            /**
+             * Format: int64
+             * @description Total volumes registered against the tenant
+             */
+            volumes: number;
         };
         TopoNetwork: {
             az: string;
@@ -7279,6 +7335,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantQuotaView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-tenant-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUsageView"];
                 };
             };
             /** @description Error */

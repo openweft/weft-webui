@@ -130,6 +130,7 @@ export type APITenantGroup = components['schemas']['TenantGroup'];
 export type APITenantCaller = components['schemas']['TenantCaller'];
 export type APITenantQuotaView = components['schemas']['TenantQuotaView'];
 export type APIProjectQuotaView = components['schemas']['ProjectQuotaView'];
+export type APITenantUsageView  = components['schemas']['TenantUsageView'];
 export type APIQuotas = components['schemas']['Quotas'];
 
 // Storage browser — bucket + share share the same shapes.

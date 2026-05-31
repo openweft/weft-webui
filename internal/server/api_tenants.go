@@ -315,6 +315,60 @@ func mountTenantsReadAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "get-tenant-usage",
+		Method:      "GET",
+		Path:        "/api/tenants/{name}/usage",
+		Summary:     "Live usage roll-up for one tenant (VMs / CPU cores / storage GiB)",
+		Description: "Aggregates rows across the microvm + volume registries, keyed on the tenant a project belongs to. Quotas live on the tenant ; usage is computed here so the dashboard renders bars against the cap without a second round-trip. Non-members get 404 (don't-acknowledge).",
+		Tags:        []string{"tenants", "quotas"},
+	}, func(ctx context.Context, in *tenantNameInput) (*tenantUsageOutput, error) {
+		u := auth.UserFromContext(ctx)
+		if !isClusterAdmin(u) && !tenantsDB.isMember(u, in.Name) {
+			return nil, huma.Error404NotFound("tenant not found")
+		}
+		// Build a set of projects belonging to this tenant for O(rows)
+		// lookup. projectsInTenant gives names ; rows tag themselves
+		// with `project` so the join is name == name.
+		projects := tenantsDB.projectsInTenant(in.Name)
+		if projects == nil {
+			return nil, huma.Error404NotFound("tenant not found")
+		}
+		inTenant := make(map[string]struct{}, len(projects))
+		for _, p := range projects {
+			inTenant[p] = struct{}{}
+		}
+		usage := TenantUsageView{Tenant: in.Name}
+		if res, ok := resourceByID["microvms"]; ok {
+			for _, row := range res.Rows {
+				if _, ok := inTenant[str(row["project"])]; !ok {
+					continue
+				}
+				usage.VMs++
+				usage.CPUCores += toInt(row["cpu"])
+				usage.RAMGiB += toInt(row["mem_mb"]) / 1024
+				usage.StorageGiB += toInt(row["disk_gb"])
+			}
+		}
+		if res, ok := resourceByID["volumes"]; ok {
+			for _, row := range res.Rows {
+				if _, ok := inTenant[str(row["project"])]; !ok {
+					continue
+				}
+				usage.Volumes++
+				usage.StorageGiB += toInt(row["size_gib"])
+			}
+		}
+		// Surface the cap alongside the usage so the SPA can colour-code
+		// the bars without two round-trips. Cap=zeroed when the tenant
+		// has no quota set (quotas aren't enforced yet — the row still
+		// renders, just without the comparison).
+		if v, ok := tenantsDB.tenantQuotaView(in.Name); ok {
+			usage.Cap = &v.Cap
+		}
+		return &tenantUsageOutput{Body: usage}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "get-project-quota",
 		Method:      "GET",
 		Path:        "/api/projects/{name}/quota",
@@ -376,6 +430,21 @@ func mountTenantsReadAPI(api huma.API) {
 type tenantDetailOutput struct{ Body TenantDetail }
 type tenantQuotaOutput  struct{ Body TenantQuotaView }
 type projectQuotaOutput struct{ Body ProjectQuotaView }
+
+// TenantUsageView is the live roll-up returned by /api/tenants/{name}/usage.
+// Cap is a pointer so the SPA can tell "no quota set yet" (nil) apart from
+// "explicit zero cap" (a Quotas with every field == 0).
+type TenantUsageView struct {
+	Tenant     string  `json:"tenant"`
+	VMs        int     `json:"vms"          doc:"Total microVMs registered against the tenant"`
+	CPUCores   int     `json:"cpu_cores"    doc:"Sum of vCPU cores allocated across the tenant's VMs"`
+	RAMGiB     int     `json:"ram_gib"      doc:"Sum of RAM GiB allocated across the tenant's VMs"`
+	Volumes    int     `json:"volumes"      doc:"Total volumes registered against the tenant"`
+	StorageGiB int     `json:"storage_gib"  doc:"Sum of root-disk + volume GiB"`
+	Cap        *Quotas `json:"cap,omitempty" doc:"Tenant quota cap (omitted when no quota is set)"`
+}
+
+type tenantUsageOutput struct{ Body TenantUsageView }
 
 // ---- /api/quotas (overview scope-aware) --------------------------
 

@@ -27,6 +27,7 @@ import {
   type APISecurityRule, type APIImportResult,
   type APITenantDetail, type APITenantMember, type APITenantProjectEntry,
   type APITenantGroup, type APITenantQuotaView, type APIProjectQuotaView,
+  type APITenantUsageView,
   type APIQuotas,
   type APIObjectEntry, type APIObjectListing, type APIObjectDetail,
   type APIBucketPolicy, type APIPolicyStatement,
@@ -468,6 +469,18 @@ export type ProjectQuotaView = APIProjectQuotaView;
 
 export const getTenantQuota = async (name: string): Promise<TenantQuotaView> => {
   const { data, error } = await client.GET('/api/tenants/{name}/quota', {
+    params: { path: { name } },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+// ---- Tenant usage (live roll-up) ----------------------------------
+
+export type TenantUsageView = APITenantUsageView;
+
+export const getTenantUsage = async (name: string): Promise<TenantUsageView> => {
+  const { data, error } = await client.GET('/api/tenants/{name}/usage', {
     params: { path: { name } },
   });
   if (error) throwErr(error);
