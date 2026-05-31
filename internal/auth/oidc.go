@@ -225,6 +225,86 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, blob.ReturnTo, http.StatusFound)
 }
 
+// ErrNoRefreshToken is returned by RefreshSession when the session has
+// no refresh token to spend — caller should fall through to the normal
+// unauthenticated path (the IdP must have issued the original session
+// without offline_access, or the field was never persisted).
+var ErrNoRefreshToken = errors.New("auth: no refresh token")
+
+// RefreshSession exchanges the session's refresh token for a fresh
+// access token (and, when the IdP cooperates, a fresh ID token + a
+// rotated refresh token). Returns a NEW SessionPayload — the caller is
+// responsible for re-encoding the cookie. The input is not mutated, so
+// a failed refresh leaves the existing session untouched.
+//
+// When the IdP returns a new id_token we re-verify it and re-extract
+// sub / groups : this catches the case where group membership has
+// changed since the original login and lets that flow through without
+// forcing a full re-login. When no id_token is returned (common with
+// some Keycloak / Auth0 configurations on refresh), we keep the
+// previously stored claims and just update the access token + expiry.
+func (o *OIDC) RefreshSession(ctx context.Context, p *SessionPayload) (*SessionPayload, error) {
+	if p == nil {
+		return nil, errors.New("auth: nil session")
+	}
+	if p.RefreshToken == "" {
+		return nil, ErrNoRefreshToken
+	}
+	// Hand the existing refresh token to oauth2's TokenSource. The
+	// zero AccessToken + a past Expiry force it to actually call the
+	// token endpoint instead of returning the cached value.
+	src := o.cfg.TokenSource(ctx, &oauth2.Token{
+		RefreshToken: p.RefreshToken,
+		Expiry:       time.Unix(1, 0),
+	})
+	tok, err := src.Token()
+	if err != nil {
+		return nil, fmt.Errorf("auth: refresh token exchange: %w", err)
+	}
+
+	out := *p // shallow copy ; we'll overwrite the token fields below
+	out.AccessToken = tok.AccessToken
+	if tok.RefreshToken != "" {
+		// IdP rotated the refresh token — keep the new one. (If it
+		// didn't rotate, oauth2 leaves the field empty and we keep
+		// the original from the shallow copy.)
+		out.RefreshToken = tok.RefreshToken
+	}
+	out.ExpiresAt = tok.Expiry.Unix()
+
+	if rawID, _ := tok.Extra("id_token").(string); rawID != "" {
+		idTok, verr := o.verifier.Verify(ctx, rawID)
+		if verr != nil {
+			return nil, fmt.Errorf("auth: refresh id token verify: %w", verr)
+		}
+		var claims struct {
+			Sub    string   `json:"sub"`
+			Email  string   `json:"email"`
+			Name   string   `json:"name"`
+			Groups []string `json:"groups"`
+		}
+		if cerr := idTok.Claims(&claims); cerr != nil {
+			return nil, fmt.Errorf("auth: refresh claims: %w", cerr)
+		}
+		out.IDToken = rawID
+		if claims.Sub != "" {
+			out.Subject = claims.Sub
+		}
+		if claims.Email != "" {
+			out.Email = claims.Email
+		}
+		if claims.Name != "" {
+			out.Name = claims.Name
+		}
+		// Groups may legitimately shrink to empty — always overwrite.
+		out.Groups = claims.Groups
+		if idTok.Expiry.Unix() > out.ExpiresAt {
+			out.ExpiresAt = idTok.Expiry.Unix()
+		}
+	}
+	return &out, nil
+}
+
 // LogoutHandler clears the session cookie. Optionally redirects via
 // the IdP's end_session_endpoint when the provider advertises one.
 func (o *OIDC) LogoutHandler(w http.ResponseWriter, r *http.Request) {

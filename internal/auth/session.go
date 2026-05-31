@@ -168,6 +168,23 @@ func (s *SessionStore) Read(r *http.Request) (*SessionPayload, error) {
 	return s.Decode(c.Value)
 }
 
+// refreshLeeway is how close to expiry we proactively swap the access
+// token. 60s comfortably covers normal request latency + clock skew
+// between webui and the IdP without thrashing the refresh endpoint.
+const refreshLeeway = 60 * time.Second
+
+// NeedsRefresh reports whether the access token is within refreshLeeway
+// of expiring (or already expired). Returns false for sessions with no
+// ExpiresAt — they predate the refresh feature and we leave them alone
+// rather than guess.
+func (p *SessionPayload) NeedsRefresh(now time.Time) bool {
+	if p == nil || p.ExpiresAt <= 0 {
+		return false
+	}
+	exp := time.Unix(p.ExpiresAt, 0)
+	return exp.Sub(now) < refreshLeeway
+}
+
 // Sentinels for the middleware to switch on.
 var (
 	ErrNoSession    = errors.New("auth: no session cookie")

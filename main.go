@@ -37,6 +37,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/config"
 	"github.com/openweft/weft-webui/internal/server"
@@ -104,6 +105,20 @@ func run() error {
 		oidcAuth.OnLogin = metrics.Login
 	}
 
+	// Persistent audit log : opt-in via --audit-log-path. When unset
+	// the server falls back to audit.NopLogger so handlers never branch
+	// on "is audit on ?".
+	var auditLog audit.Logger
+	if cfg.AuditLogPath != "" {
+		fl, err := audit.NewFileLogger(cfg.AuditLogPath, cfg.AuditRotateBytes)
+		if err != nil {
+			return err
+		}
+		defer fl.Close()
+		auditLog = fl
+		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
+	}
+
 	deps := server.Deps{
 		Logger:       logger,
 		Static:       static,
@@ -112,6 +127,7 @@ func run() error {
 		Auth:         mw,
 		OIDC:         oidcAuth,
 		Metrics:      metrics,
+		Audit:        auditLog,
 		DevMode:      cfg.DevMode,
 		PolicyStrict: cfg.PolicyStrict,
 	}
@@ -233,5 +249,10 @@ func buildAuth(logger *slog.Logger, cfg *config.Config) (*auth.Middleware, *auth
 	}
 	logger.Info("oidc ready", "issuer", cfg.OIDCIssuer, "redirect", cfg.RedirectURL())
 
-	return &auth.Middleware{Mode: auth.ModeOIDC, Sessions: sessions}, o, nil
+	return &auth.Middleware{
+		Mode:      auth.ModeOIDC,
+		Sessions:  sessions,
+		Refresher: o,
+		Logger:    logger,
+	}, o, nil
 }

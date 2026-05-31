@@ -10,6 +10,7 @@ require (
 	github.com/openweft/weft-proto v0.1.0
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.80.0
 )
 

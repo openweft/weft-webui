@@ -11,6 +11,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -354,9 +355,17 @@ func mountSecurityGroupsAPI(api huma.API) {
 	}, func(ctx context.Context, in *setSGRulesInput) (*setSGRulesOutput, error) {
 		if live == nil {
 			setMockSGRules(in.UUID, in.Body)
+			Audit(ctx, auditLogger, "security-group.set-rules", "security-group", in.UUID, "ok", nil, map[string]string{
+				"rules": strconv.Itoa(len(in.Body)),
+				"mode":  "mock",
+			})
 			return &setSGRulesOutput{Body: SetSGRulesResp{UUID: in.UUID, Rules: len(in.Body)}}, nil
 		}
-		if err := live.SetSecurityGroupRules(ctx, in.UUID, in.Body); err != nil {
+		err := live.SetSecurityGroupRules(ctx, in.UUID, in.Body)
+		Audit(ctx, auditLogger, "security-group.set-rules", "security-group", in.UUID, "", err, map[string]string{
+			"rules": strconv.Itoa(len(in.Body)),
+		})
+		if err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "security-group.set-rules")
@@ -386,6 +395,11 @@ func mountFloatingIPsAPI(api huma.API) {
 			return nil, huma.Error400BadRequest("network is required")
 		}
 		uuid, addr, cerr := live.AllocateFloatingIP(ctx, project, in.Body.Network)
+		Audit(ctx, auditLogger, "floating-ip.allocate", "floating-ip", uuid, "", cerr, map[string]string{
+			"project": project,
+			"network": in.Body.Network,
+			"address": addr,
+		})
 		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
@@ -429,7 +443,12 @@ func mountFloatingIPsAPI(api huma.API) {
 		if in.Body.TargetName == "" {
 			return nil, huma.Error400BadRequest("target_name is required")
 		}
-		if err := live.MapFloatingIP(ctx, in.UUID, in.Body.TargetKind, in.Body.TargetName); err != nil {
+		err := live.MapFloatingIP(ctx, in.UUID, in.Body.TargetKind, in.Body.TargetName)
+		Audit(ctx, auditLogger, "floating-ip.map", "floating-ip", in.UUID, "", err, map[string]string{
+			"target_kind": in.Body.TargetKind,
+			"target_name": in.Body.TargetName,
+		})
+		if err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "floating-ip.map")

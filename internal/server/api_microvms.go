@@ -69,7 +69,9 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if cerr := live.StartVM(ctx, in.Name, project); cerr != nil {
+		cerr := live.StartVM(ctx, in.Name, project)
+		Audit(ctx, auditLogger, "microvm.start", "microvm", in.Name, "", cerr, map[string]string{"project": project})
+		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "microvm.start")
@@ -91,7 +93,9 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if cerr := live.StopVM(ctx, in.Name, project); cerr != nil {
+		cerr := live.StopVM(ctx, in.Name, project)
+		Audit(ctx, auditLogger, "microvm.stop", "microvm", in.Name, "", cerr, map[string]string{"project": project})
+		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "microvm.stop")
@@ -113,7 +117,9 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if cerr := live.DeleteVM(ctx, in.Name, project); cerr != nil {
+		cerr := live.DeleteVM(ctx, in.Name, project)
+		Audit(ctx, auditLogger, "microvm.delete", "microvm", in.Name, "", cerr, map[string]string{"project": project})
+		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "microvm.delete")

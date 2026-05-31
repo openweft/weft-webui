@@ -79,6 +79,17 @@ type Config struct {
 	// don't lose access on upgrade ; flip when an operator is ready
 	// for the stricter model.
 	PolicyStrict bool
+
+	// AuditLogPath is the JSONL file where admin-classified actions
+	// (microvm start/stop/delete, volume create/delete, floating-ip
+	// allocate/map, security-group rule changes, …) are persisted.
+	// Empty = audit disabled (events drop through audit.NopLogger).
+	AuditLogPath string
+
+	// AuditRotateBytes is the rotation threshold for AuditLogPath. The
+	// current file is renamed to <path>.<RFC3339> and a fresh one is
+	// opened when the next write would exceed this limit. Default 100MB.
+	AuditRotateBytes int64
 }
 
 const (
@@ -119,6 +130,17 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		DevMode:       envBool("WEBUI_DEV_MODE", false),
 		TrustProxies:  envBool("WEBUI_TRUST_PROXIES", false),
 		PolicyStrict:  envBool("WEBUI_POLICY_STRICT", false),
+		AuditLogPath:  os.Getenv("WEBUI_AUDIT_LOG_PATH"),
+		// 100 MiB default ; flag/env can lower (or raise) it. Loaded
+		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
+		AuditRotateBytes: 100 << 20,
+	}
+	if v := os.Getenv("WEBUI_AUDIT_ROTATE_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("WEBUI_AUDIT_ROTATE_BYTES: %w", err)
+		}
+		cfg.AuditRotateBytes = n
 	}
 
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
@@ -172,6 +194,8 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.BoolVar(&cfg.PolicyStrict, "policy-strict", cfg.PolicyStrict, "bucket policies default-deny when a policy exists (AWS-aligned ; off = today's permissive default)")
 	flagSet.StringVar(&cfg.AuthMode, "auth-mode", cfg.AuthMode, `"oidc" or "none" ("none" is dev-only)`)
 	flagSet.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "external base URL (used to compute the OIDC redirect when not set explicitly)")
+	flagSet.StringVar(&cfg.AuditLogPath, "audit-log-path", cfg.AuditLogPath, "JSONL file for the admin audit log ; empty = disabled")
+	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }
 
