@@ -40,6 +40,7 @@ import (
 	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/config"
+	"github.com/openweft/weft-webui/internal/ratelimit"
 	"github.com/openweft/weft-webui/internal/server"
 	"github.com/openweft/weft-webui/internal/telemetry"
 	"github.com/openweft/weft-webui/internal/wclient"
@@ -119,6 +120,17 @@ func run() error {
 		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
 	}
 
+	// Rate limiter : per-user (session.Subject) or per-IP token bucket
+	// in front of /api/*. Defaults documented in the package — 100rps
+	// burst 50 per authenticated user, 20rps burst 10 per anonymous IP.
+	// Reuses cfg.TrustProxies (already governs X-Forwarded-Proto for
+	// OIDC redirect URLs) — same operational decision : "am I behind
+	// a trusted proxy that owns the XFF header ?".
+	rl := ratelimit.NewLimiter(ratelimit.Options{
+		TrustForwardedFor: cfg.TrustProxies,
+	})
+	defer rl.Stop()
+
 	deps := server.Deps{
 		Logger:       logger,
 		Static:       static,
@@ -128,6 +140,7 @@ func run() error {
 		OIDC:         oidcAuth,
 		Metrics:      metrics,
 		Audit:        auditLog,
+		RateLimit:    rl,
 		DevMode:      cfg.DevMode,
 		PolicyStrict: cfg.PolicyStrict,
 	}
