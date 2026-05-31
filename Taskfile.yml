@@ -96,6 +96,18 @@ tasks:
         fi
         echo "✓ web/openapi.json + web/src/lib/api.gen.ts are in sync with the Go handlers."
 
+  oidc-smoke:
+    desc: |
+      Drive the canonical OIDC Authorization Code flow end-to-end against
+      a running weft-webui + Dex (operator drill — NOT a CI gate).
+      Prereqs : weft-webui running on $WEBUI_BASE (default http://localhost:8080),
+      Dex reachable at $DEX_ISSUER (default http://localhost:5556/dex) with
+      its mock connector enabled. Override creds via $OIDC_USER / $OIDC_PASS
+      (defaults admin@example.com / password). Exits non-zero on any step
+      failure ; see docs/operations/oidc-smoke-test.md for troubleshooting.
+    cmds:
+      - go run ./tools/oidc-smoke {{.CLI_ARGS}}
+
   clean:
     cmds:
       - rm -rf {{.BIN}} web/dist
