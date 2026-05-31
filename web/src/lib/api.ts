@@ -720,6 +720,29 @@ export const deleteSchedulingRule = async (name: string): Promise<void> => {
   if (error) throwErr(error);
 };
 
+// PATCH /api/scheduling-rules/{name} — every field optional ; a non-null
+// "" on AZ/Rack/Host clears the axis. count must be ≥ 0.
+export interface UpdateSchedulingRuleBody {
+  count?: number;
+  selector?: string;
+  az?: string;
+  rack?: string;
+  host?: string;
+  project?: string;
+}
+
+export const updateSchedulingRule = async (
+  name: string,
+  body: UpdateSchedulingRuleBody,
+) => {
+  const { data, error } = await client.PATCH('/api/scheduling-rules/{name}', {
+    params: { path: { name } },
+    body,
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
 // ---- Shares (lifecycle) -------------------------------------------
 
 export interface CreateShareBody {
