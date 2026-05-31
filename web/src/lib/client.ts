@@ -17,6 +17,58 @@
 
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths, components } from './api.gen';
+import { endpointsEnabled, activeBase, rotate, noteSuccess, endpointCount } from './endpoints';
+
+// Gateway/transport statuses that mean "this DC's webui is not
+// answering right now" — worth failing over rather than surfacing as
+// an application error. 5xx from the app itself (500) is NOT here : a
+// genuine handler error would just repeat on the next DC.
+const FAILOVER_STATUS = new Set([502, 503, 504]);
+
+// failoverFetch is the fetch the typed client runs on. In a plain
+// browser (endpointsEnabled === false) it is just `fetch`, so nothing
+// changes. Inside a native shell it rewrites each request onto the
+// active DC origin and, on a transport failure or gateway status,
+// rotates to the next healthy DC and retries — up to one attempt per
+// known endpoint. The request body is buffered once so POST/PUT can be
+// safely replayed across attempts.
+async function failoverFetch(input: Request): Promise<Response> {
+  if (!endpointsEnabled) return fetch(input);
+
+  const url = new URL(input.url);
+  const path = url.pathname + url.search;
+  const method = input.method;
+  const headers = input.headers;
+  const hasBody = method !== 'GET' && method !== 'HEAD';
+  const body = hasBody ? await input.clone().arrayBuffer() : undefined;
+
+  let lastErr: unknown;
+  // At most one attempt per endpoint; rotate() advances past
+  // quarantined ones and returns false when there is nowhere new.
+  for (let attempt = 0; attempt < endpointCount(); attempt++) {
+    const base = activeBase();
+    const req = new Request(base.replace(/\/$/, '') + path, {
+      method,
+      headers,
+      body,
+      credentials: input.credentials,
+      mode: input.mode,
+      redirect: input.redirect,
+      signal: input.signal,
+    });
+    try {
+      const res = await fetch(req);
+      if (FAILOVER_STATUS.has(res.status) && rotate()) continue;
+      noteSuccess(base);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (rotate()) continue;
+      break; // nowhere healthy left — give up and surface the error
+    }
+  }
+  throw lastErr ?? new Error('all weft datacenters unreachable');
+}
 
 // 401 → OIDC redirect. Lives as a middleware so every call site
 // inherits the behaviour ; the legacy api.ts's getJSON / postJSON /
@@ -33,7 +85,7 @@ const unauthorizedRedirect: Middleware = {
   },
 };
 
-export const client = createClient<paths>({ baseUrl: '' });
+export const client = createClient<paths>({ baseUrl: '', fetch: failoverFetch });
 client.use(unauthorizedRedirect);
 
 // ---- Convenience aliases for the most-used component schemas ----

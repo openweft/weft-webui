@@ -19,6 +19,7 @@
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
+  import FailoverBanner from './lib/components/FailoverBanner.svelte';
   import SearchPalette from './lib/components/SearchPalette.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
@@ -128,5 +129,6 @@
   </div>
 </div>
 
+<FailoverBanner />
 <EventToasts />
 <SearchPalette />
