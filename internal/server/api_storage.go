@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,11 @@ import (
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
 )
+
+// itoaSize is a tiny strconv wrapper for the audit extra map (which
+// is string-keyed string-valued by design ; numeric extras stringify
+// here).
+func itoaSize(n int64) string { return strconv.FormatInt(n, 10) }
 
 func mountStorageAPI(api huma.API) {
 	mountVolumesAPI(api)
@@ -55,7 +61,13 @@ func mountVolumesAPI(api huma.API) {
 		if in.Body.Name == "" || in.Body.SizeGiB <= 0 {
 			return nil, huma.Error400BadRequest("name and a positive size_gib are required")
 		}
-		if cerr := live.CreateVolume(ctx, project, in.Body.Name, in.Body.SizeGiB, in.Body.Format); cerr != nil {
+		cerr := live.CreateVolume(ctx, project, in.Body.Name, in.Body.SizeGiB, in.Body.Format)
+		Audit(ctx, auditLogger, "volume.create", "volume", in.Body.Name, "", cerr, map[string]string{
+			"project":  project,
+			"size_gib": itoaSize(in.Body.SizeGiB),
+			"format":   in.Body.Format,
+		})
+		if cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
 		userActionCtx(ctx, "volume.create")
@@ -78,7 +90,9 @@ func mountVolumesAPI(api huma.API) {
 		if in.UUID == "" {
 			return nil, huma.Error400BadRequest("uuid is required")
 		}
-		if err := live.DeleteVolume(ctx, in.UUID); err != nil {
+		err := live.DeleteVolume(ctx, in.UUID)
+		Audit(ctx, auditLogger, "volume.delete", "volume", in.UUID, "", err, nil)
+		if err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
 		userActionCtx(ctx, "volume.delete")

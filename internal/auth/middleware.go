@@ -3,15 +3,25 @@
 package auth
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
+
+// Refresher is the slice of OIDC behaviour the middleware needs to swap
+// expiring access tokens transparently. Kept narrow so tests can inject
+// a fake without standing up a real provider. *OIDC satisfies this.
+type Refresher interface {
+	RefreshSession(ctx context.Context, p *SessionPayload) (*SessionPayload, error)
+}
 
 // Mode is what callers pass to Middleware to pick a policy. None is
 // dev-only and short-circuits to a fixed synthetic user.
@@ -33,6 +43,20 @@ const (
 type Middleware struct {
 	Mode     Mode
 	Sessions *SessionStore
+
+	// Refresher, when non-nil, gets called on each authenticated
+	// request whose access token is within refreshLeeway of expiring.
+	// Production wires this to *OIDC ; tests can inject a stub.
+	// Leaving it nil disables refresh — the session simply expires as
+	// before.
+	Refresher Refresher
+
+	// Logger receives a single warn line when a refresh attempt fails ;
+	// the request then proceeds as if no refresh was tried (the session
+	// is left intact, but its access token is about to expire — the
+	// next request will get a 401). Optional ; nil falls back to the
+	// default slog logger.
+	Logger *slog.Logger
 
 	// MockUser is what gets injected when Mode == ModeNone.
 	MockUser User
@@ -106,10 +130,38 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 			writeAuthErr(w, err)
 			return
 		}
+		// Transparent refresh : if the access token is about to expire
+		// and we have a refresh token + a Refresher, swap them in
+		// before handing off. Failure is logged and we fall through to
+		// the existing session — the next request will get a 401 once
+		// it actually expires, which then redirects to /api/auth/login.
+		if m.Refresher != nil && p.RefreshToken != "" && p.NeedsRefresh(time.Now()) {
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			np, rerr := m.Refresher.RefreshSession(ctx, p)
+			cancel()
+			if rerr == nil {
+				if serr := m.Sessions.Set(w, np); serr == nil {
+					p = np
+				} else {
+					m.log().Warn("session re-encode after refresh failed", "err", serr)
+				}
+			} else if !errors.Is(rerr, ErrNoRefreshToken) {
+				m.log().Warn("oidc refresh failed", "err", rerr, "sub", p.Subject)
+			}
+		}
 		user := payloadToUser(p)
 		r = r.WithContext(WithUser(r.Context(), user))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// log returns the configured logger or the slog default so callers
+// never have to nil-check.
+func (m *Middleware) log() *slog.Logger {
+	if m.Logger != nil {
+		return m.Logger
+	}
+	return slog.Default()
 }
 
 // MeHandler exposes the current user as JSON. Returns 401 if there is

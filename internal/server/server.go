@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/telemetry"
 	"github.com/openweft/weft-webui/internal/wclient"
@@ -42,6 +43,11 @@ var liveNet *wclient.NetworkClient
 // (lifecycle.go) can record per-user action counters without having
 // the struct threaded through every signature.
 var metrics *telemetry.Recorder
+
+// auditLogger mirrors Deps.Audit so the mutation handlers can write
+// audit events without threading the logger through every signature.
+// nil collapses to audit.NopLogger via the Audit() helper.
+var auditLogger audit.Logger = audit.NopLogger{}
 
 // activePersona stores the persona served by the current handler so
 // per-request helpers can branch on it without threading a parameter
@@ -75,6 +81,11 @@ type Deps struct {
 	// metrics and the admin handler exposes /metrics. Pass nil to
 	// disable telemetry entirely (the gRPC client also reads this).
 	Metrics *telemetry.Recorder
+
+	// Audit is optional ; when nil, audit events are dropped (the
+	// helper collapses to audit.NopLogger). Wire a FileLogger via
+	// audit.NewFileLogger to persist admin-classified actions.
+	Audit audit.Logger
 
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
@@ -116,6 +127,11 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	live = d.Live
 	liveNet = d.LiveNet
 	metrics = d.Metrics
+	if d.Audit != nil {
+		auditLogger = d.Audit
+	} else {
+		auditLogger = audit.NopLogger{}
+	}
 	policyStrict = d.PolicyStrict
 
 	// Flip the flavor + script catalogues to live-first when the
@@ -221,6 +237,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	h = withJSONDefaults(h)
 	h = withSecurityHeaders(d.DevMode, h)
 	h = withRequestID(h)
+	h = withHTTPRequest(h)
 	h = withMetrics(d.Metrics, persona, h)
 	h = withLogging(d.Logger, h)
 	h = withPanicRecovery(d.Logger, h)
