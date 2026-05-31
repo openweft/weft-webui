@@ -3418,6 +3418,61 @@
         ],
         "type": "object"
       },
+      "TenantUsageView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TenantUsageView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cap": {
+            "$ref": "#/components/schemas/Quotas",
+            "description": "Tenant quota cap (omitted when no quota is set)"
+          },
+          "cpu_cores": {
+            "description": "Sum of vCPU cores allocated across the tenant's VMs",
+            "format": "int64",
+            "type": "integer"
+          },
+          "ram_gib": {
+            "description": "Sum of RAM GiB allocated across the tenant's VMs",
+            "format": "int64",
+            "type": "integer"
+          },
+          "storage_gib": {
+            "description": "Sum of root-disk + volume GiB",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "vms": {
+            "description": "Total microVMs registered against the tenant",
+            "format": "int64",
+            "type": "integer"
+          },
+          "volumes": {
+            "description": "Total volumes registered against the tenant",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tenant",
+          "vms",
+          "cpu_cores",
+          "ram_gib",
+          "volumes",
+          "storage_gib"
+        ],
+        "type": "object"
+      },
       "TopoNetwork": {
         "additionalProperties": false,
         "properties": {
@@ -9945,6 +10000,53 @@
           }
         },
         "summary": "Set a tenant's quota (cluster admin)",
+        "tags": [
+          "tenants",
+          "quotas"
+        ]
+      }
+    },
+    "/api/tenants/{name}/usage": {
+      "get": {
+        "description": "Aggregates rows across the microvm + volume registries, keyed on the tenant a project belongs to. Quotas live on the tenant ; usage is computed here so the dashboard renders bars against the cap without a second round-trip. Non-members get 404 (don't-acknowledge).",
+        "operationId": "get-tenant-usage",
+        "parameters": [
+          {
+            "description": "Tenant name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Tenant name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Live usage roll-up for one tenant (VMs / CPU cores / storage GiB)",
         "tags": [
           "tenants",
           "quotas"
