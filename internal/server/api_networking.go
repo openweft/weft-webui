@@ -854,6 +854,30 @@ func mountSchedulingRulesAPI(api huma.API) {
 		userActionCtx(ctx, "scheduling-rule.delete")
 		return nil, nil
 	})
+
+	// PATCH /api/scheduling-rules/{name} — partial update of placement
+	// constraints, replica count, selector, project. weft-network has no
+	// UpdateSchedulingRule RPC yet ; the path is mem-store only so the
+	// affordance keeps working while the daemon catches up. Each field is
+	// optional ; "" explicitly clears an axis back to `any`.
+	huma.Register(api, huma.Operation{
+		OperationID:   "update-scheduling-rule",
+		Method:        "PATCH",
+		Path:          "/api/scheduling-rules/{name}",
+		Summary:       "Update placement / count / selector of a scheduling rule",
+		Description:   "Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. The live weft-network has no Update RPC yet, so this targets the in-memory store ; the SPA can mutate immediately and the operator sees the refresh.",
+		Tags:          []string{"scheduling-rules"},
+		DefaultStatus: 200,
+	}, func(ctx context.Context, in *updateSchedulingRuleInput) (*createSchedRuleOutput, error) {
+		r, err := schedulingDB.update(in.Name, in.Body)
+		if err != nil {
+			return nil, hideHTTPErr(err)
+		}
+		userActionCtx(ctx, "scheduling-rule.update")
+		return &createSchedRuleOutput{Body: CreateSchedRuleResp{
+			Name: r.Name, Project: r.Project,
+		}}, nil
+	})
 }
 
 // ---- Network topology --------------------------------------------
@@ -1194,4 +1218,9 @@ type createSchedulingRuleInput struct {
 		Rack     string `json:"rack,omitempty"`
 		Host     string `json:"host,omitempty"`
 	}
+}
+
+type updateSchedulingRuleInput struct {
+	Name string `path:"name" doc:"Scheduling-rule name" minLength:"1" maxLength:"128"`
+	Body schedulingRulePatch
 }

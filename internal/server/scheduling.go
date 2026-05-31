@@ -179,6 +179,64 @@ func (s *schedulingStore) delete(name string) error {
 	return nil
 }
 
+// schedulingRulePatch is the typed shape of a PATCH body. Every
+// field is a pointer so the handler can distinguish "not provided"
+// from "explicit zero / empty". A nil pointer leaves the existing
+// value untouched ; a non-nil pointer overwrites it (including with
+// "" to clear an axis back to `any`).
+type schedulingRulePatch struct {
+	Count    *int    `json:"count,omitempty"    minimum:"0"`
+	Selector *string `json:"selector,omitempty"`
+	AZ       *string `json:"az,omitempty"`
+	Rack     *string `json:"rack,omitempty"`
+	Host     *string `json:"host,omitempty"`
+	Project  *string `json:"project,omitempty"`
+}
+
+// update applies a partial patch to an existing rule. Mirrors create's
+// "compliant when count=0" projection so the status badge reflects the
+// new desired state immediately ; the scheduler reconciles ready
+// asynchronously.
+func (s *schedulingStore) update(name string, p schedulingRulePatch) (*SchedulingRule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.rules[name]
+	if !ok {
+		return nil, errNotFound("scheduling rule")
+	}
+	if p.Count != nil {
+		if *p.Count < 0 {
+			return nil, errBadReq("count must be ≥ 0")
+		}
+		r.Count = *p.Count
+	}
+	if p.Selector != nil {
+		r.Selector = strings.TrimSpace(*p.Selector)
+	}
+	if p.AZ != nil {
+		r.AZ = strings.TrimSpace(*p.AZ)
+	}
+	if p.Rack != nil {
+		r.Rack = strings.TrimSpace(*p.Rack)
+	}
+	if p.Host != nil {
+		r.Host = strings.TrimSpace(*p.Host)
+	}
+	if p.Project != nil {
+		r.Project = strings.TrimSpace(*p.Project)
+	}
+	// Re-derive status : count=0 → compliant ; otherwise drifting
+	// until the scheduler reports ready==count. Don't overwrite a
+	// previously-compliant rule that hasn't moved if count is unchanged
+	// and matches Ready.
+	if r.Count == 0 {
+		r.Ready, r.Status = 0, "compliant"
+	} else if r.Ready < r.Count {
+		r.Status = "drifting"
+	}
+	return r, nil
+}
+
 // ---- HTTP handlers ------------------------------------------------
 
 // handleCreateSchedulingRule : POST /api/scheduling-rules

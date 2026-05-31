@@ -1270,7 +1270,11 @@ export interface paths {
         delete: operations["delete-scheduling-rule"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update placement / count / selector of a scheduling rule
+         * @description Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. The live weft-network has no Update RPC yet, so this targets the in-memory store ; the SPA can mutate immediately and the operator sees the refresh.
+         */
+        patch: operations["update-scheduling-rule"];
         trace?: never;
     };
     "/api/scripts": {
@@ -2959,6 +2963,21 @@ export interface components {
             readonly $schema?: string;
             email: string;
             role: string;
+        };
+        SchedulingRulePatch: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SchedulingRulePatch.json
+             */
+            readonly $schema?: string;
+            az?: string;
+            /** Format: int64 */
+            count?: number;
+            host?: string;
+            project?: string;
+            rack?: string;
+            selector?: string;
         };
         ScopeEntry: {
             domain: string;
@@ -6294,6 +6313,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-scheduling-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scheduling-rule name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulingRulePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateSchedRuleResp"];
+                };
             };
             /** @description Error */
             default: {

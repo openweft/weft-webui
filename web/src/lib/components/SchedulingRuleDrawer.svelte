@@ -12,7 +12,7 @@
   // in ResourcePage.
   import {
     getEditableMetadata, setEditableMetadata, renameEditableRow,
-    listSchedulingRuleMicroVMs,
+    listSchedulingRuleMicroVMs, updateSchedulingRule,
     type EditableMetadata, type Row,
   } from '../api';
 
@@ -34,8 +34,87 @@
   let project = $derived(String(row.project ?? '—'));
   let status = $derived(String(row.status ?? '—'));
 
-  type Tab = 'general' | 'microvms';
+  type Tab = 'general' | 'placement' | 'microvms';
   let tab = $state<Tab>('general');
+
+  // ---- Placement tab ----
+  //
+  // Mirrors the create modal's axis editor : kind ∈ {any,same,different,specific}
+  // + a specific value when kind='specific'. The row carries a pre-formatted
+  // `placement` string (e.g. "az=different, host=DC-C"). We parse it back
+  // into the three axes on mount so the form starts with current state.
+  type AxisKind = 'any' | 'same' | 'different' | 'specific';
+
+  let editCount    = $state<number>(0);
+  let editSelector = $state<string>('');
+  let azKind       = $state<AxisKind>('any');
+  let azSpec       = $state<string>('');
+  let rackKind     = $state<AxisKind>('any');
+  let rackSpec     = $state<string>('');
+  let hostKind     = $state<AxisKind>('any');
+  let hostSpec     = $state<string>('');
+
+  let placementBusy = $state(false);
+  let placementErr  = $state('');
+  let placementOk   = $state(false);
+
+  // Parse "az=different, rack=R2, host=…" back into {az,rack,host}. The
+  // server keeps the typed fields on the rule but the row projection only
+  // surfaces the compact joined form, so we round-trip-parse here.
+  function parsePlacement(p: string): Record<'az' | 'rack' | 'host', string> {
+    const out: Record<'az' | 'rack' | 'host', string> = { az: '', rack: '', host: '' };
+    if (!p || p === 'any') return out;
+    for (const part of p.split(',')) {
+      const [k, ...rest] = part.trim().split('=');
+      const v = rest.join('=').trim();
+      if (k === 'az' || k === 'rack' || k === 'host') out[k] = v;
+    }
+    return out;
+  }
+  function valueToKind(v: string): { kind: AxisKind; spec: string } {
+    if (!v)                      return { kind: 'any',       spec: '' };
+    if (v === 'same')            return { kind: 'same',      spec: '' };
+    if (v === 'different')       return { kind: 'different', spec: '' };
+    return { kind: 'specific', spec: v };
+  }
+  function kindToValue(k: AxisKind, spec: string): string {
+    if (k === 'any')      return '';
+    if (k === 'specific') return spec.trim();
+    return k;
+  }
+
+  function seedPlacement() {
+    editCount    = typeof row.count === 'number'
+      ? row.count
+      // count is the formatted "X/Y" string from the row projection ;
+      // pull the desired side back out so the input edits a real number.
+      : Number(String(row.count ?? '').split('/').pop() || 0) || 0;
+    editSelector = String(row.selector ?? '');
+    const cur = parsePlacement(String(row.placement ?? ''));
+    ({ kind: azKind,   spec: azSpec   } = valueToKind(cur.az));
+    ({ kind: rackKind, spec: rackSpec } = valueToKind(cur.rack));
+    ({ kind: hostKind, spec: hostSpec } = valueToKind(cur.host));
+    placementErr = ''; placementOk = false;
+  }
+
+  async function savePlacement() {
+    placementBusy = true; placementErr = ''; placementOk = false;
+    try {
+      await updateSchedulingRule(key, {
+        count:    editCount,
+        selector: editSelector.trim(),
+        az:       kindToValue(azKind,   azSpec),
+        rack:     kindToValue(rackKind, rackSpec),
+        host:     kindToValue(hostKind, hostSpec),
+      });
+      placementOk = true;
+      onChanged();
+    } catch (e) {
+      placementErr = String(e);
+    } finally {
+      placementBusy = false;
+    }
+  }
 
   // ---- General tab ----
   let editName = $state('');
@@ -63,6 +142,7 @@
   $effect(() => {
     key; // dep
     editName = String(row.name ?? '');
+    seedPlacement();
     refreshMetadata();
     refreshMicroVMs();
   });
@@ -144,6 +224,8 @@
   <div role="tablist" class="tabs tabs-border shrink-0 px-5">
     <button type="button" role="tab" class="tab" class:tab-active={tab === 'general'}
       onclick={() => (tab = 'general')}>General</button>
+    <button type="button" role="tab" class="tab" class:tab-active={tab === 'placement'}
+      onclick={() => (tab = 'placement')}>Placement</button>
     <button type="button" role="tab" class="tab" class:tab-active={tab === 'microvms'}
       onclick={() => (tab = 'microvms')}>microVMs <span class="badge badge-xs badge-ghost ml-1">{vms.length}</span></button>
   </div>
@@ -191,6 +273,69 @@
           </div>
         </div>
       {/if}
+
+    {:else if tab === 'placement'}
+      <!-- Placement tab : PATCH the rule's count / selector / axes.
+           Mirrors the create modal so operators learn the form once. -->
+      <p class="text-xs text-base-content/60">
+        Mutate the rule in place. The scheduler reconciles ready
+        replicas asynchronously ; clear an axis back to <em>any</em> to
+        relax the constraint without deleting the rule.
+      </p>
+
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class="form-control">
+          <span class="label-text text-xs">Desired replicas</span>
+          <input type="number" min="0" class="input input-sm input-bordered tabular-nums"
+            bind:value={editCount} />
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Selector</span>
+          <input class="input input-sm input-bordered font-mono"
+            placeholder="app=foo, kind=worker" bind:value={editSelector} />
+        </label>
+      </div>
+
+      <div class="mt-3 rounded-box border border-base-300 p-3">
+        <div class="text-xs font-medium text-base-content/70">Placement (AZ ⊃ Rack ⊃ Host)</div>
+        {#each [
+          { label: 'AZ',   kind: azKind,   setKind: (v: AxisKind) => (azKind = v),   spec: azSpec,   setSpec: (v: string) => (azSpec = v),   placeholder: 'DC-C' },
+          { label: 'Rack', kind: rackKind, setKind: (v: AxisKind) => (rackKind = v), spec: rackSpec, setSpec: (v: string) => (rackSpec = v), placeholder: 'R2' },
+          { label: 'Host', kind: hostKind, setKind: (v: AxisKind) => (hostKind = v), spec: hostSpec, setSpec: (v: string) => (hostSpec = v), placeholder: 'dc-a-r1-h2' },
+        ] as axis (axis.label)}
+          <div class="mt-2 grid grid-cols-[5rem_1fr_1fr] items-center gap-2">
+            <span class="text-sm font-medium">{axis.label}</span>
+            <select class="select select-sm select-bordered"
+              value={axis.kind}
+              onchange={(e) => axis.setKind(e.currentTarget.value as AxisKind)}>
+              <option value="any">any</option>
+              <option value="same">same</option>
+              <option value="different">different</option>
+              <option value="specific">specific…</option>
+            </select>
+            {#if axis.kind === 'specific'}
+              <input class="input input-sm input-bordered font-mono"
+                placeholder={axis.placeholder}
+                value={axis.spec}
+                oninput={(e) => axis.setSpec(e.currentTarget.value)} />
+            {:else}
+              <span class="text-xs text-base-content/40">—</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+
+      {#if placementErr}<div class="mt-3 alert alert-error py-2 text-sm">{placementErr}</div>{/if}
+      {#if placementOk}<div class="mt-3 alert alert-success py-2 text-sm">Saved.</div>{/if}
+
+      <div class="mt-3 flex">
+        <button class="ml-auto btn btn-sm btn-ghost" onclick={seedPlacement}>Reset</button>
+        <button class="btn btn-sm btn-primary ml-2"
+          disabled={placementBusy} onclick={savePlacement}>
+          {#if placementBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
+          Save
+        </button>
+      </div>
 
     {:else}
       <!-- microVMs tab -->
