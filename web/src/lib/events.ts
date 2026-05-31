@@ -3,6 +3,7 @@
 // reconnect handled by EventSource itself.
 
 import { writable, type Writable } from 'svelte/store';
+import { withBase, rotate, endpointsEnabled } from './endpoints';
 
 export interface PlatformEvent {
   ts: string;        // RFC-3339
@@ -29,14 +30,33 @@ export function clearEventFeed() { eventFeed.set([]); }
 export const eventsConnection: Writable<'idle' | 'open' | 'error'> = writable('idle');
 
 let es: EventSource | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function startEventsStream() {
   if (es) return; // already open
   eventsConnection.set('idle');
+  openStream();
+}
+
+// openStream (re)opens the singleton EventSource against the currently
+// active DC. In a plain browser this is just '/api/events' and the
+// browser's own reconnect logic handles transient drops. Inside a
+// native shell with multiple DC origins, EventSource won't chase an
+// origin change on its own — so on error we rotate to the next healthy
+// DC and reopen there, mirroring the REST client's failover.
+function openStream() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   // Default = no filter ; future caller can pass kindPrefixes.
-  es = new EventSource('/api/events');
+  es = new EventSource(withBase('/api/events'));
   es.onopen = () => eventsConnection.set('open');
-  es.onerror = () => eventsConnection.set('error');
+  es.onerror = () => {
+    eventsConnection.set('error');
+    if (!endpointsEnabled || !es) return; // browser self-reconnects
+    es.close();
+    es = null;
+    rotate(); // advance to next healthy DC (anti-flap aware)
+    reconnectTimer = setTimeout(openStream, 1_000);
+  };
   es.onmessage = (ev) => {
     try {
       const e = JSON.parse(ev.data) as PlatformEvent;
@@ -55,6 +75,7 @@ export function startEventsStream() {
 }
 
 export function stopEventsStream() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (!es) return;
   es.close();
   es = null;
@@ -105,7 +126,7 @@ export function openScopedEvents(opts: { kindPrefix?: string; subject?: string; 
   if (opts.kindPrefix) params.append('kind', opts.kindPrefix);
   if (opts.subject) params.set('subject', opts.subject);
   if (opts.project) params.set('project', opts.project);
-  const url = `/api/events${params.toString() ? `?${params}` : ''}`;
+  const url = withBase(`/api/events${params.toString() ? `?${params}` : ''}`);
   const source = new EventSource(url);
   return { source, close: () => source.close() };
 }
