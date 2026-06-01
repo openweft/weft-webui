@@ -542,11 +542,23 @@ var registry = []Resource{
 
 	// ---------- Inventory ----------
 	//
-	// Three-level hierarchy : AZ → Rack → Host. The dashboard
-	// surfaces them as a section the operator walks top-down, then
-	// the special `inventory-map` resource opens the isometric
-	// placement view that joins all three with the live microVM
-	// fleet on top.
+	// Three-level hierarchy : AZ → Rack → Host (multi-hypervisor) →
+	// microVM. The dashboard offers FOUR ways to walk it :
+	//   - inventory-tree : collapsible tree, primary CRUD surface for
+	//     placement (add a rack under an AZ, move a host to another
+	//     rack, etc.)
+	//   - azs / racks / hosts : flat tables for power users who want
+	//     bulk filtering / sorting.
+	//   - inventory-map : isometric visualization, primary read-only
+	//     surface for "what runs where" at a glance.
+	{
+		// Inventory tree — the primary placement editor. Hidden from
+		// the catalogue listing because the dashboard mounts a
+		// dedicated panel ; sidebar entry only.
+		ID: "inventory-tree", Label: "Tree", Section: "Inventory", Scope: ScopeAdmin,
+		Columns: cols("placeholder", "—"),
+		Rows:    []map[string]any{},
+	},
 	{
 		// Availability Zones — datacenters / fault domains the cluster
 		// spans. Identified by a short code ("DC-A", "us-east-1a") ;
@@ -588,15 +600,6 @@ var registry = []Resource{
 		},
 	},
 	{
-		// Inventory map — the isometric placement view. Hidden from
-		// /api/resources catalogue listing (Hidden=true) because the
-		// dashboard mounts a dedicated panel for it, not a table ;
-		// the resource id still drives the sidebar entry.
-		ID: "inventory-map", Label: "Map", Section: "Inventory", Scope: ScopeAdmin,
-		Columns: cols("placeholder", "—"),
-		Rows:    []map[string]any{},
-	},
-	{
 		// Mirrors HostInfo (hostname → name, az, rack, architecture → arch,
 		// hypervisor, state → status, last_seen). cpu/ram aren't on the
 		// HostInfo proto — they live with the host's runtime stats and
@@ -625,6 +628,14 @@ var registry = []Resource{
 				"gpu", "4×H100-80G",
 				"status", "active", "last_seen", "2026-05-28"),
 		},
+	},
+	{
+		// Inventory map — the isometric placement view. Sidebar entry
+		// only ; dashboard mounts a dedicated panel rather than the
+		// generic table renderer.
+		ID: "inventory-map", Label: "Map", Section: "Inventory", Scope: ScopeAdmin,
+		Columns: cols("placeholder", "—"),
+		Rows:    []map[string]any{},
 	},
 	{
 		// Plugin registry — *-as-a-service modules the cluster can
