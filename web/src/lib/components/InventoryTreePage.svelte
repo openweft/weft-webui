@@ -12,7 +12,7 @@
   // Live signal : polls /api/resources every 5 s and re-renders,
   // same cadence as InventoryMapPage.
   import { onMount, onDestroy } from 'svelte';
-  import { getRowsPage, type Row, type ResourceMeta } from '../api';
+  import { getRowsPage, getAllRows, type Row, type ResourceMeta } from '../api';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -37,21 +37,22 @@
 
   async function refresh() {
     try {
-      // limit hard-capped at 1000 by the API (huma validation on
-      // /api/resources/{id}, see api_misc.go). Bumping past it
-      // triggers a 422 ("validation failed") server-side. The
-      // dashboard shows at most 1000 microVMs in the tree ; a real
-      // fleet that big would want pagination anyway, deferred.
+      // /api/resources/{id} validates limit ∈ [0, 1000] (huma
+      // schema). AZs / racks / hosts comfortably fit in one page —
+      // a cluster running thousands of those would have other
+      // problems first. microVMs can grow past 1 k, so we walk the
+      // next-page-token chain via getAllRows (capped at 50 k
+      // total to bound dashboard memory).
       const [a, r, h, v] = await Promise.all([
-        getRowsPage('azs',      { limit: 500 }),
-        getRowsPage('racks',    { limit: 500 }),
-        getRowsPage('hosts',    { limit: 500 }),
-        getRowsPage('microvms', { limit: 1000 }),
+        getRowsPage('azs',   { limit: 1000 }),
+        getRowsPage('racks', { limit: 1000 }),
+        getRowsPage('hosts', { limit: 1000 }),
+        getAllRows('microvms', { perPage: 1000, maxPages: 50 }),
       ]);
       azs   = a.rows ?? [];
       racks = r.rows ?? [];
       hosts = h.rows ?? [];
-      vms   = v.rows ?? [];
+      vms   = v;
       // First load only : expand every AZ so the hierarchy is
       // immediately visible. Subsequent refreshes preserve the
       // operator's collapse state.
