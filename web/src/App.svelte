@@ -128,8 +128,7 @@
         {/key}
       {:else if active === 'inventory-tree'}
         {#key active}
-          <InventoryTreePage meta={byId.get(active)!}
-            onNavigate={(id) => (active = id)} />
+          <InventoryTreePage meta={byId.get(active)!} />
         {/key}
       {:else}
         {#key active}
