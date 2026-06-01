@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds the resolved runtime settings. Values are normalised
@@ -101,6 +102,14 @@ type Config struct {
 	SecurityPath string
 	ScriptsPath  string
 
+	// ShutdownTimeout is the deadline http.Server.Shutdown gets after
+	// SIGTERM. The server first cancels its BaseContext (so SSE +
+	// WatchEvents handlers exit immediately), then waits up to this
+	// timeout for remaining synchronous /api/* handlers to finish.
+	// Default 10s ; raise for long-running admin endpoints, lower in
+	// container fleets that prefer fast restarts.
+	ShutdownTimeout time.Duration
+
 	// AllowedOrigins is the cross-origin allow-list consulted by the
 	// withOriginCheck middleware for mutating /api/* requests. Same-
 	// origin (Host header) is always permitted ; entries here add
@@ -173,6 +182,16 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
 	cfg.AllowedOrigins = splitCSV(os.Getenv("WEBUI_ALLOWED_ORIGINS"))
 
+	if v := os.Getenv("WEBUI_SHUTDOWN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("WEBUI_SHUTDOWN_TIMEOUT: %w", err)
+		}
+		cfg.ShutdownTimeout = d
+	} else {
+		cfg.ShutdownTimeout = 10 * time.Second
+	}
+
 	// CookieSecure defaults : true unless dev mode, env override wins.
 	if v, ok := os.LookupEnv("WEBUI_COOKIE_SECURE"); ok {
 		b, err := strconv.ParseBool(v)
@@ -227,6 +246,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.DNSPath, "dns-path", cfg.DNSPath, "JSON file the mock dns-zones + dns-records rows are rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.StringVar(&cfg.SecurityPath, "security-path", cfg.SecurityPath, "JSON file the mock security-groups + rules map are rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.StringVar(&cfg.ScriptsPath, "scripts-path", cfg.ScriptsPath, "JSON file the mock scripts catalogue is rehydrated from + flushed back to ; empty = in-memory only")
+	flagSet.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "max time the server spends draining in-flight requests on SIGTERM before the deadline forces exit")
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }

@@ -30,6 +30,7 @@ import (
 	"flag"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -182,10 +183,19 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// serverCtx is the parent context every request inherits via
+	// BaseContext. Cancelling it after SIGTERM wakes up long-lived
+	// handlers (SSE streams) that select on r.Context().Done() so
+	// Shutdown's grace deadline is spent waiting for synchronous
+	// /api/* handlers, not idle SSE keepalives. Without this, the
+	// grace deadline always runs out to the full timeout.
+	serverCtx, cancelServer := context.WithCancel(context.Background())
+	defer cancelServer()
+
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 
-	userSrv := newHTTPServer(cfg.UserAddr, server.New(deps))
+	userSrv := newHTTPServer(cfg.UserAddr, server.New(deps), serverCtx)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -196,7 +206,7 @@ func run() error {
 
 	var adminSrv *http.Server
 	if cfg.AdminAddr != "" {
-		adminSrv = newHTTPServer(cfg.AdminAddr, server.NewAdmin(deps))
+		adminSrv = newHTTPServer(cfg.AdminAddr, server.NewAdmin(deps), serverCtx)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -213,9 +223,19 @@ func run() error {
 		logger.Info("shutdown signal", "signal", ctx.Err())
 	}
 
-	// Shut everything down within a single deadline so an unresponsive
-	// connection on one port can't drag the other past the timeout.
-	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Two-phase shutdown :
+	//   1) Cancel serverCtx — SSE + WatchEvents loops exit immediately
+	//      because their handler ctx is derived from it.
+	//   2) http.Server.Shutdown — stops accepting + waits for the
+	//      remaining synchronous /api/* handlers under a single deadline
+	//      so an unresponsive conn on one port can't drag the other
+	//      past the timeout.
+	cancelServer()
+	timeout := cfg.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := userSrv.Shutdown(shutCtx); err != nil {
 		logger.Warn("user shutdown", "err", err)
@@ -230,12 +250,17 @@ func run() error {
 	return nil
 }
 
-func newHTTPServer(addr string, h http.Handler) *http.Server {
+func newHTTPServer(addr string, h http.Handler, baseCtx context.Context) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		// BaseContext returns the parent context for every connection
+		// the listener accepts. When serverCtx is cancelled, every
+		// in-flight handler's r.Context() unblocks — that's how SSE
+		// streams know to exit promptly on SIGTERM.
+		BaseContext: func(_ net.Listener) context.Context { return baseCtx },
 	}
 }
 
