@@ -16,6 +16,7 @@
   import SSHKeysPage from './lib/components/SSHKeysPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import PluginsPage from './lib/components/PluginsPage.svelte';
+  import InventoryMapPage from './lib/components/InventoryMapPage.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
@@ -119,6 +120,10 @@
       {:else if active === 'plugins'}
         {#key active}
           <PluginsPage meta={byId.get(active)!} onChange={refreshResources} />
+        {/key}
+      {:else if active === 'inventory-map'}
+        {#key active}
+          <InventoryMapPage meta={byId.get(active)!} />
         {/key}
       {:else}
         {#key active}
