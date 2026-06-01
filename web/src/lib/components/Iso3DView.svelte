@@ -76,6 +76,19 @@
     }
   }
 
+  // Arch tint for the host band's top rim — status owns the fill,
+  // arch owns a thin rim stripe so heterogeneous fleets read at a
+  // glance without losing the status signal.
+  function archStroke(arch: string): string {
+    switch (arch) {
+      case 'amd64':   return '#0284c7';
+      case 'arm64':   return '#059669';
+      case 'riscv64': return '#7c3aed';
+      case 'loong64': return '#d97706';
+      default:        return 'oklch(60% 0.02 240)';
+    }
+  }
+
   // ---- pan / zoom / drag ----------------------------------------
 
   let scale = $state(1);
@@ -265,6 +278,12 @@
                   opacity="0.85">
                   <title>{host.name} · {host.arch} · {host.hypervisor} · {(vmsByHost.get(String(host.name ?? '')) ?? []).length} VMs</title>
                 </polygon>
+                <!-- Arch rim : a 1.4px stripe along the band's top
+                     edge so amd64 / arm64 / riscv64 / loong64 are
+                     distinguishable without disturbing the status fill. -->
+                <line x1={bL1.sx} y1={bL1.sy} x2={bR1.sx} y2={bR1.sy}
+                  stroke={archStroke(String(host.arch ?? ''))}
+                  stroke-width="1.4" stroke-linecap="round"/>
               {/each}
 
               {#each rackVMs.slice(0, 16) as vm, vmIdx (vm.uuid ?? vm.name ?? vmIdx)}

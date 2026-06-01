@@ -122,6 +122,20 @@
   function rackFill(n: number): number {
     return Math.min(1, n / 8);
   }
+
+  // Per-arch chip styling. amd64 / arm64 are the bulk of the fleet ;
+  // riscv64 + loong64 are the "exotic" archs the scheduler can also
+  // target — we colour them distinctly so heterogeneous clusters
+  // are visible at a glance.
+  function archClass(arch: string): string {
+    switch (arch) {
+      case 'amd64':   return 'bg-sky-500/15 text-sky-700 border-sky-500/40';
+      case 'arm64':   return 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40';
+      case 'riscv64': return 'bg-violet-500/15 text-violet-700 border-violet-500/40';
+      case 'loong64': return 'bg-amber-500/15 text-amber-700 border-amber-500/40';
+      default:        return 'bg-base-200 text-base-content/60 border-base-300';
+    }
+  }
 </script>
 
 <div class="flex items-center gap-3">
@@ -203,7 +217,9 @@
                   >
                     <div class="flex items-center justify-between">
                       <span class="truncate font-mono text-[11px] font-medium">{host.name}</span>
-                      <span class="ml-1 text-[9px] text-base-content/50">{host.arch}</span>
+                      <span class="ml-1 inline-flex shrink-0 items-center rounded border px-1 py-[1px] font-mono text-[9px] {archClass(String(host.arch ?? ''))}">
+                        {host.arch}
+                      </span>
                     </div>
                     <!-- VM dots packed into the host card. Show
                          up to 24 ; overflow becomes "+N". -->
@@ -257,6 +273,12 @@
   <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-success/15 border border-success/60"></span> active</span>
   <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-warning/15 border border-warning/60"></span> draining</span>
   <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-error/15 border border-error/60"></span> down</span>
+  <span class="mx-2 h-3 w-px bg-base-300"></span>
+  <span class="font-semibold text-base-content/70">Arch</span>
+  <span class="inline-flex items-center rounded border px-1 py-[1px] font-mono text-[10px] {archClass('amd64')}">amd64</span>
+  <span class="inline-flex items-center rounded border px-1 py-[1px] font-mono text-[10px] {archClass('arm64')}">arm64</span>
+  <span class="inline-flex items-center rounded border px-1 py-[1px] font-mono text-[10px] {archClass('riscv64')}">riscv64</span>
+  <span class="inline-flex items-center rounded border px-1 py-[1px] font-mono text-[10px] {archClass('loong64')}">loong64</span>
   <span class="mx-2 h-3 w-px bg-base-300"></span>
   <span class="font-semibold text-base-content/70">microVMs</span>
   <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm" style="background:#3b82f6"></span> running</span>

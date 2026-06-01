@@ -12,7 +12,9 @@
   // Live signal : polls /api/resources every 5 s and re-renders,
   // same cadence as InventoryMapPage.
   import { onMount, onDestroy } from 'svelte';
-  import { getRowsPage, getAllRows, type Row, type ResourceMeta } from '../api';
+  import { getRowsPage, getAllRows, deleteAZ, deleteRack, deleteHost,
+    type Row, type ResourceMeta } from '../api';
+  import InventoryFormModal from './InventoryFormModal.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -137,6 +139,46 @@
     }
   });
 
+  // ---- modal state + handlers ----------------------------------
+
+  type ModalState =
+    | { open: false }
+    | { open: true; mode: 'create' | 'edit'; kind: 'az' | 'rack' | 'host'; initial: Row | null };
+
+  let modal = $state<ModalState>({ open: false });
+
+  function openCreate(kind: 'az' | 'rack' | 'host', seed: Partial<Row> = {}) {
+    modal = { open: true, mode: 'create', kind, initial: seed as Row };
+  }
+  function openEdit(kind: 'az' | 'rack' | 'host', row: Row) {
+    modal = { open: true, mode: 'edit', kind, initial: row };
+  }
+  function closeModal() {
+    modal = { open: false };
+  }
+  function onSaved() {
+    closeModal();
+    refresh();
+  }
+
+  async function confirmAndDelete(kind: 'az' | 'rack' | 'host', row: Row) {
+    const label = String(row.code ?? row.name ?? row.uuid ?? '');
+    const cascade = kind === 'az' ? ' (cascades to racks + hosts)'
+      : kind === 'rack' ? ' (cascades to hosts)' : '';
+    if (!confirm(`Delete ${kind} ${label}?${cascade}`)) return;
+    try {
+      const uuid = String(row.uuid ?? '');
+      if (!uuid) throw new Error('row has no uuid');
+      if (kind === 'az')   await deleteAZ(uuid);
+      if (kind === 'rack') await deleteRack(uuid);
+      if (kind === 'host') await deleteHost(uuid);
+      selected = null;
+      await refresh();
+    } catch (e) {
+      loadErr = String(e);
+    }
+  }
+
   function statusDot(status: string): string {
     switch (status) {
       case 'active':       return 'bg-success';
@@ -165,6 +207,12 @@
     </p>
   </div>
   <div class="ml-auto flex items-center gap-2">
+    <button class="btn btn-sm btn-primary gap-1" onclick={() => openCreate('az')}>
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 5v14M5 12h14" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      AZ
+    </button>
     <button class="btn btn-sm btn-ghost gap-1" onclick={refresh} title="Force refresh">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -193,7 +241,7 @@
         {@const isAZSelected = selected?.kind === 'az' && selected.key === String(az.code ?? '')}
 
         <!-- AZ row -->
-        <div class="flex items-center gap-1 rounded px-1 py-1 text-sm
+        <div class="group flex items-center gap-1 rounded px-1 py-1 text-sm
                     {isAZSelected ? 'bg-primary text-primary-content' : 'hover:bg-base-200'}">
           <button class="btn btn-ghost btn-xs px-1"
             onclick={() => toggle(azID)} aria-label="toggle">
@@ -209,6 +257,19 @@
             <span class="text-xs opacity-70 truncate">{az.name}</span>
             <span class="ml-auto badge badge-xs badge-ghost">{azRacks.length}r</span>
           </button>
+          <div class="ml-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+            <button class="btn btn-ghost btn-xs px-1" title="Add rack here"
+              onclick={() => openCreate('rack', { az: String(az.code ?? '') })}>
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-xs px-1" title="Edit AZ" onclick={() => openEdit('az', az)}>
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-xs px-1 text-error" title="Delete AZ"
+              onclick={() => confirmAndDelete('az', az)}>
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            </button>
+          </div>
         </div>
 
         {#if isAZExpanded}
@@ -219,7 +280,7 @@
             {@const isRackSelected = selected?.kind === 'rack'
               && selected.key === String(az.code ?? '') + '|' + String(rack.code ?? '')}
 
-            <div class="ml-5 flex items-center gap-1 rounded px-1 py-1 text-sm
+            <div class="group ml-5 flex items-center gap-1 rounded px-1 py-1 text-sm
                         {isRackSelected ? 'bg-primary text-primary-content' : 'hover:bg-base-200'}">
               <button class="btn btn-ghost btn-xs px-1"
                 onclick={() => toggle(rackID)} aria-label="toggle">
@@ -235,6 +296,19 @@
                 <span class="text-xs opacity-60">· {rack.position}</span>
                 <span class="ml-auto badge badge-xs badge-ghost">{rackHosts.length}h</span>
               </button>
+              <div class="ml-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                <button class="btn btn-ghost btn-xs px-1" title="Add host here"
+                  onclick={() => openCreate('host', { az: String(az.code ?? ''), rack: String(rack.code ?? '') })}>
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-xs px-1" title="Edit rack" onclick={() => openEdit('rack', rack)}>
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-xs px-1 text-error" title="Delete rack"
+                  onclick={() => confirmAndDelete('rack', rack)}>
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                </button>
+              </div>
             </div>
 
             {#if isRackExpanded}
@@ -244,7 +318,7 @@
                 {@const hostVMs = vmsByHost.get(String(host.name ?? '')) ?? []}
                 {@const isHostSelected = selected?.kind === 'host' && selected.key === String(host.name ?? '')}
 
-                <div class="ml-10 flex items-center gap-1 rounded px-1 py-1 text-xs
+                <div class="group ml-10 flex items-center gap-1 rounded px-1 py-1 text-xs
                             {isHostSelected ? 'bg-primary text-primary-content' : 'hover:bg-base-200'}">
                   <button class="btn btn-ghost btn-xs px-1"
                     onclick={() => toggle(hostID)} aria-label="toggle"
@@ -268,6 +342,15 @@
                       <span class="ml-auto badge badge-xs badge-ghost">{hostVMs.length}vm</span>
                     {/if}
                   </button>
+                  <div class="ml-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                    <button class="btn btn-ghost btn-xs px-1" title="Edit host" onclick={() => openEdit('host', host)}>
+                      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-xs px-1 text-error" title="Delete host"
+                      onclick={() => confirmAndDelete('host', host)}>
+                      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                    </button>
+                  </div>
                 </div>
 
                 {#if isHostExpanded}
@@ -405,3 +488,14 @@
     {/if}
   </section>
 </div>
+
+<InventoryFormModal
+  open={modal.open}
+  mode={modal.open ? modal.mode : 'create'}
+  kind={modal.open ? modal.kind : 'az'}
+  initial={modal.open ? modal.initial : null}
+  azs={azs}
+  racks={racks}
+  onClose={closeModal}
+  onSave={onSaved}
+/>

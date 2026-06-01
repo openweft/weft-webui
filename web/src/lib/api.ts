@@ -38,6 +38,7 @@ import {
   type APIEditableMetadata,
   type APISubnet,
   type APIAuthorizedGroup, type APIEffectiveKey,
+  type paths,
 } from './client';
 
 // Re-export the typed aliases for callers that want them.
@@ -135,6 +136,71 @@ export async function getAllRows(
   // out.length against the page.total they got earlier.
   return out;
 }
+
+// ---- Inventory CRUD (AZ / Rack / Host) ----------------------------
+//
+// Thin wrappers around the huma CRUD endpoints. Bodies follow the
+// generated openapi shapes — no client-side validation duplicated
+// since the server's enum / minLength / maxLength tags already run
+// at the huma layer.
+
+export type AZBody    = paths['/api/azs']['post']['requestBody']['content']['application/json'];
+export type RackBody  = paths['/api/racks']['post']['requestBody']['content']['application/json'];
+export type HostBody  = paths['/api/hosts']['post']['requestBody']['content']['application/json'];
+
+export const createAZ = async (body: AZBody): Promise<AZBody> => {
+  const { data, error } = await client.POST('/api/azs', { body });
+  if (error) throwErr(error);
+  return data;
+};
+export const updateAZ = async (uuid: string, body: AZBody): Promise<AZBody> => {
+  const { data, error } = await client.PUT('/api/azs/{uuid}', {
+    params: { path: { uuid } },
+    body,
+  });
+  if (error) throwErr(error);
+  return data;
+};
+export const deleteAZ = async (uuid: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/azs/{uuid}', { params: { path: { uuid } } });
+  if (error) throwErr(error);
+};
+
+export const createRack = async (body: RackBody): Promise<RackBody> => {
+  const { data, error } = await client.POST('/api/racks', { body });
+  if (error) throwErr(error);
+  return data;
+};
+export const updateRack = async (uuid: string, body: RackBody): Promise<RackBody> => {
+  const { data, error } = await client.PUT('/api/racks/{uuid}', {
+    params: { path: { uuid } },
+    body,
+  });
+  if (error) throwErr(error);
+  return data;
+};
+export const deleteRack = async (uuid: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/racks/{uuid}', { params: { path: { uuid } } });
+  if (error) throwErr(error);
+};
+
+export const createHost = async (body: HostBody): Promise<HostBody> => {
+  const { data, error } = await client.POST('/api/hosts', { body });
+  if (error) throwErr(error);
+  return data;
+};
+export const updateHost = async (uuid: string, body: HostBody): Promise<HostBody> => {
+  const { data, error } = await client.PUT('/api/hosts/{uuid}', {
+    params: { path: { uuid } },
+    body,
+  });
+  if (error) throwErr(error);
+  return data;
+};
+export const deleteHost = async (uuid: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/hosts/{uuid}', { params: { path: { uuid } } });
+  if (error) throwErr(error);
+};
 
 // ---- Scripts catalogue --------------------------------------------
 
