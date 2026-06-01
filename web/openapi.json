@@ -8264,12 +8264,16 @@
     },
     "/api/readyz": {
       "get": {
+        "description": "Returns 200 + ok:true when the server can serve traffic ; returns 503 + ok:false when a wired persistence path isn't writable. Used by k8s readinessProbe / load-balancer health to take a node out of rotation if its state disk failed.",
         "operationId": "readyz",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
               }
             },
             "description": "OK"
@@ -8285,7 +8289,7 @@
             "description": "Error"
           }
         },
-        "summary": "Readiness probe (returns mode=mock when no daemon is wired)",
+        "summary": "Readiness probe — surfaces controller mode + state-file writability",
         "tags": [
           "health"
         ]

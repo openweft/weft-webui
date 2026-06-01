@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,14 +53,78 @@ func mountHealthAPI(api huma.API) {
 		OperationID: "readyz",
 		Method:      "GET",
 		Path:        "/api/readyz",
-		Summary:     "Readiness probe (returns mode=mock when no daemon is wired)",
+		Summary:     "Readiness probe — surfaces controller mode + state-file writability",
+		Description: "Returns 200 + ok:true when the server can serve traffic ; returns 503 + ok:false when a wired persistence path isn't writable. Used by k8s readinessProbe / load-balancer health to take a node out of rotation if its state disk failed.",
 		Tags:        []string{"health"},
-	}, func(_ context.Context, _ *struct{}) (*passthroughOutput, error) {
+	}, func(_ context.Context, _ *struct{}) (*readyzOutput, error) {
+		body := map[string]any{"ok": true}
 		if live == nil {
-			return &passthroughOutput{Body: map[string]any{"ok": true, "mode": "mock"}}, nil
+			body["mode"] = "mock"
+		} else {
+			body["mode"] = "live"
 		}
-		return &passthroughOutput{Body: map[string]any{"ok": true, "mode": "live"}}, nil
+		// Persistence probe : if any wired state-file path can't be
+		// written, the dashboard is degraded (mutations would
+		// succeed in-memory but vanish on restart). Surface this as
+		// 503 so operators / orchestrators take this replica out
+		// of rotation until the disk recovers.
+		probes := map[string]string{}
+		if p := inventoryPath; p != "" {
+			probes["inventory"] = probeWritable(p)
+		}
+		if p := dnsPath; p != "" {
+			probes["dns"] = probeWritable(p)
+		}
+		if p := securityPath; p != "" {
+			probes["security"] = probeWritable(p)
+		}
+		if mem, ok := scriptsCatalogue.(*memScriptCatalogue); ok && mem.path != "" {
+			probes["scripts"] = probeWritable(mem.path)
+		}
+		var degraded []string
+		for name, status := range probes {
+			if status != "ok" {
+				degraded = append(degraded, name+":"+status)
+			}
+		}
+		if len(probes) > 0 {
+			body["probes"] = probes
+		}
+		if len(degraded) > 0 {
+			body["ok"] = false
+			body["degraded"] = degraded
+			return &readyzOutput{Status: http.StatusServiceUnavailable, Body: body}, nil
+		}
+		return &readyzOutput{Status: http.StatusOK, Body: body}, nil
 	})
+}
+
+// readyzOutput carries a dynamic HTTP status so a degraded probe
+// returns 503 without going through huma.Error (which would log it
+// as a request error in middleware metrics).
+type readyzOutput struct {
+	Status int
+	Body   map[string]any
+}
+
+// probeWritable tries an atomic "create then remove" against a
+// sibling .probe-<rand>.tmp file in path's directory. Returns "ok"
+// on success ; otherwise a short error code suitable for the
+// readyz body. Idempotent — no leftover files on disk.
+func probeWritable(path string) string {
+	dir := filepath.Dir(path)
+	if dir == "" {
+		dir = "."
+	}
+	// MkdirTemp is the cleanest "I can write here" test : creates
+	// the dir if needed, fails clearly when not allowed, returns
+	// a path we can immediately remove.
+	tmp, err := os.MkdirTemp(dir, ".readyz-probe-")
+	if err != nil {
+		return "unwritable"
+	}
+	_ = os.RemoveAll(tmp)
+	return "ok"
 }
 
 // ---- /api/resources catalogue listing -----------------------------

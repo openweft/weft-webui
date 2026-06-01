@@ -123,6 +123,30 @@ func withLogging(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+// withMaxBodyBytes wraps every /api/* request body in an
+// http.MaxBytesReader so an oversized payload can't pin memory or
+// hold a connection forever. Hits over the limit get a 413 + an
+// empty body — handlers downstream just see io.EOF / "http: request
+// body too large" when they try to read.
+//
+// Default 1 MiB is generous for the typed huma surface (the largest
+// real bodies are SSH-key import lists at ~80 KiB) ; raise per
+// deployment if a future endpoint needs more (large script bodies,
+// SBOM uploads, etc.).
+//
+// limit <= 0 disables the wrap entirely (back-compat / unit tests).
+func withMaxBodyBytes(limit int64, next http.Handler) http.Handler {
+	if limit <= 0 {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/") {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // withOriginCheck rejects state-changing /api/* requests whose Origin
 // (preferred) or Referer doesn't match the server's Host or one of
 // the optional allow-list entries. The same-origin invariant under

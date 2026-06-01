@@ -98,6 +98,11 @@ type Deps struct {
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
 
+	// MaxRequestBodyBytes is the per-request body cap applied to
+	// every /api/* request body via http.MaxBytesReader. Zero or
+	// negative disables the wrap entirely.
+	MaxRequestBodyBytes int64
+
 	// AllowedOrigins is the cross-origin allow-list forwarded to
 	// withOriginCheck. Empty = same-origin only (Host header match).
 	// Setting non-default entries lets a known external client (e.g.
@@ -255,6 +260,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	}
 	h = d.Auth.Wrap(h)
 	h = withOriginCheck(d.AllowedOrigins, h)
+	h = withMaxBodyBytes(d.MaxRequestBodyBytes, h)
 	h = withJSONDefaults(h)
 	h = withSecurityHeaders(d.DevMode, h)
 	h = withRequestID(h)

@@ -102,6 +102,13 @@ type Config struct {
 	SecurityPath string
 	ScriptsPath  string
 
+	// MaxRequestBodyBytes is the http.MaxBytesReader cap applied to
+	// every /api/* request body. Default 1 MiB. Raise for endpoints
+	// that legitimately accept large payloads (script bodies, SBOM
+	// uploads) ; lower in container deployments that want a tighter
+	// DoS profile. Zero / negative disables the wrap entirely.
+	MaxRequestBodyBytes int64
+
 	// ShutdownTimeout is the deadline http.Server.Shutdown gets after
 	// SIGTERM. The server first cancels its BaseContext (so SSE +
 	// WatchEvents handlers exit immediately), then waits up to this
@@ -182,6 +189,16 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
 	cfg.AllowedOrigins = splitCSV(os.Getenv("WEBUI_ALLOWED_ORIGINS"))
 
+	if v := os.Getenv("WEBUI_MAX_REQUEST_BODY_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("WEBUI_MAX_REQUEST_BODY_BYTES: %w", err)
+		}
+		cfg.MaxRequestBodyBytes = n
+	} else {
+		cfg.MaxRequestBodyBytes = 1 << 20 // 1 MiB
+	}
+
 	if v := os.Getenv("WEBUI_SHUTDOWN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
@@ -247,6 +264,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.SecurityPath, "security-path", cfg.SecurityPath, "JSON file the mock security-groups + rules map are rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.StringVar(&cfg.ScriptsPath, "scripts-path", cfg.ScriptsPath, "JSON file the mock scripts catalogue is rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "max time the server spends draining in-flight requests on SIGTERM before the deadline forces exit")
+	flagSet.Int64Var(&cfg.MaxRequestBodyBytes, "max-request-body-bytes", cfg.MaxRequestBodyBytes, "cap on /api/* request body size in bytes (DoS guard) ; 0 = disabled")
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }

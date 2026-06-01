@@ -1097,7 +1097,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Readiness probe (returns mode=mock when no daemon is wired) */
+        /**
+         * Readiness probe — surfaces controller mode + state-file writability
+         * @description Returns 200 + ok:true when the server can serve traffic ; returns 503 + ok:false when a wired persistence path isn't writable. Used by k8s readinessProbe / load-balancer health to take a node out of rotation if its state disk failed.
+         */
         get: operations["readyz"];
         put?: never;
         post?: never;
@@ -6256,7 +6259,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Error */
