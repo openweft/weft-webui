@@ -71,6 +71,7 @@ func mountAPI(mux *http.ServeMux, scope Scope) huma.API {
 	mountEditableMetadataAPI(api, scope)
 	mountRegistriesAPI(api, scope)
 	mountPluginsAPI(api, scope)
+	mountInventoryAPI(api, scope)
 	mountMiscAPI(api, scope)
 
 	return api

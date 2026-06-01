@@ -4,6 +4,44 @@
  */
 
 export interface paths {
+    "/api/azs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register an availability zone (cluster-admin) */
+        post: operations["create-az"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/azs/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update an availability zone (cluster-admin) */
+        put: operations["update-az"];
+        post?: never;
+        /**
+         * Delete an availability zone + cascade racks/hosts (cluster-admin)
+         * @description Cascade-deletes every rack and host whose `az` column matches the AZ code. Use with care.
+         */
+        delete: operations["delete-az"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buckets": {
         parameters: {
             query?: never;
@@ -323,6 +361,44 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a host (cluster-admin) */
+        post: operations["create-host"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a host (cluster-admin) */
+        put: operations["update-host"];
+        post?: never;
+        /**
+         * Delete a host (cluster-admin)
+         * @description Hosts carry microVMs. The dashboard SHOULD block deletion when the count > 0 ; the API doesn't enforce that yet — it's idempotent.
+         */
+        delete: operations["delete-host"];
         options?: never;
         head?: never;
         patch?: never;
@@ -974,6 +1050,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/racks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a rack (cluster-admin) */
+        post: operations["create-rack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/racks/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a rack (cluster-admin) */
+        put: operations["update-rack"];
+        post?: never;
+        /** Delete a rack + cascade its hosts (cluster-admin) */
+        delete: operations["delete-rack"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1828,6 +1939,37 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        APIAZ: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/APIAZ.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Short uppercase code, e.g. DC-A
+             * @example DC-A
+             */
+            code: string;
+            /**
+             * @description Human-friendly name
+             * @example Datacenter Alpha
+             */
+            name: string;
+            /**
+             * @description Region tag (eu-west-1, us-east-1, ...)
+             * @example eu-west-1
+             */
+            region: string;
+            /**
+             * @description Operational state
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "draining" | "down" | "provisioning";
+            /** @description Server-generated stable id ; clients omit on create */
+            readonly uuid?: string;
+        };
         APIFlavor: {
             /**
              * Format: uri
@@ -1862,6 +2004,82 @@ export interface components {
              * @example 2
              */
             vcpu: number;
+        };
+        APIHost: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/APIHost.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description CPU architecture
+             * @example arm64
+             * @enum {string}
+             */
+            arch: "amd64" | "arm64" | "riscv64" | "loong64";
+            /**
+             * @description Parent AZ code
+             * @example DC-A
+             */
+            az: string;
+            /**
+             * @description GPU complement, Flavor.gpu notation, empty for none
+             * @example 2×A100-40G
+             */
+            gpu: string;
+            /**
+             * @description Hypervisor backend
+             * @example qemu-kvm
+             * @enum {string}
+             */
+            hypervisor: "qemu-kvm" | "apple-vz";
+            /**
+             * @description Hostname, cluster-unique
+             * @example dc-a-r1-h2
+             */
+            name: string;
+            /**
+             * @description Parent rack code within the AZ
+             * @example R1
+             */
+            rack: string;
+            /**
+             * @description Operational state
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "draining" | "down" | "provisioning";
+            /** @description Server-generated */
+            readonly uuid?: string;
+        };
+        APIRack: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/APIRack.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Parent AZ code
+             * @example DC-A
+             */
+            az: string;
+            /**
+             * @description Rack code within its AZ
+             * @example R1
+             */
+            code: string;
+            /** @description Free-form physical position (row1-col1, ...) */
+            position: string;
+            /**
+             * @description Operational state
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "draining" | "down" | "provisioning";
+            /** @description Server-generated */
+            readonly uuid?: string;
         };
         APISSHKey: {
             /**
@@ -2134,6 +2352,12 @@ export interface components {
             readonly $schema?: string;
             statements: components["schemas"]["PolicyStatement"][] | null;
             version: string;
+        };
+        CascadeStruct: {
+            /** Format: int64 */
+            hosts?: number;
+            /** Format: int64 */
+            racks?: number;
         };
         Column: {
             key: string;
@@ -2412,6 +2636,17 @@ export interface components {
             project: string;
             /** Format: int64 */
             size_gib: number;
+        };
+        DeleteOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteOutputBody.json
+             */
+            readonly $schema?: string;
+            cascade?: components["schemas"]["CascadeStruct"];
+            /** @description UUID of the removed row */
+            deleted: string;
         };
         DeleteRegistryRemoteOutputBody: {
             /**
@@ -3431,6 +3666,107 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "create-az": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIAZ"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIAZ"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-az": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description AZ uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIAZ"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIAZ"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-az": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "create-bucket": {
         parameters: {
             query?: never;
@@ -4221,6 +4557,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIHost"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIHost"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Host uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIHost"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIHost"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
                 };
             };
             /** @description Error */
@@ -5690,6 +6127,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Quota"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-rack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIRack"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIRack"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-rack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Rack uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIRack"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIRack"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-rack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
                 };
             };
             /** @description Error */

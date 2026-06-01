@@ -1,6 +1,70 @@
 {
   "components": {
     "schemas": {
+      "APIAZ": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIAZ.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "code": {
+            "description": "Short uppercase code, e.g. DC-A",
+            "examples": [
+              "DC-A"
+            ],
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-friendly name",
+            "examples": [
+              "Datacenter Alpha"
+            ],
+            "maxLength": 128,
+            "type": "string"
+          },
+          "region": {
+            "description": "Region tag (eu-west-1, us-east-1, ...)",
+            "examples": [
+              "eu-west-1"
+            ],
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "description": "Operational state",
+            "enum": [
+              "active",
+              "draining",
+              "down",
+              "provisioning"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          },
+          "uuid": {
+            "description": "Server-generated stable id ; clients omit on create",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "region",
+          "status"
+        ],
+        "type": "object"
+      },
       "APIFlavor": {
         "additionalProperties": false,
         "properties": {
@@ -63,6 +127,169 @@
           "ram",
           "ephemeral_gb",
           "gpu"
+        ],
+        "type": "object"
+      },
+      "APIHost": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIHost.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "arch": {
+            "description": "CPU architecture",
+            "enum": [
+              "amd64",
+              "arm64",
+              "riscv64",
+              "loong64"
+            ],
+            "examples": [
+              "arm64"
+            ],
+            "type": "string"
+          },
+          "az": {
+            "description": "Parent AZ code",
+            "examples": [
+              "DC-A"
+            ],
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "gpu": {
+            "description": "GPU complement, Flavor.gpu notation, empty for none",
+            "examples": [
+              "2×A100-40G"
+            ],
+            "maxLength": 64,
+            "type": "string"
+          },
+          "hypervisor": {
+            "description": "Hypervisor backend",
+            "enum": [
+              "qemu-kvm",
+              "apple-vz"
+            ],
+            "examples": [
+              "qemu-kvm"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "Hostname, cluster-unique",
+            "examples": [
+              "dc-a-r1-h2"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rack": {
+            "description": "Parent rack code within the AZ",
+            "examples": [
+              "R1"
+            ],
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "Operational state",
+            "enum": [
+              "active",
+              "draining",
+              "down",
+              "provisioning"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          },
+          "uuid": {
+            "description": "Server-generated",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "az",
+          "rack",
+          "arch",
+          "hypervisor",
+          "gpu",
+          "status"
+        ],
+        "type": "object"
+      },
+      "APIRack": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/APIRack.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "az": {
+            "description": "Parent AZ code",
+            "examples": [
+              "DC-A"
+            ],
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "code": {
+            "description": "Rack code within its AZ",
+            "examples": [
+              "R1"
+            ],
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "position": {
+            "description": "Free-form physical position (row1-col1, ...)",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "description": "Operational state",
+            "enum": [
+              "active",
+              "draining",
+              "down",
+              "provisioning"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          },
+          "uuid": {
+            "description": "Server-generated",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "az",
+          "position",
+          "status"
         ],
         "type": "object"
       },
@@ -680,6 +907,20 @@
           "version",
           "statements"
         ],
+        "type": "object"
+      },
+      "CascadeStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "hosts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "racks": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "Column": {
@@ -1433,6 +1674,31 @@
           "name",
           "project",
           "size_gib"
+        ],
+        "type": "object"
+      },
+      "DeleteOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cascade": {
+            "$ref": "#/components/schemas/CascadeStruct"
+          },
+          "deleted": {
+            "description": "UUID of the removed row",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
         ],
         "type": "object"
       },
@@ -4107,6 +4373,146 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/azs": {
+      "post": {
+        "operationId": "create-az",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIAZ"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIAZ"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Register an availability zone (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/azs/{uuid}": {
+      "delete": {
+        "description": "Cascade-deletes every rack and host whose `az` column matches the AZ code. Use with care.",
+        "operationId": "delete-az",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete an availability zone + cascade racks/hosts (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "update-az",
+        "parameters": [
+          {
+            "description": "AZ uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "AZ uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIAZ"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIAZ"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update an availability zone (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/api/buckets": {
       "post": {
         "operationId": "create-bucket",
@@ -5249,6 +5655,146 @@
         "summary": "Liveness probe",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/hosts": {
+      "post": {
+        "operationId": "create-host",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIHost"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIHost"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Register a host (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/hosts/{uuid}": {
+      "delete": {
+        "description": "Hosts carry microVMs. The dashboard SHOULD block deletion when the count \u003e 0 ; the API doesn't enforce that yet — it's idempotent.",
+        "operationId": "delete-host",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a host (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "update-host",
+        "parameters": [
+          {
+            "description": "Host uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Host uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIHost"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIHost"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update a host (cluster-admin)",
+        "tags": [
+          "inventory"
         ]
       }
     },
@@ -7574,6 +8120,145 @@
         "summary": "Scope-aware quota overview",
         "tags": [
           "quotas"
+        ]
+      }
+    },
+    "/api/racks": {
+      "post": {
+        "operationId": "create-rack",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIRack"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIRack"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Register a rack (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/racks/{uuid}": {
+      "delete": {
+        "operationId": "delete-rack",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a rack + cascade its hosts (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "update-rack",
+        "parameters": [
+          {
+            "description": "Rack uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Rack uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIRack"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIRack"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update a rack (cluster-admin)",
+        "tags": [
+          "inventory"
         ]
       }
     },

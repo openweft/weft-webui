@@ -631,6 +631,15 @@ var registry = []Resource{
 			row("name", "dc-c-r3-h2", "az", "DC-C", "rack", "R3", "arch", "amd64", "hypervisor", "qemu-kvm",
 				"gpu", "4×H100-80G",
 				"status", "active", "last_seen", "2026-05-28"),
+			// Heterogeneous-arch fleet : riscv64 + loong64 hosts so
+			// the dashboard's per-arch chips/colors get exercised
+			// even on the seed. Both are valid weft-microvm targets.
+			row("name", "dc-b-r2-h1", "az", "DC-B", "rack", "R2", "arch", "riscv64", "hypervisor", "qemu-kvm",
+				"gpu", "",
+				"status", "active", "last_seen", "2026-05-31"),
+			row("name", "dc-c-r1-h1", "az", "DC-C", "rack", "R1", "arch", "loong64", "hypervisor", "qemu-kvm",
+				"gpu", "",
+				"status", "active", "last_seen", "2026-05-31"),
 		},
 	},
 	{
