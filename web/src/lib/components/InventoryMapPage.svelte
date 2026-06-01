@@ -1,29 +1,24 @@
 <script lang="ts">
-  // InventoryMapPage — isometric placement map of the cluster.
+  // InventoryMapPage — placement view of the cluster.
   //
-  // Layout :
-  //   AZ      → "ground plane" tile, side-by-side along X
-  //   Rack    → vertical stack rising out of the AZ tile (Y)
-  //   Host    → "card" slot inside the rack stack
-  //   microVM → coloured dot inside the host card, packed in a grid
+  // Two layouts behind a 2D / 3D toggle :
   //
-  // Projection is classic axonometric : the iso transforms map
-  // (gx, gy, gz) ∈ grid space to screen (sx, sy) via
+  //  - 2D (default, rack-elevation) : flat datacenter view in the
+  //    style of count.racku.la. Each AZ gets a horizontal section
+  //    with one column per rack ; each column is a tall rectangle
+  //    showing host slots from top to bottom, with microVMs packed
+  //    inside each host's slot. Space-efficient — dozens of racks
+  //    fit on screen.
   //
-  //   sx =  (gx - gy) * cos(30°)
-  //   sy =  (gx + gy) * sin(30°) - gz
+  //  - 3D (isometric) : the axonometric view, AZs as ground tiles,
+  //    racks as 3D boxes rising out of them, microVM dots on top.
+  //    Pretty for screenshots ; not space-efficient for big fleets.
   //
-  // We pre-compute the projection per element. SVG transforms each
-  // group rather than computing path data because re-rendering on
-  // every event-stream tick is cheaper that way.
-  //
-  // Real-time signal : the page polls /api/resources every 5 s and
-  // re-renders. SSE event toasts already exist for live updates ;
-  // adding a per-VM subscriber here would be ideal — kept simple for
-  // the initial cut.
+  // Both views poll /api/resources every 5 s.
 
   import { onMount, onDestroy } from 'svelte';
   import { getRowsPage, getAllRows, type Row, type ResourceMeta } from '../api';
+  import Iso3DView from './Iso3DView.svelte';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -33,14 +28,12 @@
   let vms   = $state<Row[]>([]);
   let loadErr = $state('');
   let lastRefresh = $state<string>('');
+  let viewMode = $state<'2d' | '3d'>('2d');
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
 
   async function refresh() {
     try {
-      // /api/resources/{id} validates limit ∈ [0, 1000] (huma
-      // schema). Per-id pages are 1000 max ; microVMs go through
-      // getAllRows so the map covers fleets > 1000 (50 k safety bound).
       const [a, r, h, v] = await Promise.all([
         getRowsPage('azs',   { limit: 1000 }),
         getRowsPage('racks', { limit: 1000 }),
@@ -64,35 +57,6 @@
   });
   onDestroy(() => { if (pollTimer) clearInterval(pollTimer); });
 
-  // ---- iso projection -------------------------------------------
-
-  // Sizes in grid units ; the SVG viewBox is large enough to fit
-  // 3 AZs × 3 racks × 2 hosts comfortably.
-  const AZ_W    = 320;   // tile half-width in grid units
-  const AZ_D    = 240;   // tile half-depth
-  const AZ_GAP  = 80;
-  const RACK_W  = 70;
-  const RACK_D  = 50;
-  const RACK_H  = 28;    // per-host band height
-  const RACK_GAP_X = 20; // gap between racks along the AZ X-axis
-  const RACK_GAP_Y = 20;
-
-  const COS30 = Math.cos(Math.PI / 6);
-  const SIN30 = Math.sin(Math.PI / 6);
-
-  function iso(gx: number, gy: number, gz: number = 0): { sx: number; sy: number } {
-    return {
-      sx: (gx - gy) * COS30,
-      sy: (gx + gy) * SIN30 - gz,
-    };
-  }
-
-  // viewBox computed to fit 3 AZs side-by-side.
-  const SVG_W = 1600;
-  const SVG_H = 900;
-  const ORIGIN_X = SVG_W / 2;
-  const ORIGIN_Y = 200; // headroom for tall rack stacks
-
   // ---- joins ----------------------------------------------------
 
   let racksByAZ = $derived.by(() => {
@@ -107,8 +71,6 @@
   });
 
   let hostsByRack = $derived.by(() => {
-    // Hosts list their az + rack as string codes (not UUIDs in the
-    // current seed) ; join via the composite "<az>|<rack>" key.
     const m = new Map<string, Row[]>();
     for (const h of hosts) {
       const k = String(h.az ?? '') + '|' + String(h.rack ?? '');
@@ -133,41 +95,32 @@
 
   let totalVMs = $derived(vms.length);
 
-  // ---- per-AZ position ------------------------------------------
+  // ---- helpers --------------------------------------------------
 
-  // Lay AZs along the screen-X axis, equally spaced.
-  function azOriginGrid(idx: number): { gx: number; gy: number } {
-    // Center the row of AZs by shifting the iso-projected midpoint
-    // back to ORIGIN_X via a simple symmetric offset. Each AZ tile
-    // is 2·AZ_W wide on the grid, plus gap.
-    const colSpan = 2 * AZ_W + AZ_GAP;
-    const total = colSpan * Math.max(1, azs.length);
-    return {
-      // Position the AZ origin so its center maps to a unique screen
-      // x. We start from a left-most offset and step right.
-      gx: -total / 2 + idx * colSpan + AZ_W,
-      gy: 0,
-    };
-  }
-
-  function statusColor(status: string): string {
+  function hostStatusClass(status: string): string {
     switch (status) {
-      case 'active':       return 'fill-success/30 stroke-success';
-      case 'draining':     return 'fill-warning/30 stroke-warning';
-      case 'down':         return 'fill-error/30 stroke-error';
-      case 'provisioning': return 'fill-info/30 stroke-info';
-      default:             return 'fill-base-200 stroke-base-300';
+      case 'active':       return 'bg-success/15 border-success/60';
+      case 'draining':     return 'bg-warning/15 border-warning/60';
+      case 'down':         return 'bg-error/15 border-error/60';
+      case 'provisioning': return 'bg-info/15 border-info/60';
+      default:             return 'bg-base-200 border-base-300';
     }
   }
 
   function vmColor(state: string): string {
     switch (state) {
-      case 'running':  return '#3b82f6'; // blue
-      case 'starting': return '#f59e0b'; // amber
-      case 'stopped':  return '#9ca3af'; // gray
-      case 'failed':   return '#ef4444'; // red
+      case 'running':  return '#3b82f6';
+      case 'starting': return '#f59e0b';
+      case 'stopped':  return '#9ca3af';
+      case 'failed':   return '#ef4444';
       default:         return '#6b7280';
     }
+  }
+
+  // Density indicator for the rack header : ratio of (hosts in rack)
+  // to a soft cap of 8 (we don't have rated capacity on the seed).
+  function rackFill(n: number): number {
+    return Math.min(1, n / 8);
   }
 </script>
 
@@ -175,7 +128,7 @@
   <div>
     <h2 class="text-2xl font-bold">{meta.label}</h2>
     <p class="text-sm text-base-content/60">
-      Isometric placement map · {azs.length} AZ · {racks.length} racks ·
+      {azs.length} AZ · {racks.length} racks ·
       {hosts.length} hosts · {totalVMs} microVMs
       {#if lastRefresh}
         · <span class="text-xs text-base-content/40">refreshed {lastRefresh}</span>
@@ -183,6 +136,14 @@
     </p>
   </div>
   <div class="ml-auto flex items-center gap-2">
+    <!-- View toggle. tabs-border is daisyUI 5 ; the older
+         tabs-bordered name was renamed in v5. -->
+    <div role="tablist" class="tabs tabs-box tabs-sm">
+      <button role="tab" class="tab" class:tab-active={viewMode === '2d'}
+        onclick={() => (viewMode = '2d')}>2D</button>
+      <button role="tab" class="tab" class:tab-active={viewMode === '3d'}
+        onclick={() => (viewMode = '3d')}>3D</button>
+    </div>
     <button class="btn btn-sm btn-ghost gap-1" onclick={refresh} title="Force refresh">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -196,161 +157,111 @@
   <div class="alert alert-error mt-4 py-2 text-sm">{loadErr}</div>
 {/if}
 
-<div class="mt-4 rounded-box border border-base-300 bg-base-100 p-2 overflow-x-auto">
-  <svg viewBox="0 0 {SVG_W} {SVG_H}" class="w-full" style="min-width: 800px;" role="img"
-    aria-label="Isometric cluster map">
-    <defs>
-      <!-- Gradient for AZ tiles : subtle vertical fade so the tiles
-           read as 3D planes rather than flat parallelograms. -->
-      <linearGradient id="az-floor" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%"  stop-color="oklch(96% 0.01 240)"/>
-        <stop offset="100%" stop-color="oklch(92% 0.02 240)"/>
-      </linearGradient>
-    </defs>
+{#if viewMode === '2d'}
+  <!-- ===== 2D rack-elevation view ===== -->
+  <div class="mt-4 space-y-6">
+    {#each azs as az, azIdx (az.uuid ?? az.code ?? azIdx)}
+      {@const azRacks = racksByAZ.get(String(az.code ?? '')) ?? []}
+      <section class="rounded-box border border-base-300 bg-base-100">
+        <!-- AZ banner -->
+        <header class="flex items-center justify-between border-b border-base-300 px-4 py-2">
+          <div>
+            <div class="text-sm font-semibold text-base-content">
+              {az.code}
+              <span class="font-normal text-base-content/50">· {az.name}</span>
+            </div>
+            <div class="text-xs text-base-content/40">{az.region ?? ''} · {azRacks.length} racks</div>
+          </div>
+          <span class="badge badge-sm badge-ghost">{az.status ?? 'unknown'}</span>
+        </header>
 
-    <!-- Translate world origin to ORIGIN_X / ORIGIN_Y so all
-         iso coordinates centre around it. -->
-    <g transform="translate({ORIGIN_X} {ORIGIN_Y})">
-      {#each azs as az, azIdx (az.uuid ?? az.code ?? azIdx)}
-        {@const azOrigin = azOriginGrid(azIdx)}
-        {@const azCorners = [
-          iso(azOrigin.gx - AZ_W, azOrigin.gy - AZ_D),
-          iso(azOrigin.gx + AZ_W, azOrigin.gy - AZ_D),
-          iso(azOrigin.gx + AZ_W, azOrigin.gy + AZ_D),
-          iso(azOrigin.gx - AZ_W, azOrigin.gy + AZ_D),
-        ]}
+        <!-- Rack row : horizontal scroll for large AZs. -->
+        <div class="flex gap-4 overflow-x-auto p-4">
+          {#each azRacks as rack, rkIdx (rack.uuid ?? rkIdx)}
+            {@const hostsInRack = hostsByRack.get(String(az.code ?? '') + '|' + String(rack.code ?? '')) ?? []}
 
-        <!-- AZ ground tile + label. Const declarations must sit
-             directly under the {#each azs} block, not inside the
-             <g> element, per Svelte's @const placement rule. -->
-        {@const azLabelPos = iso(azOrigin.gx - AZ_W + 20, azOrigin.gy - AZ_D + 12)}
-        <g class="az">
-          <polygon
-            points="{azCorners.map((p) => `${p.sx},${p.sy}`).join(' ')}"
-            fill="url(#az-floor)"
-            stroke="oklch(70% 0.03 240)"
-            stroke-width="1.5"/>
-          <text x={azLabelPos.sx} y={azLabelPos.sy}
-            class="fill-base-content/80 text-[14px] font-semibold">
-            {az.code} <tspan class="fill-base-content/40 font-normal">· {az.name}</tspan>
-          </text>
-        </g>
+            <article class="flex w-44 shrink-0 flex-col rounded-md border border-base-300 bg-base-200/40">
+              <!-- Rack header : code + density bar -->
+              <header class="flex items-center justify-between border-b border-base-300 px-2 py-1">
+                <span class="font-mono text-xs font-semibold">{rack.code}</span>
+                <span class="text-[10px] text-base-content/50">{hostsInRack.length} / 8U</span>
+              </header>
+              <!-- Density indicator strip -->
+              <div class="h-1 bg-base-300">
+                <div class="h-full bg-primary/70" style="width: {rackFill(hostsInRack.length) * 100}%"></div>
+              </div>
 
-        <!-- Racks inside the AZ -->
-        {#each racksByAZ.get(String(az.code ?? '')) ?? [] as rack, rkIdx (rack.uuid ?? rkIdx)}
-          {@const hostsInRack = hostsByRack.get(String(az.code ?? '') + '|' + String(rack.code ?? '')) ?? []}
-          {@const rkGridX = azOrigin.gx - AZ_W + 60 + rkIdx * (RACK_W + RACK_GAP_X)}
-          {@const rkGridY = azOrigin.gy - AZ_D + 60}
-          {@const rackHeight = Math.max(1, hostsInRack.length) * RACK_H}
-          {@const rkTopFront = iso(rkGridX,           rkGridY,           rackHeight)}
-          {@const rkTopBack  = iso(rkGridX,           rkGridY + RACK_D,  rackHeight)}
-          {@const rkTopRight = iso(rkGridX + RACK_W,  rkGridY + RACK_D,  rackHeight)}
-          {@const rkTopLeft  = iso(rkGridX + RACK_W,  rkGridY,           rackHeight)}
-          {@const rkBotFront = iso(rkGridX,           rkGridY,           0)}
-          {@const rkBotBack  = iso(rkGridX,           rkGridY + RACK_D,  0)}
-          {@const rkBotRight = iso(rkGridX + RACK_W,  rkGridY + RACK_D,  0)}
-          {@const rkBotLeft  = iso(rkGridX + RACK_W,  rkGridY,           0)}
-          {@const rackLabelPos = iso(rkGridX + RACK_W / 2, rkGridY + RACK_D / 2, rackHeight + 8)}
+              <!-- Host slots, stacked top-to-bottom like a rack
+                   elevation. Empty slots are visualised so the
+                   rack reads as having spare U capacity. -->
+              <div class="flex flex-col gap-1 p-2">
+                {#each hostsInRack as host (host.uuid ?? host.name)}
+                  {@const hostVMs = vmsByHost.get(String(host.name ?? '')) ?? []}
+                  <div
+                    class="rounded border px-2 py-1 {hostStatusClass(String(host.status ?? ''))}"
+                    title={`${host.name} · ${host.arch} · ${host.hypervisor} · ${hostVMs.length} VMs`}
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="truncate font-mono text-[11px] font-medium">{host.name}</span>
+                      <span class="ml-1 text-[9px] text-base-content/50">{host.arch}</span>
+                    </div>
+                    <!-- VM dots packed into the host card. Show
+                         up to 24 ; overflow becomes "+N". -->
+                    {#if hostVMs.length > 0}
+                      <div class="mt-1 flex flex-wrap gap-0.5">
+                        {#each hostVMs.slice(0, 24) as vm (vm.uuid ?? vm.name)}
+                          <span
+                            class="inline-block h-2 w-2 rounded-sm"
+                            style="background:{vmColor(String(vm.state ?? ''))}"
+                            title="{vm.name} · {vm.state} · {vm.image ?? ''}"
+                          ></span>
+                        {/each}
+                        {#if hostVMs.length > 24}
+                          <span class="text-[9px] text-base-content/50">+{hostVMs.length - 24}</span>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
 
-          <g class="rack">
-            <!-- Left face (gx side, dimmer) -->
-            <polygon
-              points="{rkBotFront.sx},{rkBotFront.sy} {rkBotBack.sx},{rkBotBack.sy} {rkTopBack.sx},{rkTopBack.sy} {rkTopFront.sx},{rkTopFront.sy}"
-              fill="oklch(85% 0.03 240)" stroke="oklch(60% 0.05 240)" stroke-width="1"/>
-            <!-- Right face (gy side, brighter) -->
-            <polygon
-              points="{rkBotBack.sx},{rkBotBack.sy} {rkBotRight.sx},{rkBotRight.sy} {rkTopRight.sx},{rkTopRight.sy} {rkTopBack.sx},{rkTopBack.sy}"
-              fill="oklch(90% 0.02 240)" stroke="oklch(60% 0.05 240)" stroke-width="1"/>
-            <!-- Top face -->
-            <polygon
-              points="{rkTopFront.sx},{rkTopFront.sy} {rkTopBack.sx},{rkTopBack.sy} {rkTopRight.sx},{rkTopRight.sy} {rkTopLeft.sx},{rkTopLeft.sy}"
-              fill="oklch(95% 0.01 240)" stroke="oklch(60% 0.05 240)" stroke-width="1"/>
+                <!-- Empty U slots for the soft 8-U cap, so the rack
+                     visually reads "X of 8 used". -->
+                {#each Array(Math.max(0, 8 - hostsInRack.length)) as _, slotIdx (slotIdx)}
+                  <div class="h-5 rounded border border-dashed border-base-300/60 bg-base-100/40"></div>
+                {/each}
+              </div>
+            </article>
+          {/each}
 
-            <!-- Per-host band : a thin slice of the rack's left face,
-                 one per host. Color follows host status. -->
-            {#each hostsInRack as host, hostIdx (host.uuid ?? host.name ?? hostIdx)}
-              {@const bandBL = iso(rkGridX, rkGridY,          hostIdx       * RACK_H)}
-              {@const bandTL = iso(rkGridX, rkGridY,          (hostIdx + 1) * RACK_H)}
-              {@const bandTR = iso(rkGridX, rkGridY + RACK_D, (hostIdx + 1) * RACK_H)}
-              {@const bandBR = iso(rkGridX, rkGridY + RACK_D, hostIdx       * RACK_H)}
-              <polygon
-                points="{bandBL.sx},{bandBL.sy} {bandTL.sx},{bandTL.sy} {bandTR.sx},{bandTR.sy} {bandBR.sx},{bandBR.sy}"
-                class={statusColor(String(host.status ?? ''))}
-                stroke-width="0.5"
-                opacity="0.85">
-                <title>
-                  {host.name} · {host.arch} · {host.hypervisor}
-                  · {(vmsByHost.get(String(host.name ?? '')) ?? []).length} VMs
-                </title>
-              </polygon>
+          {#if azRacks.length === 0}
+            <div class="text-sm italic text-base-content/40 p-4">no racks declared</div>
+          {/if}
+        </div>
+      </section>
+    {/each}
 
-              <!-- microVM dots on the band's top face. Pack them in a
-                   row of up to N — wraps automatically if more. -->
-              {@const hostVMs = vmsByHost.get(String(host.name ?? '')) ?? []}
-              {@const perRow = 4}
-              {#each hostVMs.slice(0, 8) as vm, vmIdx (vm.uuid ?? vm.name ?? vmIdx)}
-                {@const col = vmIdx % perRow}
-                {@const dotPos = iso(
-                  rkGridX + 6 + col * 6,
-                  rkGridY + 6 + Math.floor(vmIdx / perRow) * 8,
-                  hostIdx * RACK_H + RACK_H - 4,
-                )}
-                <circle cx={dotPos.sx} cy={dotPos.sy} r="3"
-                  fill={vmColor(String(vm.state ?? ''))}
-                  stroke="white" stroke-width="0.5">
-                  <title>{vm.name} · {vm.state} · {vm.image}</title>
-                </circle>
-              {/each}
-              <!-- Overflow indicator when there are more than 8 VMs. -->
-              {#if hostVMs.length > 8}
-                {@const ovPos = iso(rkGridX + 30, rkGridY + 6, hostIdx * RACK_H + RACK_H - 4)}
-                <text x={ovPos.sx} y={ovPos.sy + 4}
-                  class="fill-base-content/70 text-[9px]" text-anchor="end">
-                  +{hostVMs.length - 8}
-                </text>
-              {/if}
-            {/each}
+    {#if azs.length === 0}
+      <div class="rounded-box border border-base-300 bg-base-100 p-8 text-center text-base-content/50">
+        no availability zones declared
+      </div>
+    {/if}
+  </div>
+{:else}
+  <!-- ===== 3D isometric view ===== -->
+  <Iso3DView {azs} {racksByAZ} {hostsByRack} {vmsByHost} />
+{/if}
 
-            <!-- Rack label on top — uses rackLabelPos hoisted above
-                 the <g class="rack"> wrapper so the @const sits as
-                 a direct child of {#each}. -->
-            <text x={rackLabelPos.sx} y={rackLabelPos.sy} text-anchor="middle"
-              class="fill-base-content/70 text-[10px] font-medium">
-              {rack.code} · {hostsInRack.length}h
-            </text>
-          </g>
-        {/each}
-      {/each}
-    </g>
-  </svg>
+<!-- Legend pinned below both views. -->
+<div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-box border border-base-300 bg-base-100 px-4 py-2 text-xs">
+  <span class="font-semibold text-base-content/70">Hosts</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-success/15 border border-success/60"></span> active</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-warning/15 border border-warning/60"></span> draining</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded bg-error/15 border border-error/60"></span> down</span>
+  <span class="mx-2 h-3 w-px bg-base-300"></span>
+  <span class="font-semibold text-base-content/70">microVMs</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm" style="background:#3b82f6"></span> running</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm" style="background:#f59e0b"></span> starting</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm" style="background:#9ca3af"></span> stopped</span>
+  <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm" style="background:#ef4444"></span> failed</span>
 </div>
 
-<!-- Legend -->
-<div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-  <div class="rounded-box border border-base-300 bg-base-100 p-3 text-xs">
-    <div class="font-semibold mb-2 text-base-content/70">Host status</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded bg-success/30 border border-success"></span> active</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded bg-warning/30 border border-warning"></span> draining</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded bg-error/30 border border-error"></span> down</div>
-  </div>
-  <div class="rounded-box border border-base-300 bg-base-100 p-3 text-xs">
-    <div class="font-semibold mb-2 text-base-content/70">microVM state</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" style="background:#3b82f6"></span> running</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" style="background:#f59e0b"></span> starting</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" style="background:#9ca3af"></span> stopped</div>
-    <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" style="background:#ef4444"></span> failed</div>
-  </div>
-  <div class="rounded-box border border-base-300 bg-base-100 p-3 text-xs">
-    <div class="font-semibold mb-2 text-base-content/70">Geometry</div>
-    <div class="text-base-content/60">AZ = ground tile</div>
-    <div class="text-base-content/60">Rack = vertical stack</div>
-    <div class="text-base-content/60">Host = colored band</div>
-    <div class="text-base-content/60">VM = dot on top</div>
-  </div>
-  <div class="rounded-box border border-base-300 bg-base-100 p-3 text-xs">
-    <div class="font-semibold mb-2 text-base-content/70">Refresh</div>
-    <div class="text-base-content/60">Polls /api/resources every 5 s.</div>
-    <div class="text-base-content/60">Hover any element for tooltip.</div>
-    <div class="text-base-content/60">8 VMs per host shown ; +N if more.</div>
-  </div>
-</div>
