@@ -120,6 +120,15 @@ func run() error {
 		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
 	}
 
+	// Inventory persistence : opt-in via --inventory-path. Empty path
+	// keeps the seed-only behaviour ; when set, the server rehydrates
+	// AZ / Rack / Host rows from the JSON file at boot and flushes
+	// them back after every CRUD.
+	if cfg.InventoryPath != "" {
+		server.SetInventoryPath(cfg.InventoryPath)
+		logger.Info("inventory persistence ready", "path", cfg.InventoryPath)
+	}
+
 	// Rate limiter : per-user (session.Subject) or per-IP token bucket
 	// in front of /api/*. Defaults documented in the package — 100rps
 	// burst 50 per authenticated user, 20rps burst 10 per anonymous IP.
