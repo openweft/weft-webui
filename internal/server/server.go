@@ -98,6 +98,13 @@ type Deps struct {
 	// DevMode relaxes the CSP for Vite HMR + skips a few warnings.
 	DevMode bool
 
+	// AllowedOrigins is the cross-origin allow-list forwarded to
+	// withOriginCheck. Empty = same-origin only (Host header match).
+	// Setting non-default entries lets a known external client (e.g.
+	// terraform-provider-weft running on a different VM) make
+	// mutating /api/* calls without tripping the CSRF guard.
+	AllowedOrigins []string
+
 	// PolicyStrict flips the bucket-policy evaluator's no-match
 	// fallback from allow → deny (AWS-aligned default-deny when a
 	// policy exists at all). Propagated to a package-global so
@@ -247,6 +254,7 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		h = d.RateLimit.Middleware(h)
 	}
 	h = d.Auth.Wrap(h)
+	h = withOriginCheck(d.AllowedOrigins, h)
 	h = withJSONDefaults(h)
 	h = withSecurityHeaders(d.DevMode, h)
 	h = withRequestID(h)

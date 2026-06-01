@@ -162,7 +162,8 @@ func run() error {
 		Metrics:      metrics,
 		Audit:        auditLog,
 		RateLimit:    rl,
-		DevMode:      cfg.DevMode,
+		DevMode:        cfg.DevMode,
+		AllowedOrigins: cfg.AllowedOrigins,
 		PolicyStrict: cfg.PolicyStrict,
 	}
 
