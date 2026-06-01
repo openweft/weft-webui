@@ -38,11 +38,13 @@
 
   async function refresh() {
     try {
+      // limit hard-capped at 1000 by the API ; see InventoryTreePage
+      // for the same fix + rationale.
       const [a, r, h, v] = await Promise.all([
         getRowsPage('azs',      { limit: 500 }),
         getRowsPage('racks',    { limit: 500 }),
         getRowsPage('hosts',    { limit: 500 }),
-        getRowsPage('microvms', { limit: 5000 }),
+        getRowsPage('microvms', { limit: 1000 }),
       ]);
       azs   = a.rows ?? [];
       racks = r.rows ?? [];

@@ -37,11 +37,16 @@
 
   async function refresh() {
     try {
+      // limit hard-capped at 1000 by the API (huma validation on
+      // /api/resources/{id}, see api_misc.go). Bumping past it
+      // triggers a 422 ("validation failed") server-side. The
+      // dashboard shows at most 1000 microVMs in the tree ; a real
+      // fleet that big would want pagination anyway, deferred.
       const [a, r, h, v] = await Promise.all([
         getRowsPage('azs',      { limit: 500 }),
         getRowsPage('racks',    { limit: 500 }),
         getRowsPage('hosts',    { limit: 500 }),
-        getRowsPage('microvms', { limit: 5000 }),
+        getRowsPage('microvms', { limit: 1000 }),
       ]);
       azs   = a.rows ?? [];
       racks = r.rows ?? [];
