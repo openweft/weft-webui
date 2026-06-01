@@ -38,9 +38,8 @@
 </script>
 
 <aside class="flex h-full w-64 shrink-0 flex-col border-r border-base-300 bg-base-100">
-  <a href="#/" class="flex items-center gap-2 px-5 h-16 border-b border-base-300">
-    <span class="inline-block h-3 w-3 rounded-sm bg-gradient-to-br from-cyan-400 to-indigo-500"></span>
-    <span class="text-lg font-bold tracking-tight">Weft</span>
+  <a href="#/" class="flex items-center gap-2 px-4 h-16 border-b border-base-300">
+    <img src="/weft-wordmark.svg" alt="Weft" class="h-7 w-auto"/>
     <span class="badge badge-sm badge-ghost ml-auto">dashboard</span>
   </a>
 
@@ -97,7 +96,4 @@
     {/each}
   </nav>
 
-  <div class="border-t border-base-300 px-4 py-3 text-xs text-base-content/50">
-    early development · mock data
-  </div>
 </aside>
