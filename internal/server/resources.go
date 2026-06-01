@@ -540,7 +540,62 @@ var registry = []Resource{
 		},
 	},
 
-	// ---------- Admin ----------
+	// ---------- Inventory ----------
+	//
+	// Three-level hierarchy : AZ → Rack → Host. The dashboard
+	// surfaces them as a section the operator walks top-down, then
+	// the special `inventory-map` resource opens the isometric
+	// placement view that joins all three with the live microVM
+	// fleet on top.
+	{
+		// Availability Zones — datacenters / fault domains the cluster
+		// spans. Identified by a short code ("DC-A", "us-east-1a") ;
+		// `name` is the human label for the dashboard table.
+		ID: "azs", Label: "Availability Zones", Section: "Inventory", Scope: ScopeAdmin,
+		Columns: cols("code", "Code", "name", "Name", "region", "Region",
+			"racks", "Racks", "hosts", "Hosts", "status", "Status"),
+		Rows: []map[string]any{
+			row("uuid", "az00-0000-0000-0000-aaaaaaaaaaaa",
+				"code", "DC-A", "name", "Datacenter Alpha", "region", "eu-west-1",
+				"racks", 3, "hosts", 6, "status", "active"),
+			row("uuid", "az00-0000-0000-0000-bbbbbbbbbbbb",
+				"code", "DC-B", "name", "Datacenter Bravo", "region", "eu-west-2",
+				"racks", 2, "hosts", 4, "status", "active"),
+			row("uuid", "az00-0000-0000-0000-cccccccccccc",
+				"code", "DC-C", "name", "Datacenter Charlie", "region", "us-east-1",
+				"racks", 3, "hosts", 5, "status", "active"),
+		},
+	},
+	{
+		// Racks live inside an AZ. Position = physical row/column ;
+		// the isometric map uses it to lay racks out on the AZ
+		// ground plane. Empty position means "first available slot".
+		ID: "racks", Label: "Racks", Section: "Inventory", Scope: ScopeAdmin,
+		Columns: cols("code", "Code", "az", "AZ", "position", "Position",
+			"hosts", "Hosts", "status", "Status"),
+		Rows: []map[string]any{
+			// DC-A : 3 racks
+			row("uuid", "rk00-aaaa-0000-0000-000000000001", "code", "R1", "az", "DC-A", "position", "row1-col1", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-aaaa-0000-0000-000000000002", "code", "R2", "az", "DC-A", "position", "row1-col2", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-aaaa-0000-0000-000000000003", "code", "R3", "az", "DC-A", "position", "row2-col1", "hosts", 2, "status", "active"),
+			// DC-B : 2 racks
+			row("uuid", "rk00-bbbb-0000-0000-000000000001", "code", "R1", "az", "DC-B", "position", "row1-col1", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-bbbb-0000-0000-000000000002", "code", "R2", "az", "DC-B", "position", "row1-col2", "hosts", 2, "status", "active"),
+			// DC-C : 3 racks
+			row("uuid", "rk00-cccc-0000-0000-000000000001", "code", "R1", "az", "DC-C", "position", "row1-col1", "hosts", 1, "status", "active"),
+			row("uuid", "rk00-cccc-0000-0000-000000000002", "code", "R2", "az", "DC-C", "position", "row1-col2", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-cccc-0000-0000-000000000003", "code", "R3", "az", "DC-C", "position", "row2-col1", "hosts", 2, "status", "active"),
+		},
+	},
+	{
+		// Inventory map — the isometric placement view. Hidden from
+		// /api/resources catalogue listing (Hidden=true) because the
+		// dashboard mounts a dedicated panel for it, not a table ;
+		// the resource id still drives the sidebar entry.
+		ID: "inventory-map", Label: "Map", Section: "Inventory", Scope: ScopeAdmin,
+		Columns: cols("placeholder", "—"),
+		Rows:    []map[string]any{},
+	},
 	{
 		// Mirrors HostInfo (hostname → name, az, rack, architecture → arch,
 		// hypervisor, state → status, last_seen). cpu/ram aren't on the
@@ -552,7 +607,7 @@ var registry = []Resource{
 		// scheduler matches Flavor.gpu against Hosts.gpu — a host with
 		// "2×A100-40G" can land any number of microVMs requesting an
 		// "A100-40G" until the count is exhausted.
-		ID: "hosts", Label: "Hosts", Section: "Admin", Scope: ScopeAdmin,
+		ID: "hosts", Label: "Hosts", Section: "Inventory", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack",
 			"arch", "Arch", "hypervisor", "Hypervisor", "gpu", "GPU",
 			"status", "Status", "last_seen", "Last seen"),
