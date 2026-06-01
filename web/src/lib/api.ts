@@ -111,6 +111,31 @@ export async function getRows(id: string): Promise<Row[]> {
   return p.rows;
 }
 
+// getAllRows walks the next-page-token chain until exhausted. Use it
+// for views that need the FULL list (the inventory tree / map join VMs
+// against hosts ; a single 1000-cap fetch isn't enough for large
+// fleets). Caps total iterations at `maxPages` (default 50 = 50 k rows
+// at 1 k per page) so a misconfigured server can't pin the dashboard.
+export async function getAllRows(
+  id: string,
+  opts: { perPage?: number; maxPages?: number } = {},
+): Promise<Row[]> {
+  const perPage = opts.perPage ?? 1000;
+  const maxPages = opts.maxPages ?? 50;
+  const out: Row[] = [];
+  let token: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const page = await getRowsPage(id, { limit: perPage, pageToken: token });
+    if (page.rows && page.rows.length > 0) out.push(...page.rows);
+    if (!page.next) return out;
+    token = page.next;
+  }
+  // Hit the safety bound. Better to surface partial results than to
+  // hang the dashboard ; callers can detect this case by comparing
+  // out.length against the page.total they got earlier.
+  return out;
+}
+
 // ---- Scripts catalogue --------------------------------------------
 
 // Backwards-compatible alias for callers that still import `Script`.

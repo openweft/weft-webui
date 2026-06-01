@@ -23,7 +23,7 @@
   // the initial cut.
 
   import { onMount, onDestroy } from 'svelte';
-  import { getRowsPage, type Row, type ResourceMeta } from '../api';
+  import { getRowsPage, getAllRows, type Row, type ResourceMeta } from '../api';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -38,18 +38,19 @@
 
   async function refresh() {
     try {
-      // limit hard-capped at 1000 by the API ; see InventoryTreePage
-      // for the same fix + rationale.
+      // /api/resources/{id} validates limit ∈ [0, 1000] (huma
+      // schema). Per-id pages are 1000 max ; microVMs go through
+      // getAllRows so the map covers fleets > 1000 (50 k safety bound).
       const [a, r, h, v] = await Promise.all([
-        getRowsPage('azs',      { limit: 500 }),
-        getRowsPage('racks',    { limit: 500 }),
-        getRowsPage('hosts',    { limit: 500 }),
-        getRowsPage('microvms', { limit: 1000 }),
+        getRowsPage('azs',   { limit: 1000 }),
+        getRowsPage('racks', { limit: 1000 }),
+        getRowsPage('hosts', { limit: 1000 }),
+        getAllRows('microvms', { perPage: 1000, maxPages: 50 }),
       ]);
       azs   = a.rows ?? [];
       racks = r.rows ?? [];
       hosts = h.rows ?? [];
-      vms   = v.rows ?? [];
+      vms   = v;
       loadErr = '';
       lastRefresh = new Date().toLocaleTimeString();
     } catch (e) {
