@@ -56,22 +56,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute version
+      - name: Compute version + SOURCE_DATE_EPOCH
         id: stamps
-        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+          # Canonical reproducible-builds.org convention : commit
+          # timestamp of the build ref. buildkit (>= 0.11) honours
+          # the env var natively by rewriting layer mtimes + image
+          # config `created`. The Dockerfile can additionally read
+          # the build-arg to feed `go build -buildvcs=false
+          # -ldflags=-buildid=...` inside its build stage ; that
+          # part lives in the Dockerfile (out of this workflow's
+          # scope) — see docs/operations/reproducible-builds.md.
+          echo "epoch=$(git log -1 --format=%ct "${GITHUB_SHA}")" >> "$GITHUB_OUTPUT"
 
       - name: Build + push (multi-arch)
         id: build
         uses: docker/build-push-action@v5
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.stamps.outputs.epoch }}
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.IMAGE }}:${{ steps.stamps.outputs.version }}
             ${{ env.IMAGE }}:latest
           build-args: |
             VERSION=${{ steps.stamps.outputs.version }}
+            SOURCE_DATE_EPOCH=${{ steps.stamps.outputs.epoch }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
