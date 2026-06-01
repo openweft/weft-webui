@@ -540,30 +540,33 @@ var registry = []Resource{
 		},
 	},
 
-	// ---------- Inventory ----------
+	// ---------- Admin > Inventory ----------
 	//
 	// Three-level hierarchy : AZ → Rack → Host (multi-hypervisor) →
-	// microVM. The dashboard offers FOUR ways to walk it :
-	//   - inventory-tree : collapsible tree, primary CRUD surface for
-	//     placement (add a rack under an AZ, move a host to another
-	//     rack, etc.)
-	//   - azs / racks / hosts : flat tables for power users who want
-	//     bulk filtering / sorting.
-	//   - inventory-map : isometric visualization, primary read-only
-	//     surface for "what runs where" at a glance.
+	// microVM. Sidebar surfaces TWO entries under Admin :
+	//   - "Inventory" (inventory-tree) : the primary CRUD surface,
+	//     a collapsible tree with right-pane details.
+	//   - "Map" (inventory-map) : the isometric placement viz,
+	//     read-only.
+	// The flat tables (azs / racks / hosts) stay reachable for power
+	// users via the tree's "Open in panel" links, but they're hidden
+	// from the sidebar to keep the surface tight.
 	{
-		// Inventory tree — the primary placement editor. Hidden from
-		// the catalogue listing because the dashboard mounts a
-		// dedicated panel ; sidebar entry only.
-		ID: "inventory-tree", Label: "Tree", Section: "Inventory", Scope: ScopeAdmin,
+		// Inventory tree — the primary placement editor + canonical
+		// "Inventory" sidebar entry. Hidden from /api/resources
+		// catalogue listing semantics aren't needed (we want it in
+		// the sidebar) but it has no Rows of its own ; the dashboard
+		// mounts InventoryTreePage rather than the generic table.
+		ID: "inventory-tree", Label: "Inventory", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("placeholder", "—"),
 		Rows:    []map[string]any{},
 	},
 	{
 		// Availability Zones — datacenters / fault domains the cluster
-		// spans. Identified by a short code ("DC-A", "us-east-1a") ;
-		// `name` is the human label for the dashboard table.
-		ID: "azs", Label: "Availability Zones", Section: "Inventory", Scope: ScopeAdmin,
+		// spans. Hidden from the sidebar (Hidden=true) so it doesn't
+		// duplicate the tree ; remains reachable via the tree's
+		// "Open in panel" button or by direct ?active=azs deep-link.
+		ID: "azs", Label: "Availability Zones", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("code", "Code", "name", "Name", "region", "Region",
 			"racks", "Racks", "hosts", "Hosts", "status", "Status"),
 		Rows: []map[string]any{
@@ -582,7 +585,8 @@ var registry = []Resource{
 		// Racks live inside an AZ. Position = physical row/column ;
 		// the isometric map uses it to lay racks out on the AZ
 		// ground plane. Empty position means "first available slot".
-		ID: "racks", Label: "Racks", Section: "Inventory", Scope: ScopeAdmin,
+		// Hidden from the sidebar — tree-only surface.
+		ID: "racks", Label: "Racks", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("code", "Code", "az", "AZ", "position", "Position",
 			"hosts", "Hosts", "status", "Status"),
 		Rows: []map[string]any{
@@ -610,7 +614,7 @@ var registry = []Resource{
 		// scheduler matches Flavor.gpu against Hosts.gpu — a host with
 		// "2×A100-40G" can land any number of microVMs requesting an
 		// "A100-40G" until the count is exhausted.
-		ID: "hosts", Label: "Hosts", Section: "Inventory", Scope: ScopeAdmin,
+		ID: "hosts", Label: "Hosts", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack",
 			"arch", "Arch", "hypervisor", "Hypervisor", "gpu", "GPU",
 			"status", "Status", "last_seen", "Last seen"),
@@ -630,10 +634,10 @@ var registry = []Resource{
 		},
 	},
 	{
-		// Inventory map — the isometric placement view. Sidebar entry
-		// only ; dashboard mounts a dedicated panel rather than the
-		// generic table renderer.
-		ID: "inventory-map", Label: "Map", Section: "Inventory", Scope: ScopeAdmin,
+		// Inventory map — the isometric placement view. Lives in the
+		// Admin section alongside Inventory + Plugins ; dashboard
+		// mounts a dedicated panel rather than the generic table.
+		ID: "inventory-map", Label: "Map", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("placeholder", "—"),
 		Rows:    []map[string]any{},
 	},

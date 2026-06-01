@@ -14,16 +14,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { getRowsPage, type Row, type ResourceMeta } from '../api';
 
-  let {
-    meta,
-    onNavigate,
-  }: {
-    meta: ResourceMeta;
-    // Callback the parent (App.svelte) provides so "Open in <panel>"
-    // buttons can switch the active resource. Pass the resource ID
-    // (azs / racks / hosts / microvms).
-    onNavigate?: (resourceID: string) => void;
-  } = $props();
+  let { meta }: { meta: ResourceMeta } = $props();
 
   let azs   = $state<Row[]>([]);
   let racks = $state<Row[]>([]);
@@ -154,12 +145,6 @@
     }
   }
 
-  // "Open in <panel>" routes via the onNavigate callback. The kind
-  // → resource-id mapping mirrors the resources.go declarations.
-  function openIn(kind: Selected extends null ? never : NonNullable<Selected>['kind']) {
-    const map = { az: 'azs', rack: 'racks', host: 'hosts', vm: 'microvms' } as const;
-    onNavigate?.(map[kind]);
-  }
 </script>
 
 <div class="flex items-center gap-3">
@@ -343,16 +328,6 @@
               </span>
             {/if}
           </p>
-        </div>
-        <div class="ml-auto flex items-center gap-2">
-          <button class="btn btn-sm btn-primary gap-1"
-            onclick={() => openIn(selected!.kind)}
-            title="Open in dedicated CRUD panel">
-            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 3h7v7M21 3l-9 9M5 5v14a2 2 0 002 2h14" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Open in panel
-          </button>
         </div>
       </div>
 
