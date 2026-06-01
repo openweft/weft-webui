@@ -101,6 +101,14 @@ type Config struct {
 	SecurityPath string
 	ScriptsPath  string
 
+	// AllowedOrigins is the cross-origin allow-list consulted by the
+	// withOriginCheck middleware for mutating /api/* requests. Same-
+	// origin (Host header) is always permitted ; entries here add
+	// additional scheme://host[:port] tuples (no trailing slash, no
+	// path). Useful for terraform-provider-weft or a separate ops
+	// dashboard hitting the API from a known IP/hostname.
+	AllowedOrigins []string
+
 	// AuditRotateBytes is the rotation threshold for AuditLogPath. The
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
@@ -163,6 +171,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	}
 
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
+	cfg.AllowedOrigins = splitCSV(os.Getenv("WEBUI_ALLOWED_ORIGINS"))
 
 	// CookieSecure defaults : true unless dev mode, env override wins.
 	if v, ok := os.LookupEnv("WEBUI_COOKIE_SECURE"); ok {

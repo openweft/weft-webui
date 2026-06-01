@@ -67,6 +67,12 @@ func hit(t *testing.T, srv *httptest.Server, method, path string, body any, out 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// withOriginCheck rejects mutating requests without an Origin or
+	// Referer. httptest.Server.URL is the same-origin we want to
+	// pass, so just forward it for any non-GET method.
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		req.Header.Set("Origin", srv.URL)
+	}
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
