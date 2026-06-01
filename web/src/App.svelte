@@ -17,6 +17,7 @@
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import PluginsPage from './lib/components/PluginsPage.svelte';
   import InventoryMapPage from './lib/components/InventoryMapPage.svelte';
+  import InventoryTreePage from './lib/components/InventoryTreePage.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
@@ -124,6 +125,11 @@
       {:else if active === 'inventory-map'}
         {#key active}
           <InventoryMapPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'inventory-tree'}
+        {#key active}
+          <InventoryTreePage meta={byId.get(active)!}
+            onNavigate={(id) => (active = id)} />
         {/key}
       {:else}
         {#key active}
