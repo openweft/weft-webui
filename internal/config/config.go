@@ -93,6 +93,14 @@ type Config struct {
 	// loose (one JSON blob, atomic write) so the migration is a drop-in.
 	InventoryPath string
 
+	// DNSPath, SecurityPath, ScriptsPath — same shape as InventoryPath,
+	// each guarding the mock-layer state of one resource family. Empty
+	// = no persistence (current dev default). Set independently so
+	// operators can stage which files survive a restart.
+	DNSPath      string
+	SecurityPath string
+	ScriptsPath  string
+
 	// AuditRotateBytes is the rotation threshold for AuditLogPath. The
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
@@ -139,6 +147,9 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		PolicyStrict:  envBool("WEBUI_POLICY_STRICT", false),
 		AuditLogPath:    os.Getenv("WEBUI_AUDIT_LOG_PATH"),
 		InventoryPath:   os.Getenv("WEBUI_INVENTORY_PATH"),
+		DNSPath:         os.Getenv("WEBUI_DNS_PATH"),
+		SecurityPath:    os.Getenv("WEBUI_SECURITY_PATH"),
+		ScriptsPath:     os.Getenv("WEBUI_SCRIPTS_PATH"),
 		// 100 MiB default ; flag/env can lower (or raise) it. Loaded
 		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
 		AuditRotateBytes: 100 << 20,
@@ -204,6 +215,9 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "external base URL (used to compute the OIDC redirect when not set explicitly)")
 	flagSet.StringVar(&cfg.AuditLogPath, "audit-log-path", cfg.AuditLogPath, "JSONL file for the admin audit log ; empty = disabled")
 	flagSet.StringVar(&cfg.InventoryPath, "inventory-path", cfg.InventoryPath, "JSON file the AZ/Rack/Host inventory is rehydrated from at startup + written back after every CRUD ; empty = in-memory only")
+	flagSet.StringVar(&cfg.DNSPath, "dns-path", cfg.DNSPath, "JSON file the mock dns-zones + dns-records rows are rehydrated from + flushed back to ; empty = in-memory only")
+	flagSet.StringVar(&cfg.SecurityPath, "security-path", cfg.SecurityPath, "JSON file the mock security-groups + rules map are rehydrated from + flushed back to ; empty = in-memory only")
+	flagSet.StringVar(&cfg.ScriptsPath, "scripts-path", cfg.ScriptsPath, "JSON file the mock scripts catalogue is rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }

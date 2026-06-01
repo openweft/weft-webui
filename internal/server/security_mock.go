@@ -13,14 +13,69 @@
 package server
 
 import (
+	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/openweft/weft-webui/internal/wclient"
 )
 
+// SetSecurityPath configures the on-disk persistence for the mock
+// security-group store. Same shape + opt-in semantics as
+// SetInventoryPath / SetDNSPath.
+func SetSecurityPath(p string) {
+	sgRulesMu.Lock()
+	defer sgRulesMu.Unlock()
+	securityPath = strings.TrimSpace(p)
+	if securityPath == "" {
+		return
+	}
+	if err := loadSecurityFromDiskLocked(); err != nil {
+		slog.Warn("security: load failed, keeping in-memory seed",
+			"path", securityPath, "err", err.Error())
+	}
+}
+
+type securitySnapshot struct {
+	Version int                                `json:"version"`
+	Groups  []map[string]any                   `json:"groups"`
+	Rules   map[string][]wclient.SecurityRule  `json:"rules"`
+}
+
+func loadSecurityFromDiskLocked() error {
+	var snap securitySnapshot
+	loaded, err := readJSON(securityPath, &snap)
+	if err != nil || !loaded {
+		return err
+	}
+	if g, ok := resourceByID["security-groups"]; ok && snap.Groups != nil {
+		g.Rows = snap.Groups
+	}
+	if snap.Rules != nil {
+		sgRules = snap.Rules
+	}
+	return nil
+}
+
+func flushSecurityLocked() {
+	if securityPath == "" {
+		return
+	}
+	snap := securitySnapshot{Version: 1, Rules: sgRules}
+	if g, ok := resourceByID["security-groups"]; ok {
+		snap.Groups = g.Rows
+	}
+	atomicWriteJSON(securityPath, snap)
+}
+
 var (
 	sgRulesMu sync.Mutex
 	sgRules   = map[string][]wclient.SecurityRule{}
+
+	// securityPath, when non-empty, is the JSON file the SG rule map
+	// (sgRules) + the security-groups rows are rehydrated from at
+	// boot and flushed to after every setMockSGRules.
+	securityPath string
 )
 
 // sgRulesSeed derives the initial mock rule list for a group from
@@ -128,6 +183,53 @@ func getMockSGRules(uuid string) []wclient.SecurityRule {
 	return seed
 }
 
+// deleteMockSecurityGroup drops the SG row from the seed and clears
+// its associated sgRules entry. Used by the api_networking.go mock
+// fallback path. Returns false if no row matched.
+func deleteMockSecurityGroup(uuid string) bool {
+	sgRulesMu.Lock()
+	defer sgRulesMu.Unlock()
+	res, ok := resourceByID["security-groups"]
+	if !ok {
+		return false
+	}
+	for i, row := range res.Rows {
+		if str(row["uuid"]) == uuid {
+			res.Rows = append(res.Rows[:i], res.Rows[i+1:]...)
+			delete(sgRules, uuid)
+			flushSecurityLocked()
+			return true
+		}
+	}
+	return false
+}
+
+// updateMockSecurityGroupRow patches the row's name + description +
+// enabled fields. Returns the updated row (or nil if not found).
+func updateMockSecurityGroupRow(uuid string, name, description string, enabled *bool) map[string]any {
+	sgRulesMu.Lock()
+	defer sgRulesMu.Unlock()
+	res, ok := resourceByID["security-groups"]
+	if !ok {
+		return nil
+	}
+	for _, row := range res.Rows {
+		if str(row["uuid"]) == uuid {
+			if name != "" {
+				row["name"] = strings.TrimSpace(name)
+			}
+			// Description may legitimately be cleared.
+			row["description"] = strings.TrimSpace(description)
+			if enabled != nil {
+				row["enabled"] = *enabled
+			}
+			flushSecurityLocked()
+			return row
+		}
+	}
+	return nil
+}
+
 func setMockSGRules(uuid string, rules []wclient.SecurityRule) {
 	sgRulesMu.Lock()
 	defer sgRulesMu.Unlock()
@@ -145,4 +247,5 @@ func setMockSGRules(uuid string, rules []wclient.SecurityRule) {
 			}
 		}
 	}
+	flushSecurityLocked()
 }

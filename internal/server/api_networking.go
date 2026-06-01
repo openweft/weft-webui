@@ -265,21 +265,10 @@ func mountSecurityGroupsAPI(api huma.API) {
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
 		if live == nil {
-			// Mock fallback : drop the row from the seed + clear rules.
-			res, ok := resourceByID["security-groups"]
-			if !ok {
+			if !deleteMockSecurityGroup(in.UUID) {
 				return nil, huma.Error404NotFound("group not found")
 			}
-			for i, row := range res.Rows {
-				if str(row["uuid"]) == in.UUID {
-					res.Rows = append(res.Rows[:i], res.Rows[i+1:]...)
-					sgRulesMu.Lock()
-					delete(sgRules, in.UUID)
-					sgRulesMu.Unlock()
-					return nil, nil
-				}
-			}
-			return nil, huma.Error404NotFound("group not found")
+			return nil, nil
 		}
 		if err := live.DeleteSecurityGroup(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -320,29 +309,16 @@ func mountSecurityGroupsAPI(api huma.API) {
 		Tags:          []string{"security-groups"},
 		DefaultStatus: 200,
 	}, func(_ context.Context, in *updateSGInput) (*updateSGOutput, error) {
-		res, ok := resourceByID["security-groups"]
-		if !ok {
+		row := updateMockSecurityGroupRow(in.UUID, in.Body.Name, in.Body.Description, in.Body.Enabled)
+		if row == nil {
 			return nil, huma.Error404NotFound("group not found")
 		}
-		for _, row := range res.Rows {
-			if str(row["uuid"]) == in.UUID {
-				if in.Body.Name != "" {
-					row["name"] = strings.TrimSpace(in.Body.Name)
-				}
-				// Description may legitimately be cleared.
-				row["description"] = strings.TrimSpace(in.Body.Description)
-				if in.Body.Enabled != nil {
-					row["enabled"] = *in.Body.Enabled
-				}
-				return &updateSGOutput{Body: UpdateSGResp{
-					UUID:        in.UUID,
-					Name:        str(row["name"]),
-					Description: str(row["description"]),
-					Enabled:     boolField(row["enabled"]),
-				}}, nil
-			}
-		}
-		return nil, huma.Error404NotFound("group not found")
+		return &updateSGOutput{Body: UpdateSGResp{
+			UUID:        in.UUID,
+			Name:        str(row["name"]),
+			Description: str(row["description"]),
+			Enabled:     boolField(row["enabled"]),
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -628,22 +604,12 @@ func mountDNSAPI(api huma.API) {
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
 		if liveNet == nil {
-			// Mock fallback : drop the row from the seed.
-			dnsMockMu.Lock()
-			z, ok := resourceByID["dns-zones"]
-			if !ok {
-				dnsMockMu.Unlock()
+			// Mock fallback : drop the row from the seed + flush
+			// the on-disk snapshot when persistence is wired up.
+			if !deleteDNSZoneRow(in.UUID) {
 				return nil, huma.Error404NotFound("zone not found")
 			}
-			for i, row := range z.Rows {
-				if str(row["uuid"]) == in.UUID {
-					z.Rows = append(z.Rows[:i], z.Rows[i+1:]...)
-					dnsMockMu.Unlock()
-					return nil, nil
-				}
-			}
-			dnsMockMu.Unlock()
-			return nil, huma.Error404NotFound("zone not found")
+			return nil, nil
 		}
 		if err := liveNet.DeleteDNSZone(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
@@ -729,21 +695,10 @@ func mountDNSAPI(api huma.API) {
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
 		if liveNet == nil {
-			dnsMockMu.Lock()
-			r, ok := resourceByID["dns-records"]
-			if !ok {
-				dnsMockMu.Unlock()
+			if !deleteDNSRecordRow(in.UUID) {
 				return nil, huma.Error404NotFound("record not found")
 			}
-			for i, row := range r.Rows {
-				if str(row["uuid"]) == in.UUID {
-					r.Rows = append(r.Rows[:i], r.Rows[i+1:]...)
-					dnsMockMu.Unlock()
-					return nil, nil
-				}
-			}
-			dnsMockMu.Unlock()
-			return nil, huma.Error404NotFound("record not found")
+			return nil, nil
 		}
 		if err := liveNet.DeleteDNSRecord(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())

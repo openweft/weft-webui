@@ -12,13 +12,7 @@
 package server
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -71,16 +65,10 @@ type inventorySnapshot struct {
 // loadInventoryFromDiskLocked is callable only with inventoryMu held
 // (called from SetInventoryPath right after taking the lock).
 func loadInventoryFromDiskLocked() error {
-	b, err := os.ReadFile(inventoryPath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
 	var snap inventorySnapshot
-	if err := json.Unmarshal(b, &snap); err != nil {
-		return fmt.Errorf("decode: %w", err)
+	loaded, err := readJSON(inventoryPath, &snap)
+	if err != nil || !loaded {
+		return err
 	}
 	if a, ok := resourceByID["azs"]; ok {
 		a.Rows = snap.AZs
@@ -95,9 +83,6 @@ func loadInventoryFromDiskLocked() error {
 }
 
 // flushInventoryLocked writes the current rows back to inventoryPath.
-// Atomic : write to <path>.tmp + rename, so a partial write never
-// leaves the file unparseable. No-op when persistence is disabled.
-//
 // Must be called with inventoryMu held.
 func flushInventoryLocked() {
 	if inventoryPath == "" {
@@ -113,26 +98,7 @@ func flushInventoryLocked() {
 	if h, ok := resourceByID["hosts"]; ok {
 		snap.Hosts = h.Rows
 	}
-	b, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		slog.Error("inventory: marshal failed", "err", err.Error())
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(inventoryPath), 0o755); err != nil {
-		slog.Error("inventory: mkdir failed", "path", inventoryPath, "err", err.Error())
-		return
-	}
-	tmp := inventoryPath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		slog.Error("inventory: write tmp failed", "path", tmp, "err", err.Error())
-		return
-	}
-	if err := os.Rename(tmp, inventoryPath); err != nil {
-		slog.Error("inventory: rename failed", "from", tmp, "to", inventoryPath, "err", err.Error())
-		// Best-effort cleanup of the orphan tmp ; ignore the error.
-		_ = os.Remove(tmp)
-		return
-	}
+	atomicWriteJSON(inventoryPath, snap)
 }
 
 // stampInventoryUUIDs ensures every AZ / Rack / Host row has a uuid.
