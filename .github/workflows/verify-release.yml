@@ -1,0 +1,103 @@
+name: verify-release
+
+# Manually-triggered reproducible-build verifier. Given a tag, builds
+# the weft-webui OCI image twice in fresh sandboxes and asserts the
+# resulting OCI layout (image config + manifest + layer blobs) is
+# bit-for-bit identical (same sha256 over the OCI tarball).
+#
+# Workflow_dispatch-only per feedback_no_autopublish_dev — never
+# fires on push.
+#
+# See the weft repo's docs/operations/reproducible-builds.md for the
+# guarantee, the semantics of SOURCE_DATE_EPOCH, and the list of
+# artifacts that are NOT reproducible by design.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to verify (e.g. v0.1.0).'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: build twice + diff oci tarball sha256
+        # Each pass runs `docker buildx build --output=type=oci,dest=...`
+        # in a fresh build context (separate temp dir) with the same
+        # SOURCE_DATE_EPOCH derived from the tag's commit. A reproducible
+        # build produces identical OCI tarballs ; mismatches surface as
+        # a step-summary diff so the operator can chase the offender
+        # (toolchain bump, registry-side rewrite, etc.).
+        env:
+          ARCH: ${{ matrix.arch }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct "${TAG}")"
+          export SOURCE_DATE_EPOCH
+
+          build_once() {
+            local out="$1"
+            # Fresh build cache per pass so layer reuse can't mask a
+            # non-determinism bug.
+            docker buildx create --use --name "verify-$(basename "$out")" --driver docker-container >/dev/null
+            SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}" \
+            docker buildx build \
+              --platform "linux/${ARCH}" \
+              --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+              --build-arg "VERSION=${TAG}" \
+              --provenance=false \
+              --sbom=false \
+              --output "type=oci,dest=${out},rewrite-timestamp=true" \
+              .
+            docker buildx rm "verify-$(basename "$out")" >/dev/null
+          }
+
+          mkdir -p out
+          build_once "$PWD/out/r1.tar"
+          build_once "$PWD/out/r2.tar"
+
+          h1="$(sha256sum out/r1.tar | awk '{print $1}')"
+          h2="$(sha256sum out/r2.tar | awk '{print $1}')"
+
+          {
+            echo "## reproducible-build verify (${TAG}, linux/${ARCH})"
+            echo
+            echo "| pass | sha256 (OCI tarball) |"
+            echo "|------|----------------------|"
+            echo "| 1 | \`${h1}\` |"
+            echo "| 2 | \`${h2}\` |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          if [ "${h1}" != "${h2}" ]; then
+            echo "::error::OCI tarball sha256 differs between two builds of ${TAG} on linux/${ARCH}"
+            # Surface per-blob digest diff so the operator can tell
+            # whether the divergence is in the config, manifest, or a
+            # specific layer.
+            mkdir -p r1 r2
+            tar -C r1 -xf out/r1.tar
+            tar -C r2 -xf out/r2.tar
+            diff <(cd r1 && find blobs -type f -exec sha256sum {} \; | sort) \
+                 <(cd r2 && find blobs -type f -exec sha256sum {} \; | sort) || true
+            exit 1
+          fi
+          echo "::notice::reproducible-build verified for ${TAG} on linux/${ARCH}"
