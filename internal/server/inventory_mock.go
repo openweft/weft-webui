@@ -12,14 +12,127 @@
 package server
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
 
 var inventoryMu sync.Mutex
 
+// inventoryPath, when non-empty, is the JSON file the AZ / Rack /
+// Host rows are rehydrated from at boot and flushed back to after
+// every mutation. Set by SetInventoryPath() from server.New().
+var inventoryPath string
+
 func init() {
 	stampInventoryUUIDs()
+}
+
+// SetInventoryPath configures the on-disk persistence target. Called
+// once during server construction from cfg.InventoryPath. Empty path
+// disables persistence (the in-memory seed survives restart, operator
+// changes don't — dev mode only).
+//
+// If the file exists at SetInventoryPath() time, its contents replace
+// the seeded rows in resourceByID. Missing file = first run, the
+// seed wins and gets flushed on the first mutation.
+func SetInventoryPath(p string) {
+	inventoryMu.Lock()
+	inventoryPath = strings.TrimSpace(p)
+	inventoryMu.Unlock()
+	if inventoryPath == "" {
+		return
+	}
+	if err := loadInventoryFromDiskLocked(); err != nil {
+		// Don't fatal — a corrupt or partially-written file shouldn't
+		// keep the dashboard from booting. The operator can roll back
+		// the file by hand ; meanwhile the seed remains visible.
+		slog.Warn("inventory: load failed, keeping in-memory seed",
+			"path", inventoryPath, "err", err.Error())
+	}
+}
+
+// inventorySnapshot is the JSON shape on disk. One top-level key per
+// resource so the file is human-diffable. Version = forward-compat
+// marker for the eventual etcd migration.
+type inventorySnapshot struct {
+	Version int              `json:"version"`
+	AZs     []map[string]any `json:"azs"`
+	Racks   []map[string]any `json:"racks"`
+	Hosts   []map[string]any `json:"hosts"`
+}
+
+// loadInventoryFromDiskLocked is callable only with inventoryMu held
+// (called from SetInventoryPath right after taking the lock).
+func loadInventoryFromDiskLocked() error {
+	b, err := os.ReadFile(inventoryPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	var snap inventorySnapshot
+	if err := json.Unmarshal(b, &snap); err != nil {
+		return fmt.Errorf("decode: %w", err)
+	}
+	if a, ok := resourceByID["azs"]; ok {
+		a.Rows = snap.AZs
+	}
+	if r, ok := resourceByID["racks"]; ok {
+		r.Rows = snap.Racks
+	}
+	if h, ok := resourceByID["hosts"]; ok {
+		h.Rows = snap.Hosts
+	}
+	return nil
+}
+
+// flushInventoryLocked writes the current rows back to inventoryPath.
+// Atomic : write to <path>.tmp + rename, so a partial write never
+// leaves the file unparseable. No-op when persistence is disabled.
+//
+// Must be called with inventoryMu held.
+func flushInventoryLocked() {
+	if inventoryPath == "" {
+		return
+	}
+	snap := inventorySnapshot{Version: 1}
+	if a, ok := resourceByID["azs"]; ok {
+		snap.AZs = a.Rows
+	}
+	if r, ok := resourceByID["racks"]; ok {
+		snap.Racks = r.Rows
+	}
+	if h, ok := resourceByID["hosts"]; ok {
+		snap.Hosts = h.Rows
+	}
+	b, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		slog.Error("inventory: marshal failed", "err", err.Error())
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(inventoryPath), 0o755); err != nil {
+		slog.Error("inventory: mkdir failed", "path", inventoryPath, "err", err.Error())
+		return
+	}
+	tmp := inventoryPath + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		slog.Error("inventory: write tmp failed", "path", tmp, "err", err.Error())
+		return
+	}
+	if err := os.Rename(tmp, inventoryPath); err != nil {
+		slog.Error("inventory: rename failed", "from", tmp, "to", inventoryPath, "err", err.Error())
+		// Best-effort cleanup of the orphan tmp ; ignore the error.
+		_ = os.Remove(tmp)
+		return
+	}
 }
 
 // stampInventoryUUIDs ensures every AZ / Rack / Host row has a uuid.
@@ -88,6 +201,7 @@ func appendAZ(row map[string]any) {
 	if a, ok := resourceByID["azs"]; ok {
 		a.Rows = append(a.Rows, row)
 	}
+	flushInventoryLocked()
 }
 
 func updateAZRow(uuid string, patch func(map[string]any)) bool {
@@ -100,6 +214,7 @@ func updateAZRow(uuid string, patch func(map[string]any)) bool {
 	for _, row := range a.Rows {
 		if str(row["uuid"]) == uuid {
 			patch(row)
+			flushInventoryLocked()
 			return true
 		}
 	}
@@ -149,6 +264,7 @@ func deleteAZRow(uuid string) (azDeleted, rackCount, hostCount int) {
 		}
 		h.Rows = filtered
 	}
+	flushInventoryLocked()
 	return
 }
 
@@ -190,6 +306,7 @@ func appendRack(row map[string]any) {
 	if r, ok := resourceByID["racks"]; ok {
 		r.Rows = append(r.Rows, row)
 	}
+	flushInventoryLocked()
 }
 
 func updateRackRow(uuid string, patch func(map[string]any)) bool {
@@ -202,6 +319,7 @@ func updateRackRow(uuid string, patch func(map[string]any)) bool {
 	for _, row := range r.Rows {
 		if str(row["uuid"]) == uuid {
 			patch(row)
+			flushInventoryLocked()
 			return true
 		}
 	}
@@ -240,6 +358,7 @@ func deleteRackRow(uuid string) (rackDeleted, hostCount int) {
 		}
 		h.Rows = filtered
 	}
+	flushInventoryLocked()
 	return
 }
 
@@ -281,6 +400,7 @@ func appendHost(row map[string]any) {
 	if h, ok := resourceByID["hosts"]; ok {
 		h.Rows = append(h.Rows, row)
 	}
+	flushInventoryLocked()
 }
 
 func updateHostRow(uuid string, patch func(map[string]any)) bool {
@@ -293,6 +413,7 @@ func updateHostRow(uuid string, patch func(map[string]any)) bool {
 	for _, row := range h.Rows {
 		if str(row["uuid"]) == uuid {
 			patch(row)
+			flushInventoryLocked()
 			return true
 		}
 	}
@@ -309,6 +430,7 @@ func deleteHostRow(uuid string) bool {
 	for i, row := range h.Rows {
 		if str(row["uuid"]) == uuid {
 			h.Rows = append(h.Rows[:i], h.Rows[i+1:]...)
+			flushInventoryLocked()
 			return true
 		}
 	}

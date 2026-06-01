@@ -86,6 +86,13 @@ type Config struct {
 	// Empty = audit disabled (events drop through audit.NopLogger).
 	AuditLogPath string
 
+	// InventoryPath is the JSON file weft-webui rehydrates AZ / Rack /
+	// Host rows from at startup and writes back after every CRUD. Empty
+	// = in-memory only (seed survives restart, operator changes don't).
+	// Eventually swaps to etcd via weft-network — keep the contract
+	// loose (one JSON blob, atomic write) so the migration is a drop-in.
+	InventoryPath string
+
 	// AuditRotateBytes is the rotation threshold for AuditLogPath. The
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
@@ -130,7 +137,8 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		DevMode:       envBool("WEBUI_DEV_MODE", false),
 		TrustProxies:  envBool("WEBUI_TRUST_PROXIES", false),
 		PolicyStrict:  envBool("WEBUI_POLICY_STRICT", false),
-		AuditLogPath:  os.Getenv("WEBUI_AUDIT_LOG_PATH"),
+		AuditLogPath:    os.Getenv("WEBUI_AUDIT_LOG_PATH"),
+		InventoryPath:   os.Getenv("WEBUI_INVENTORY_PATH"),
 		// 100 MiB default ; flag/env can lower (or raise) it. Loaded
 		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
 		AuditRotateBytes: 100 << 20,
@@ -195,6 +203,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.AuthMode, "auth-mode", cfg.AuthMode, `"oidc" or "none" ("none" is dev-only)`)
 	flagSet.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "external base URL (used to compute the OIDC redirect when not set explicitly)")
 	flagSet.StringVar(&cfg.AuditLogPath, "audit-log-path", cfg.AuditLogPath, "JSONL file for the admin audit log ; empty = disabled")
+	flagSet.StringVar(&cfg.InventoryPath, "inventory-path", cfg.InventoryPath, "JSON file the AZ/Rack/Host inventory is rehydrated from at startup + written back after every CRUD ; empty = in-memory only")
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }
