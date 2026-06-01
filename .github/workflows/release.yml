@@ -2,6 +2,11 @@ name: Release
 
 # Tag-driven publish. Pushes to GHCR happen ONLY on a vX.Y.Z tag,
 # not on every push to main (project memory : "No autopublish during dev").
+#
+# Supply-chain attestations: each pushed image gets an SPDX 2.3 JSON
+# SBOM (Syft) cosign-attested as `spdxjson`, plus a SLSA L3 provenance
+# via slsa-framework/slsa-github-generator. See the weft repo's
+# docs/operations/cosign-verify.md for verifier commands.
 
 on:
   push:
@@ -20,6 +25,16 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      # id-token: write is required for keyless cosign + SLSA generator
+      # OIDC exchange. contents:read inherited from the job-level
+      # default.
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image: ${{ env.IMAGE }}
+      digest: ${{ steps.build.outputs.digest }}
     env:
       IMAGE: ghcr.io/openweft/weft-webui
     steps:
@@ -46,6 +61,7 @@ jobs:
         run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
 
       - name: Build + push (multi-arch)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -58,3 +74,66 @@ jobs:
             VERSION=${{ steps.stamps.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        # Sign the multi-arch manifest digest so the signature stays
+        # bound to the bytes even if the tag is later moved.
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate image SBOM (SPDX 2.3 JSON)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          syft scan "registry:${IMAGE}@${DIGEST}" \
+            -o spdx-json=weft-webui.spdx.json
+
+      - name: Cosign-attest SBOM (spdxjson predicate)
+        # Binds the SBOM to the image digest as an in-toto attestation.
+        # Consumers verify with `cosign verify-attestation --type spdxjson ...`.
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign attest --yes \
+            --predicate weft-webui.spdx.json \
+            --type spdxjson \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Upload SBOM as workflow artifact
+        # No GitHub Release object is created by this workflow (image-only
+        # publish), so park the SBOM as a workflow artifact for forensic
+        # recall. Verifiers should prefer the cosign attestation above.
+        uses: actions/upload-artifact@v4
+        with:
+          name: weft-webui-sbom-${{ steps.stamps.outputs.version }}
+          path: weft-webui.spdx.json
+
+  provenance:
+    # SLSA L3 provenance for the published image. Runs on an isolated
+    # ephemeral builder GitHub controls — that's what earns L3 builder
+    # identity. Produces an in-toto attestation attached to the
+    # registry manifest by digest.
+    needs: publish
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    with:
+      image: ghcr.io/openweft/weft-webui
+      digest: ${{ needs.publish.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
