@@ -31,6 +31,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -61,10 +62,56 @@ type scriptCatalogue interface {
 type memScriptCatalogue struct {
 	mu      sync.Mutex
 	scripts []Script
+	// path is non-empty when persistence is wired up. Flushed inside
+	// Set / Delete under mu, rehydrated by SetScriptsPath at boot.
+	path string
 }
 
 func newMemScriptCatalogue() *memScriptCatalogue {
 	return &memScriptCatalogue{scripts: seedScripts()}
+}
+
+type scriptsSnapshot struct {
+	Version int      `json:"version"`
+	Scripts []Script `json:"scripts"`
+}
+
+// SetScriptsPath rehydrates the script catalogue from path if the
+// file exists, then arms persistence so subsequent Set / Delete
+// operations flush back to disk. Same opt-in semantics as the other
+// SetXxxPath entry points.
+func SetScriptsPath(p string) {
+	mem, ok := scriptsCatalogue.(*memScriptCatalogue)
+	if !ok {
+		// Live catalogue is wired — persistence isn't this layer's job
+		// (weft-network owns the source of truth). No-op.
+		return
+	}
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	mem.path = strings.TrimSpace(p)
+	if mem.path == "" {
+		return
+	}
+	var snap scriptsSnapshot
+	loaded, err := readJSON(mem.path, &snap)
+	if err != nil {
+		slog.Warn("scripts: load failed, keeping in-memory seed",
+			"path", mem.path, "err", err.Error())
+		return
+	}
+	if loaded && snap.Scripts != nil {
+		mem.scripts = snap.Scripts
+	}
+}
+
+// flushLocked writes the catalogue to disk when m.path is set. Must
+// be called with m.mu held.
+func (m *memScriptCatalogue) flushLocked() {
+	if m.path == "" {
+		return
+	}
+	atomicWriteJSON(m.path, scriptsSnapshot{Version: 1, Scripts: m.scripts})
 }
 
 // seedScripts — two demonstrative scripts so the Scripts page + the
@@ -133,10 +180,12 @@ func (m *memScriptCatalogue) Set(ctx context.Context, s Script) error {
 	for i, x := range m.scripts {
 		if x.Name == s.Name {
 			m.scripts[i] = s
+			m.flushLocked()
 			return nil
 		}
 	}
 	m.scripts = append(m.scripts, s)
+	m.flushLocked()
 	return nil
 }
 
@@ -146,6 +195,7 @@ func (m *memScriptCatalogue) Delete(ctx context.Context, name string) error {
 	for i, s := range m.scripts {
 		if s.Name == name {
 			m.scripts = append(m.scripts[:i], m.scripts[i+1:]...)
+			m.flushLocked()
 			return nil
 		}
 	}

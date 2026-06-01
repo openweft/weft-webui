@@ -15,13 +15,107 @@ package server
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"log/slog"
+	"strings"
 	"sync"
 )
 
 var dnsMockMu sync.Mutex
 
+// dnsPath, when non-empty, is the JSON file dns-zones + dns-records
+// rows are rehydrated from at boot + flushed back to after every
+// mutation. Set by SetDNSPath() from server.New().
+var dnsPath string
+
 func init() {
 	stampDNSUUIDs()
+}
+
+// SetDNSPath configures the on-disk persistence for the mock-layer
+// DNS rows. Same shape + opt-in semantics as SetInventoryPath.
+func SetDNSPath(p string) {
+	dnsMockMu.Lock()
+	defer dnsMockMu.Unlock()
+	dnsPath = strings.TrimSpace(p)
+	if dnsPath == "" {
+		return
+	}
+	if err := loadDNSFromDiskLocked(); err != nil {
+		slog.Warn("dns: load failed, keeping in-memory seed",
+			"path", dnsPath, "err", err.Error())
+	}
+}
+
+type dnsSnapshot struct {
+	Version int              `json:"version"`
+	Zones   []map[string]any `json:"zones"`
+	Records []map[string]any `json:"records"`
+}
+
+func loadDNSFromDiskLocked() error {
+	var snap dnsSnapshot
+	loaded, err := readJSON(dnsPath, &snap)
+	if err != nil || !loaded {
+		return err
+	}
+	if z, ok := resourceByID["dns-zones"]; ok {
+		z.Rows = snap.Zones
+	}
+	if r, ok := resourceByID["dns-records"]; ok {
+		r.Rows = snap.Records
+	}
+	return nil
+}
+
+func flushDNSLocked() {
+	if dnsPath == "" {
+		return
+	}
+	snap := dnsSnapshot{Version: 1}
+	if z, ok := resourceByID["dns-zones"]; ok {
+		snap.Zones = z.Rows
+	}
+	if r, ok := resourceByID["dns-records"]; ok {
+		snap.Records = r.Rows
+	}
+	atomicWriteJSON(dnsPath, snap)
+}
+
+// deleteDNSZoneRow removes the zone with the given uuid from the
+// seed. Idempotent (missing = false). Called from the mock fallback
+// path in api_networking.go's delete-dns-zone handler.
+func deleteDNSZoneRow(uuid string) bool {
+	dnsMockMu.Lock()
+	defer dnsMockMu.Unlock()
+	z, ok := resourceByID["dns-zones"]
+	if !ok {
+		return false
+	}
+	for i, row := range z.Rows {
+		if str(row["uuid"]) == uuid {
+			z.Rows = append(z.Rows[:i], z.Rows[i+1:]...)
+			flushDNSLocked()
+			return true
+		}
+	}
+	return false
+}
+
+func deleteDNSRecordRow(uuid string) bool {
+	dnsMockMu.Lock()
+	defer dnsMockMu.Unlock()
+	r, ok := resourceByID["dns-records"]
+	if !ok {
+		return false
+	}
+	for i, row := range r.Rows {
+		if str(row["uuid"]) == uuid {
+			r.Rows = append(r.Rows[:i], r.Rows[i+1:]...)
+			flushDNSLocked()
+			return true
+		}
+	}
+	return false
 }
 
 // stampDNSUUIDs walks every row in dns-zones + dns-records and
@@ -124,6 +218,7 @@ func updateDNSZoneRow(uuid string, patch func(map[string]any)) bool {
 	for _, row := range z.Rows {
 		if str(row["uuid"]) == uuid {
 			patch(row)
+			flushDNSLocked()
 			return true
 		}
 	}
@@ -155,6 +250,7 @@ func updateDNSRecordRow(uuid string, patch func(map[string]any)) bool {
 	for _, row := range r.Rows {
 		if str(row["uuid"]) == uuid {
 			patch(row)
+			flushDNSLocked()
 			return true
 		}
 	}

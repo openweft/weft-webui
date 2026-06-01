@@ -128,6 +128,18 @@ func run() error {
 		server.SetInventoryPath(cfg.InventoryPath)
 		logger.Info("inventory persistence ready", "path", cfg.InventoryPath)
 	}
+	if cfg.DNSPath != "" {
+		server.SetDNSPath(cfg.DNSPath)
+		logger.Info("dns persistence ready", "path", cfg.DNSPath)
+	}
+	if cfg.SecurityPath != "" {
+		server.SetSecurityPath(cfg.SecurityPath)
+		logger.Info("security persistence ready", "path", cfg.SecurityPath)
+	}
+	if cfg.ScriptsPath != "" {
+		server.SetScriptsPath(cfg.ScriptsPath)
+		logger.Info("scripts persistence ready", "path", cfg.ScriptsPath)
+	}
 
 	// Rate limiter : per-user (session.Subject) or per-IP token bucket
 	// in front of /api/*. Defaults documented in the package — 100rps
