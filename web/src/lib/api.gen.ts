@@ -994,7 +994,7 @@ export interface paths {
         put?: never;
         /**
          * Install a plugin with form inputs — returns the new instance UUID
-         * @description Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. Mock implementation : the instance is stored in-memory.
+         * @description Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. When the agent is wired the call drives `pluginstore.Manager.Install` ; otherwise the request fails with 400.
          */
         post: operations["install-plugin-with-inputs"];
         delete?: never;
