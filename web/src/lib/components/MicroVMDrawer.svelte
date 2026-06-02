@@ -25,6 +25,7 @@
     type AuthorizedGroup, type EffectiveKey,
   } from '../api';
   import Combobox from './Combobox.svelte';
+  import FirewallStatusBadge from './FirewallStatusBadge.svelte';
   import { openScopedEvents } from '../events';
 
   let {
@@ -502,6 +503,16 @@
     {#if tab === 'summary'}
       <div class="flex items-center gap-2">
         <h3 class="text-sm font-semibold">VM status</h3>
+        <!--
+          FirewallStatusBadge consumes the synthetic "firewall.status"
+          PlatformEvent the host-side StatusReceiver re-emits onto the
+          SSE stream. Hidden until the in-VM agent publishes its first
+          status (≤ 10 s after boot) ; greys to "stale" when no event
+          arrives for > 35 s (= 3 missed ticks).
+        -->
+        {#if vmUUID}
+          <FirewallStatusBadge vmUUID={vmUUID} />
+        {/if}
         <button class="ml-auto btn btn-xs btn-ghost" disabled={statusBusy} onclick={loadStatus}>
           {#if statusBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
         </button>
