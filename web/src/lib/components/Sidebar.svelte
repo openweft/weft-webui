@@ -62,6 +62,18 @@
           Activity
         </a>
       </li>
+      <li>
+        <a href="#/federation" class:menu-active={active === 'federation'}>
+          <!-- globe / interconnect motif : two interlocking circles
+               to suggest cluster-to-cluster peering. -->
+          <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="12" r="5" />
+            <circle cx="15" cy="12" r="5" />
+          </svg>
+          Federation
+        </a>
+      </li>
     </ul>
 
     {#each grouped as group (group.section)}
