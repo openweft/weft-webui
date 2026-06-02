@@ -183,7 +183,11 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// --- Auth routes (no auth) ---
 	if d.OIDC != nil {
 		mux.HandleFunc("GET /api/auth/login", d.OIDC.LoginHandler)
-		mux.HandleFunc("GET /api/auth/callback", d.OIDC.CallbackHandler)
+		// Wrap the callback in withAuthCallbackThrottle so a brute-
+		// force spray against state cookies / random codes gets
+		// 429'd after the per-IP failure budget is exhausted. The
+		// throttle is a no-op for every other auth route.
+		mux.Handle("GET /api/auth/callback", withAuthCallbackThrottle(http.HandlerFunc(d.OIDC.CallbackHandler)))
 		mux.HandleFunc("GET /api/auth/logout", d.OIDC.LogoutHandler)
 		mux.HandleFunc("POST /api/auth/logout", d.OIDC.LogoutHandler)
 	} else {
