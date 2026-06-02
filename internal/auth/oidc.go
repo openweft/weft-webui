@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -51,6 +52,22 @@ type OIDC struct {
 	// OnLogin is called with "success" or "failure" after each
 	// callback exchange. Hook for the telemetry recorder ; nil is OK.
 	OnLogin func(result string)
+
+	// OnAuthEvent is called on every auth-relevant lifecycle event
+	// (login start, callback success/failure, logout) so the audit
+	// layer can persist who-attempted-what-when. Nil is OK ; the
+	// auth package itself doesn't depend on the audit package to
+	// keep the dependency direction one-way.
+	//
+	// Fields :
+	//   action   : "login.start" | "callback.success" | "callback.failed" | "logout"
+	//   result   : "ok" | "error"
+	//   reason   : short failure tag for "callback.failed" (e.g.
+	//              "state_cookie_invalid", "state_mismatch",
+	//              "nonce_mismatch", "token_verify"). "" on success.
+	//   remoteIP : best-effort source IP from the request
+	//   subject  : OIDC sub claim, set on "callback.success" + "logout"
+	OnAuthEvent func(action, result, reason, remoteIP, subject string)
 }
 
 // NewOIDC reaches out to the IdP for its discovery document and builds
@@ -94,6 +111,31 @@ type stateBlob struct {
 	ExpiresAt    int64  `json:"exp"`
 }
 
+// emitAuth is a nil-safe shortcut for the OnAuthEvent hook so each
+// failure branch reads as a one-liner instead of "if o.OnAuthEvent
+// != nil { o.OnAuthEvent(...) }".
+func (o *OIDC) emitAuth(action, result, reason, remoteIP, subject string) {
+	if o.OnAuthEvent == nil {
+		return
+	}
+	o.OnAuthEvent(action, result, reason, remoteIP, subject)
+}
+
+// remoteIPFromRequest pulls the host from r.RemoteAddr. We don't
+// honour X-Forwarded-For here ; if the operator runs behind a
+// trusted proxy that rewrites RemoteAddr they get the proxy IP.
+// The audit layer's existing remoteIP() helper does the same.
+func remoteIPFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // LoginHandler implements GET /api/auth/login.
 func (o *OIDC) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	state, err := randString(24)
@@ -135,6 +177,7 @@ func (o *OIDC) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		oauth2.SetAuthURLParam("code_challenge", challenge),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 	)
+	o.emitAuth("login.start", "ok", "", remoteIPFromRequest(r), "")
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -142,14 +185,23 @@ func (o *OIDC) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Record outcome on every exit so dashboards see failures distinctly.
 	result := "failure"
+	reason := ""
+	remoteIP := remoteIPFromRequest(r)
+	var subject string
 	defer func() {
 		if o.OnLogin != nil {
 			o.OnLogin(result)
+		}
+		if result == "success" {
+			o.emitAuth("callback.success", "ok", "", remoteIP, subject)
+		} else {
+			o.emitAuth("callback.failed", "error", reason, remoteIP, "")
 		}
 	}()
 
 	blob, err := o.readStateCookie(r)
 	if err != nil {
+		reason = "state_cookie_invalid"
 		http.Error(w, "auth: missing or invalid state cookie", http.StatusBadRequest)
 		return
 	}
@@ -157,15 +209,18 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	if e := r.URL.Query().Get("error"); e != "" {
 		desc := r.URL.Query().Get("error_description")
+		reason = "idp_error:" + e
 		http.Error(w, "auth: provider returned "+e+": "+desc, http.StatusUnauthorized)
 		return
 	}
 	if got := r.URL.Query().Get("state"); got != blob.State {
+		reason = "state_mismatch"
 		http.Error(w, "auth: state mismatch", http.StatusBadRequest)
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		reason = "missing_code"
 		http.Error(w, "auth: no code", http.StatusBadRequest)
 		return
 	}
@@ -174,20 +229,24 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tok, err := o.cfg.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", blob.CodeVerifier))
 	if err != nil {
+		reason = "token_exchange"
 		http.Error(w, "auth: token exchange: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	rawIDToken, _ := tok.Extra("id_token").(string)
 	if rawIDToken == "" {
+		reason = "no_id_token"
 		http.Error(w, "auth: no id_token in response", http.StatusBadGateway)
 		return
 	}
 	idTok, err := o.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
+		reason = "id_token_verify"
 		http.Error(w, "auth: id token verify: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if idTok.Nonce != blob.Nonce {
+		reason = "nonce_mismatch"
 		http.Error(w, "auth: nonce mismatch", http.StatusUnauthorized)
 		return
 	}
@@ -199,6 +258,7 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		Groups []string `json:"groups"`
 	}
 	if err := idTok.Claims(&claims); err != nil {
+		reason = "claims_decode"
 		http.Error(w, "auth: claims: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -218,10 +278,12 @@ func (o *OIDC) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:    exp,
 	}
 	if err := o.session.Set(w, payload); err != nil {
+		reason = "session_set"
 		http.Error(w, "session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	result = "success"
+	subject = claims.Sub
 	http.Redirect(w, r, blob.ReturnTo, http.StatusFound)
 }
 
@@ -308,7 +370,14 @@ func (o *OIDC) RefreshSession(ctx context.Context, p *SessionPayload) (*SessionP
 // LogoutHandler clears the session cookie. Optionally redirects via
 // the IdP's end_session_endpoint when the provider advertises one.
 func (o *OIDC) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	// Capture the session subject before we clear it so the audit
+	// event reflects who actually logged out (not "" for anonymous).
+	var subject string
+	if u, _ := o.session.Read(r); u != nil {
+		subject = u.Subject
+	}
 	o.session.Clear(w)
+	o.emitAuth("logout", "ok", "", remoteIPFromRequest(r), subject)
 	// We could redirect to the IdP's end_session_endpoint here for
 	// single-logout ; for now just bounce back to /.
 	if r.Method == http.MethodGet {
