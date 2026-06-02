@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tail the recent audit log entries (cluster-admin)
+         * @description Returns the most recent N events from the audit JSONL file (newest first). Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly "audit log not enabled" panel instead of 503.
+         */
+        get: operations["tail-audit-log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/azs": {
         parameters: {
             query?: never;
@@ -2403,6 +2423,34 @@ export interface components {
             vm: string;
             volume: string;
         };
+        AuditEventDTO: {
+            action: string;
+            error?: string;
+            extra?: {
+                [key: string]: string;
+            };
+            project?: string;
+            remote_ip?: string;
+            request_id?: string;
+            resource_id?: string;
+            resource_kind?: string;
+            result?: string;
+            subject?: string;
+            tenant?: string;
+            ts: string;
+        };
+        AuditTailOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AuditTailOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description True when an audit-log file is wired up. When false, the events list is always empty even if the operator stored history previously. */
+            enabled: boolean;
+            /** @description Newest first */
+            events: components["schemas"]["AuditEventDTO"][] | null;
+        };
         AuthorizedGroup: {
             /**
              * Format: uri
@@ -3846,6 +3894,42 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "tail-audit-log": {
+        parameters: {
+            query?: {
+                /** @description How many recent events to return */
+                limit?: number;
+                /** @description Optional substring filter on event.action (e.g. "auth.", "az.") */
+                action?: string;
+                /** @description Optional exact-match filter on event.result ("ok", "error") */
+                result?: "" | "ok" | "error";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditTailOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "create-az": {
         parameters: {
             query?: never;

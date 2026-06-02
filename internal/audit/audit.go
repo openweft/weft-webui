@@ -172,6 +172,123 @@ func (l *FileLogger) rotateLocked() error {
 	return l.openLocked()
 }
 
+// Tail returns the last n events from the audit log, newest first.
+// Walks the file from end-of-file backwards a chunk at a time so
+// gigabyte-scale logs don't pin memory. Malformed lines are skipped
+// silently (best-effort recovery from a truncated tail).
+//
+// Caller holds no lock — Tail takes l.mu briefly to snapshot the
+// current file size, then reads independently. New writes appended
+// after the snapshot are simply not seen ; callers expecting strict
+// recency should re-call.
+func (l *FileLogger) Tail(n int) ([]Event, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	l.mu.Lock()
+	if l.f == nil {
+		l.mu.Unlock()
+		return nil, fmt.Errorf("audit: file closed")
+	}
+	path := l.path
+	size := l.size
+	l.mu.Unlock()
+	return tailJSONL(path, size, n)
+}
+
+// tailJSONL is the file-walk implementation Tail delegates to. Kept
+// at package level so tests can hit it without owning a FileLogger.
+func tailJSONL(path string, size int64, n int) ([]Event, error) {
+	if size == 0 || n <= 0 {
+		return nil, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("audit: tail open: %w", err)
+	}
+	defer f.Close()
+
+	// Read in 32 KiB chunks from the end. Keep an "overflow" tail of
+	// the previous (older) chunk so a line straddling the boundary
+	// gets stitched. Stop when we have >= n events or hit BOF.
+	const chunk int64 = 32 * 1024
+	var events []Event
+	var overflow []byte
+	pos := size
+	for pos > 0 && len(events) < n {
+		readSize := chunk
+		if pos < readSize {
+			readSize = pos
+		}
+		pos -= readSize
+		buf := make([]byte, readSize)
+		if _, err := f.ReadAt(buf, pos); err != nil {
+			return nil, fmt.Errorf("audit: read: %w", err)
+		}
+		// Append the prior overflow (older bytes already at the
+		// "right end") onto buf so the boundary line is whole.
+		buf = append(buf, overflow...)
+		// Find the first newline — bytes before it belong to a line
+		// that started in an earlier (older) chunk we haven't read yet.
+		firstNL := -1
+		for i, b := range buf {
+			if b == '\n' {
+				firstNL = i
+				break
+			}
+		}
+		if firstNL < 0 {
+			// No newline in the whole window so far ; carry the entire
+			// buffer to the next iteration.
+			overflow = buf
+			continue
+		}
+		// Save the head (incomplete line at the OLDER end) as overflow
+		// for the next chunk's stitch.
+		overflow = buf[:firstNL]
+		// Process the remaining bytes — split on '\n', newest line is
+		// last. We prepend each parsed event so the final slice is
+		// newest-first.
+		body := buf[firstNL+1:]
+		start := 0
+		// Walk lines back-to-front : split on '\n' then reverse.
+		var lines [][]byte
+		for i := 0; i < len(body); i++ {
+			if body[i] == '\n' {
+				lines = append(lines, body[start:i])
+				start = i + 1
+			}
+		}
+		if start < len(body) {
+			lines = append(lines, body[start:])
+		}
+		// Append newest-first (reverse iteration of `lines`).
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := lines[i]
+			if len(line) == 0 {
+				continue
+			}
+			var ev Event
+			if err := json.Unmarshal(line, &ev); err != nil {
+				continue
+			}
+			events = append(events, ev)
+			if len(events) >= n {
+				return events, nil
+			}
+		}
+	}
+	// Handle the BOF case — the leftover overflow is the very first
+	// line of the file, may also be a valid event.
+	if len(events) < n && len(overflow) > 0 {
+		var ev Event
+		if err := json.Unmarshal(overflow, &ev); err == nil {
+			events = append(events, ev)
+		}
+	}
+	return events, nil
+}
+
 // Close flushes (implicitly via OS) and releases the underlying file.
 // Safe to call multiple times.
 func (l *FileLogger) Close() error {

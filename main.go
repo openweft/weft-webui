@@ -118,6 +118,9 @@ func run() error {
 		}
 		defer fl.Close()
 		auditLog = fl
+		// Hand the live FileLogger to the /api/audit-log read endpoint
+		// so the dashboard can tail recent entries.
+		server.SetAuditTailer(fl)
 		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
 	}
 
@@ -293,6 +296,11 @@ func newHTTPServer(addr string, h http.Handler, baseCtx context.Context) *http.S
 
 func listenAndServe(s *http.Server, cfg *config.Config) error {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		// Apply the strict TLS config (MinVersion + curated cipher
+		// suites + pinned curves) before serving so any TLS 1.0/1.1
+		// client fails the handshake. Done here rather than in
+		// newHTTPServer so the non-TLS branch isn't affected.
+		s.TLSConfig = cfg.StrictTLSConfig()
 		return s.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
 	}
 	return s.ListenAndServe()
