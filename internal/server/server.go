@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/openweft/weft-webui/internal/audit"
@@ -697,7 +698,66 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 	if rows == nil {
 		rows = []map[string]any{}
 	}
-	writePage(w, r, applyScopeFilter(rows, r))
+	writePage(w, r, applyScopeFilter(sortRowsForID(id, rows), r))
+}
+
+// sortRowsForID returns a copy of rows sorted by the natural key
+// for `id`. No-op for resource IDs without a defined order — the
+// caller gets the original slice back unchanged.
+//
+// Sorts a COPY of the slice ; the underlying res.Rows stays in
+// insertion order so existing tests + the persistence layer keep
+// their semantics. The dashboard sees a deterministic, alphabetised
+// view regardless of CRUD timing.
+func sortRowsForID(id string, rows []map[string]any) []map[string]any {
+	switch id {
+	case "azs":
+		return sortedRows(rows, func(a, b map[string]any) int {
+			return cmpStr(str(a["code"]), str(b["code"]))
+		})
+	case "racks":
+		return sortedRows(rows, func(a, b map[string]any) int {
+			if c := cmpStr(str(a["az"]), str(b["az"])); c != 0 {
+				return c
+			}
+			return cmpStr(str(a["code"]), str(b["code"]))
+		})
+	case "hosts":
+		return sortedRows(rows, func(a, b map[string]any) int {
+			if c := cmpStr(str(a["az"]), str(b["az"])); c != 0 {
+				return c
+			}
+			if c := cmpStr(str(a["rack"]), str(b["rack"])); c != 0 {
+				return c
+			}
+			return cmpStr(str(a["name"]), str(b["name"]))
+		})
+	}
+	return rows
+}
+
+// sortedRows is a thin shim around slices.SortFunc that copies the
+// slice first so we never mutate the caller's view. The copy is
+// shallow — row maps themselves stay shared, which is fine because
+// we only reorder, never mutate per-row fields.
+func sortedRows(rows []map[string]any, less func(a, b map[string]any) int) []map[string]any {
+	out := make([]map[string]any, len(rows))
+	copy(out, rows)
+	slices.SortFunc(out, less)
+	return out
+}
+
+// cmpStr is a strings.Compare shim — Go 1.22's slices.SortFunc takes
+// (a,b)int, not (a,b)bool, so we collapse the strings.* comparison
+// into the same signature here.
+func cmpStr(a, b string) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // applyScopeFilter narrows a mock row set by the session's (tenant,
