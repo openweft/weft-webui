@@ -209,6 +209,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/federation/peers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List federation peers with last-seen + status
+         * @description Surfaces the same rows the operator sees from `weft federation list`. Status is one of 'live' (recent successful poll), 'stale' (last poll older than the stale TTL, default 5 minutes) or 'unreachable' (no successful poll on record or current poll failed).
+         */
+        get: operations["list-federation-peers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/flavors": {
         parameters: {
             query?: never;
@@ -915,6 +935,66 @@ export interface paths {
         };
         /** List installable plugins (*-as-a-service modules) */
         get: operations["list-plugins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List installable plugin definitions with their input schema
+         * @description Each catalogue entry advertises the inputs the operator must provide on install — name, kind, type (string|number|bool|secret), required flag, default. The SPA renders a form from this schema and POSTs back to /api/plugins/install.
+         */
+        get: operations["list-plugin-catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install a plugin with form inputs — returns the new instance UUID
+         * @description Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. Mock implementation : the instance is stored in-memory.
+         */
+        post: operations["install-plugin-with-inputs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plugins/installed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List installed plugin instances
+         * @description Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.
+         */
+        get: operations["list-plugin-instances"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2773,6 +2853,31 @@ export interface components {
              */
             type: string;
         };
+        FederationPeer: {
+            /** @description Most recent poll error, empty when healthy */
+            last_error?: string;
+            /**
+             * Format: int64
+             * @description Nanoseconds since epoch of the last successful poll, 0 before the first success
+             */
+            last_seen_unix_ns: number;
+            /** @description Peer cluster name (manifest-derived once seen, else the operator-supplied label) */
+            name: string;
+            /** @description Free-form locality from the peer's manifest entry (e.g. 'eu-west-3') ; empty if never seen */
+            region: string;
+            /**
+             * @description 'live' | 'stale' | 'unreachable' — derived from LastSeen + LastError + StaleTTL on each poll
+             * @enum {string}
+             */
+            status: "live" | "stale" | "unreachable";
+            /** @description Peer /cluster-info URL — the poller targets this on every tick */
+            url: string;
+            /**
+             * Format: int64
+             * @description Placement bias from the peer's manifest entry ; 0 means default (100)
+             */
+            weight: number;
+        };
         FormFile: {
             ContentType: string;
             Filename: string;
@@ -2825,6 +2930,32 @@ export interface components {
              * @enum {string}
              */
             provider: "github" | "gitlab" | "forgejo";
+        };
+        InstallPluginResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InstallPluginResultBody.json
+             */
+            readonly $schema?: string;
+            /** @description Cluster-unique id of the freshly installed instance */
+            instance_uuid: string;
+        };
+        InstallPluginWithInputsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InstallPluginWithInputsBody.json
+             */
+            readonly $schema?: string;
+            /** @description Map of input name → value, matching the catalogue entry's inputs schema. Secret inputs are passed through here too — the agent persists them encrypted. */
+            inputs: {
+                [key: string]: string;
+            };
+            /** @description Plugin slug from /api/plugins/catalogue */
+            name: string;
+            /** @description Project to install the instance under */
+            project: string;
         };
         ListFlavorsOutputBody: {
             /**
@@ -2989,6 +3120,52 @@ export interface components {
             vendor: string;
             /** @description Plugin version (semver) */
             version: string;
+        };
+        PluginCatalogueEntry: {
+            /** @description One-paragraph description ; shown in the install drawer header */
+            description: string;
+            /** @description Form schema the operator must fill on install */
+            inputs: components["schemas"]["PluginInput"][] | null;
+            /** @description Category, e.g. 'database', 'cache', 'streaming', 'storage' */
+            kind: string;
+            /** @description Stable plugin slug, e.g. 'vitess-dbaas' */
+            name: string;
+        };
+        PluginInput: {
+            /** @description Optional default — pre-filled in the form ; ignored when Type == 'secret' */
+            default?: string;
+            /** @description Inline hint shown below the input */
+            description?: string;
+            /** @description Human-readable label rendered next to the input */
+            label: string;
+            /** @description Input identifier, used as the form-field name and the key in the POST body's 'inputs' map */
+            name: string;
+            /** @description When true, the SPA blocks submit until the input is non-empty */
+            required: boolean;
+            /**
+             * @description 'string' | 'number' | 'bool' | 'secret'
+             * @enum {string}
+             */
+            type: "string" | "number" | "bool" | "secret";
+        };
+        PluginInstance: {
+            /** @description RFC-3339 timestamp of the install */
+            installed_at: string;
+            /** @description OIDC email of the installing operator */
+            installed_by: string;
+            /** @description Cluster-unique instance identifier — returned by POST /api/plugins/install */
+            instance_uuid: string;
+            /** @description Plugin slug from the catalogue (links the instance back to its definition) */
+            name: string;
+            /** @description Project the instance was installed under */
+            project: string;
+            /**
+             * @description 'running' | 'provisioning' | 'degraded' | 'failed'
+             * @enum {string}
+             */
+            status: "running" | "provisioning" | "degraded" | "failed";
+            /** @description microVM UUIDs the instance currently manages */
+            vms: string[] | null;
         };
         PolicyStatement: {
             /** @enum {string} */
@@ -4236,6 +4413,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-federation-peers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FederationPeer"][] | null;
+                };
             };
             /** @description Error */
             default: {
@@ -5868,6 +6074,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Plugin"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-plugin-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginCatalogueEntry"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "install-plugin-with-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallPluginWithInputsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallPluginResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-plugin-instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginInstance"][] | null;
                 };
             };
             /** @description Error */

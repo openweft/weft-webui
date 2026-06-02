@@ -1968,6 +1968,55 @@
         },
         "type": "object"
       },
+      "FederationPeer": {
+        "additionalProperties": false,
+        "properties": {
+          "last_error": {
+            "description": "Most recent poll error, empty when healthy",
+            "type": "string"
+          },
+          "last_seen_unix_ns": {
+            "description": "Nanoseconds since epoch of the last successful poll, 0 before the first success",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Peer cluster name (manifest-derived once seen, else the operator-supplied label)",
+            "type": "string"
+          },
+          "region": {
+            "description": "Free-form locality from the peer's manifest entry (e.g. 'eu-west-3') ; empty if never seen",
+            "type": "string"
+          },
+          "status": {
+            "description": "'live' | 'stale' | 'unreachable' — derived from LastSeen + LastError + StaleTTL on each poll",
+            "enum": [
+              "live",
+              "stale",
+              "unreachable"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Peer /cluster-info URL — the poller targets this on every tick",
+            "type": "string"
+          },
+          "weight": {
+            "description": "Placement bias from the peer's manifest entry ; 0 means default (100)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "region",
+          "weight",
+          "last_seen_unix_ns",
+          "status"
+        ],
+        "type": "object"
+      },
       "FormFile": {
         "additionalProperties": false,
         "properties": {
@@ -2102,6 +2151,67 @@
         "required": [
           "provider",
           "account"
+        ],
+        "type": "object"
+      },
+      "InstallPluginResultBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/InstallPluginResultBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "instance_uuid": {
+            "description": "Cluster-unique id of the freshly installed instance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_uuid"
+        ],
+        "type": "object"
+      },
+      "InstallPluginWithInputsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/InstallPluginWithInputsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Map of input name → value, matching the catalogue entry's inputs schema. Secret inputs are passed through here too — the agent persists them encrypted.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Plugin slug from /api/plugins/catalogue",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "description": "Project to install the instance under",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project",
+          "inputs"
         ],
         "type": "object"
       },
@@ -2569,6 +2679,137 @@
           "resources",
           "install_status",
           "enabled"
+        ],
+        "type": "object"
+      },
+      "PluginCatalogueEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "One-paragraph description ; shown in the install drawer header",
+            "type": "string"
+          },
+          "inputs": {
+            "description": "Form schema the operator must fill on install",
+            "items": {
+              "$ref": "#/components/schemas/PluginInput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "Category, e.g. 'database', 'cache', 'streaming', 'storage'",
+            "type": "string"
+          },
+          "name": {
+            "description": "Stable plugin slug, e.g. 'vitess-dbaas'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "description",
+          "inputs"
+        ],
+        "type": "object"
+      },
+      "PluginInput": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "description": "Optional default — pre-filled in the form ; ignored when Type == 'secret'",
+            "type": "string"
+          },
+          "description": {
+            "description": "Inline hint shown below the input",
+            "type": "string"
+          },
+          "label": {
+            "description": "Human-readable label rendered next to the input",
+            "type": "string"
+          },
+          "name": {
+            "description": "Input identifier, used as the form-field name and the key in the POST body's 'inputs' map",
+            "type": "string"
+          },
+          "required": {
+            "description": "When true, the SPA blocks submit until the input is non-empty",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "'string' | 'number' | 'bool' | 'secret'",
+            "enum": [
+              "string",
+              "number",
+              "bool",
+              "secret"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "type",
+          "required"
+        ],
+        "type": "object"
+      },
+      "PluginInstance": {
+        "additionalProperties": false,
+        "properties": {
+          "installed_at": {
+            "description": "RFC-3339 timestamp of the install",
+            "type": "string"
+          },
+          "installed_by": {
+            "description": "OIDC email of the installing operator",
+            "type": "string"
+          },
+          "instance_uuid": {
+            "description": "Cluster-unique instance identifier — returned by POST /api/plugins/install",
+            "type": "string"
+          },
+          "name": {
+            "description": "Plugin slug from the catalogue (links the instance back to its definition)",
+            "type": "string"
+          },
+          "project": {
+            "description": "Project the instance was installed under",
+            "type": "string"
+          },
+          "status": {
+            "description": "'running' | 'provisioning' | 'degraded' | 'failed'",
+            "enum": [
+              "running",
+              "provisioning",
+              "degraded",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "vms": {
+            "description": "microVM UUIDs the instance currently manages",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "instance_uuid",
+          "project",
+          "vms",
+          "installed_at",
+          "installed_by",
+          "status"
         ],
         "type": "object"
       },
@@ -5213,6 +5454,44 @@
         ]
       }
     },
+    "/api/federation/peers": {
+      "get": {
+        "description": "Surfaces the same rows the operator sees from `weft federation list`. Status is one of 'live' (recent successful poll), 'stale' (last poll older than the stale TTL, default 5 minutes) or 'unreachable' (no successful poll on record or current poll failed).",
+        "operationId": "list-federation-peers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FederationPeer"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List federation peers with last-seen + status",
+        "tags": [
+          "federation"
+        ]
+      }
+    },
     "/api/flavors": {
       "get": {
         "description": "Cluster-wide compute envelope catalogue. Read-open on both listeners since the CreateVMModal picker needs it.",
@@ -7734,6 +8013,124 @@
           }
         },
         "summary": "List installable plugins (*-as-a-service modules)",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/catalogue": {
+      "get": {
+        "description": "Each catalogue entry advertises the inputs the operator must provide on install — name, kind, type (string|number|bool|secret), required flag, default. The SPA renders a form from this schema and POSTs back to /api/plugins/install.",
+        "operationId": "list-plugin-catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PluginCatalogueEntry"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List installable plugin definitions with their input schema",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/install": {
+      "post": {
+        "description": "Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. Mock implementation : the instance is stored in-memory.",
+        "operationId": "install-plugin-with-inputs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallPluginWithInputsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallPluginResultBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Install a plugin with form inputs — returns the new instance UUID",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/installed": {
+      "get": {
+        "description": "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.",
+        "operationId": "list-plugin-instances",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PluginInstance"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List installed plugin instances",
         "tags": [
           "plugins"
         ]
