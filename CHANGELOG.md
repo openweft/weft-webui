@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Live per-VM firewall status badge** (`FirewallStatusBadge`).
+  Subscribes to the synthetic `firewall.status` PlatformEvent the
+  host-side `firewallpub.StatusReceiver` re-emits onto the existing
+  `/api/events` SSE stream and renders a compact pill next to the
+  VM status header in `MicroVMDrawer`. States : green (healthy +
+  N user rules), amber (default-deny only), red (Degraded, with
+  `LastError` on hover), grey (pending OR stale = no publish in
+  > 35 s = 3 missed agent ticks). New `firewallStatus.ts` derived
+  store + 8 vitest cases on the projection. Commits `ad5efe9`,
+  `f93ca48`.
+
 ## [0.2.0] - 2026-06-02
 
 v0.2.0-track work since `v0.1.0` (`29a98ee`).
