@@ -651,6 +651,14 @@ var registry = []Resource{
 		Rows:    []map[string]any{},
 	},
 	{
+		// Audit log — read-only browser over /api/audit-log. No rows
+		// here ; the dashboard mounts AuditLogPage which tails the
+		// configured JSONL file directly.
+		ID: "audit-log", Label: "Audit log", Section: "Admin", Scope: ScopeAdmin,
+		Columns: cols("placeholder", "—"),
+		Rows:    []map[string]any{},
+	},
+	{
 		// Plugin registry — *-as-a-service modules the cluster can
 		// host (Database / Streaming / Cache / Object lake …). Rows
 		// are served from pluginsByID via the /api/plugins endpoints

@@ -18,6 +18,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -109,6 +110,15 @@ type Config struct {
 	// DoS profile. Zero / negative disables the wrap entirely.
 	MaxRequestBodyBytes int64
 
+	// TLSMinVersion is the floor crypto/tls accepts during the
+	// handshake. Stored as the tls.VersionTLSXX uint16 constant ;
+	// resolved from WEBUI_TLS_MIN_VERSION = "1.2" | "1.3". Default
+	// 1.2 — broad client compat (Go HTTP, curl, Caddy, browsers
+	// >2016) while rejecting 1.0/1.1 which carry known padding +
+	// renegotiation flaws. Set to 1.3 for a hardened deployment
+	// where every client is current.
+	TLSMinVersion uint16
+
 	// ShutdownTimeout is the deadline http.Server.Shutdown gets after
 	// SIGTERM. The server first cancels its BaseContext (so SSE +
 	// WatchEvents handlers exit immediately), then waits up to this
@@ -129,6 +139,35 @@ type Config struct {
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
 	AuditRotateBytes int64
+}
+
+// StrictTLSConfig returns the *tls.Config the HTTP server applies
+// when TLS is enabled. Locks the handshake floor to TLSMinVersion,
+// restricts to a curated cipher-suite list for TLS 1.2 (modern AEAD
+// only, no CBC / 3DES / RC4), and pins curves to X25519/P-256/P-384.
+// TLS 1.3 negotiates its own suites — CipherSuites is ignored there.
+func (c *Config) StrictTLSConfig() *tls.Config {
+	min := c.TLSMinVersion
+	if min == 0 {
+		min = tls.VersionTLS12
+	}
+	return &tls.Config{
+		MinVersion: min,
+		CipherSuites: []uint16{
+			// TLS 1.2 AEAD-only suites (ECDHE-based forward secrecy).
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+		},
+		CurvePreferences: []tls.CurveID{
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+		},
+	}
 }
 
 const (
@@ -199,6 +238,19 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		cfg.MaxRequestBodyBytes = 1 << 20 // 1 MiB
 	}
 
+	// TLS minimum version : "1.2" (default) or "1.3". Anything older
+	// is a hard error — we don't honour 1.0/1.1 even if the operator
+	// asks, since they fail any modern compliance scan.
+	tlsMin := envOr("WEBUI_TLS_MIN_VERSION", "1.2")
+	switch strings.TrimSpace(tlsMin) {
+	case "1.2", "":
+		cfg.TLSMinVersion = tls.VersionTLS12
+	case "1.3":
+		cfg.TLSMinVersion = tls.VersionTLS13
+	default:
+		return nil, fmt.Errorf("WEBUI_TLS_MIN_VERSION: unsupported version %q (use 1.2 or 1.3)", tlsMin)
+	}
+
 	if v := os.Getenv("WEBUI_SHUTDOWN_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
@@ -265,6 +317,19 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.ScriptsPath, "scripts-path", cfg.ScriptsPath, "JSON file the mock scripts catalogue is rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "max time the server spends draining in-flight requests on SIGTERM before the deadline forces exit")
 	flagSet.Int64Var(&cfg.MaxRequestBodyBytes, "max-request-body-bytes", cfg.MaxRequestBodyBytes, "cap on /api/* request body size in bytes (DoS guard) ; 0 = disabled")
+	// --tls-min-version takes the human form "1.2" / "1.3" and runs
+	// through the same validator as the env var via a flag.Func shim.
+	flagSet.Func("tls-min-version", `TLS handshake floor : "1.2" (default) or "1.3"`, func(s string) error {
+		switch strings.TrimSpace(s) {
+		case "1.2":
+			cfg.TLSMinVersion = tls.VersionTLS12
+		case "1.3":
+			cfg.TLSMinVersion = tls.VersionTLS13
+		default:
+			return fmt.Errorf("unsupported TLS version %q (use 1.2 or 1.3)", s)
+		}
+		return nil
+	})
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	return cfg, nil
 }

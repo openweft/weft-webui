@@ -820,6 +820,88 @@
         ],
         "type": "object"
       },
+      "AuditEventDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "extra": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "project": {
+            "type": "string"
+          },
+          "remote_ip": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "resource_kind": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "action"
+        ],
+        "type": "object"
+      },
+      "AuditTailOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditTailOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "True when an audit-log file is wired up. When false, the events list is always empty even if the operator stored history previously.",
+            "type": "boolean"
+          },
+          "events": {
+            "description": "Newest first",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "AuthorizedGroup": {
         "additionalProperties": false,
         "properties": {
@@ -4614,6 +4696,79 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/audit-log": {
+      "get": {
+        "description": "Returns the most recent N events from the audit JSONL file (newest first). Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
+        "operationId": "tail-audit-log",
+        "parameters": [
+          {
+            "description": "How many recent events to return",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "How many recent events to return",
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional substring filter on event.action (e.g. \"auth.\", \"az.\")",
+            "explode": false,
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "description": "Optional substring filter on event.action (e.g. \"auth.\", \"az.\")",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional exact-match filter on event.result (\"ok\", \"error\")",
+            "explode": false,
+            "in": "query",
+            "name": "result",
+            "schema": {
+              "description": "Optional exact-match filter on event.result (\"ok\", \"error\")",
+              "enum": [
+                "",
+                "ok",
+                "error"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTailOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Tail the recent audit log entries (cluster-admin)",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/api/azs": {
       "post": {
         "operationId": "create-az",
