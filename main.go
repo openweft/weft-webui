@@ -121,6 +121,32 @@ func run() error {
 		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
 	}
 
+	// Bridge OIDC auth-lifecycle events into the audit log so a
+	// brute-force probe / replayed-state-cookie attempt / nonce
+	// mismatch leaves a persistent trail. Falls back to NopLogger
+	// when --audit-log-path is unset (no-op, never nil-deref'd).
+	if oidcAuth != nil {
+		ll := auditLog
+		if ll == nil {
+			ll = audit.NopLogger{}
+		}
+		oidcAuth.OnAuthEvent = func(action, result, reason, remoteIP, subject string) {
+			ev := audit.Event{
+				Timestamp:    time.Now().UTC(),
+				Action:       "auth." + action,
+				ResourceKind: "session",
+				Subject:      subject,
+				Result:       result,
+				RemoteIP:     remoteIP,
+			}
+			if reason != "" {
+				ev.Extra = map[string]string{"reason": reason}
+				ev.ErrorMessage = reason
+			}
+			ll.Log(context.Background(), ev)
+		}
+	}
+
 	// Inventory persistence : opt-in via --inventory-path. Empty path
 	// keeps the seed-only behaviour ; when set, the server rehydrates
 	// AZ / Rack / Host rows from the JSON file at boot and flushes
