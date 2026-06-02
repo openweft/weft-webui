@@ -150,6 +150,17 @@ func run() error {
 		}
 	}
 
+	// State-file history rotation : every successful flush of a
+	// tracked state file (inventory / dns / security / scripts) is
+	// pre-archived under <path>.history/<RFC3339Nano>.json so an
+	// operator can roll back a fat-fingered delete. Arm before the
+	// SetXxxPath calls below so the very first mutation already
+	// rotates.
+	if cfg.StateHistoryKeep > 0 {
+		server.SetStateHistoryKeep(cfg.StateHistoryKeep)
+		logger.Info("state history armed", "keep", cfg.StateHistoryKeep)
+	}
+
 	// Inventory persistence : opt-in via --inventory-path. Empty path
 	// keeps the seed-only behaviour ; when set, the server rehydrates
 	// AZ / Rack / Host rows from the JSON file at boot and flushes
