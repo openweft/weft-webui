@@ -16,8 +16,10 @@
   import SSHKeysPage from './lib/components/SSHKeysPage.svelte';
   import NetworkTopology from './lib/components/NetworkTopology.svelte';
   import PluginsPage from './lib/components/PluginsPage.svelte';
+  import FederationPage from './lib/components/FederationPage.svelte';
   import InventoryMapPage from './lib/components/InventoryMapPage.svelte';
   import InventoryTreePage from './lib/components/InventoryTreePage.svelte';
+  import AuditLogPage from './lib/components/AuditLogPage.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
   import EventToasts from './lib/components/EventToasts.svelte';
@@ -62,13 +64,14 @@
 
   // Special non-resource routes (no registry entry). The Sidebar
   // surfaces them above the section list.
-  const SPECIAL = new Set(['activity']);
+  const SPECIAL = new Set(['activity', 'federation']);
   let active = $derived(
     byId.has($route) || SPECIAL.has($route) ? $route : '',
   );
   let pageTitle = $derived.by(() => {
     if (active === '') return 'Overview';
     if (active === 'activity') return 'Activity';
+    if (active === 'federation') return 'Federation';
     return byId.get(active)?.label ?? '';
   });
 </script>
@@ -88,6 +91,10 @@
         <Overview {grouped} />
       {:else if active === 'activity'}
         <ActivityPage />
+      {:else if active === 'federation'}
+        {#key active}
+          <FederationPage />
+        {/key}
       {:else if active === 'registries'}
         {#key active}
           <RegistryPage meta={byId.get(active)!} />
@@ -129,6 +136,10 @@
       {:else if active === 'inventory-tree'}
         {#key active}
           <InventoryTreePage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'audit-log'}
+        {#key active}
+          <AuditLogPage meta={byId.get(active)!} />
         {/key}
       {:else}
         {#key active}

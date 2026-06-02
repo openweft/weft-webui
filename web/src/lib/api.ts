@@ -202,6 +202,38 @@ export const deleteHost = async (uuid: string): Promise<void> => {
   if (error) throwErr(error);
 };
 
+// ---- Audit log read ------------------------------------------------
+
+export type AuditEvent =
+  paths['/api/audit-log']['get']['responses']['200']['content']['application/json']['events'] extends (infer T)[] | null
+    ? T
+    : never;
+
+export interface AuditTailOpts {
+  limit?: number;
+  action?: string;
+  result?: '' | 'ok' | 'error';
+}
+
+export const tailAuditLog = async (
+  opts: AuditTailOpts = {},
+): Promise<{ enabled: boolean; events: AuditEvent[] }> => {
+  const { data, error } = await client.GET('/api/audit-log', {
+    params: {
+      query: {
+        limit: opts.limit,
+        action: opts.action,
+        result: opts.result,
+      },
+    },
+  });
+  if (error) throwErr(error);
+  return {
+    enabled: data.enabled,
+    events: (data.events ?? []) as AuditEvent[],
+  };
+};
+
 // ---- Scripts catalogue --------------------------------------------
 
 // Backwards-compatible alias for callers that still import `Script`.
@@ -1585,6 +1617,61 @@ export const disablePlugin = async (id: string): Promise<Plugin> => {
   const { data, error } = await client.POST('/api/plugins/{id}/disable', { params: { path: { id } } });
   if (error) throwErr(error);
   return data;
+};
+
+// ---- Federation peers (federation-lite, /cluster-info pull) -------
+//
+// Mirrors the `weft federation list` table. Status is one of
+// 'live' | 'stale' | 'unreachable' — derived server-side from
+// LastSeen + LastError + StaleTTL on each call so the SPA never has
+// to re-classify.
+
+import type { components as _genComponents } from './api.gen';
+export type FederationPeer = _genComponents['schemas']['FederationPeer'];
+
+export const listFederationPeers = async (): Promise<FederationPeer[]> => {
+  const { data, error } = await client.GET('/api/federation/peers');
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+// ---- "weft plugin install" surface (form-driven) ------------------
+//
+// catalogue → the SPA renders a card per entry, click opens the
+// install drawer which generates a form from entry.inputs.
+// installed → the SPA's right pane lists running instances + their
+// bound VMs.
+
+export type PluginCatalogueEntry = _genComponents['schemas']['PluginCatalogueEntry'];
+export type PluginInput = _genComponents['schemas']['PluginInput'];
+export type PluginInstance = _genComponents['schemas']['PluginInstance'];
+
+export const listPluginCatalogue = async (): Promise<PluginCatalogueEntry[]> => {
+  const { data, error } = await client.GET('/api/plugins/catalogue');
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const listPluginInstances = async (): Promise<PluginInstance[]> => {
+  const { data, error } = await client.GET('/api/plugins/installed');
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+// installPluginWithInputs POSTs the form values + returns the
+// freshly-allocated instance UUID. The drawer surfaces it back to
+// the operator so they can copy-paste it into a `weft plugin status
+// <uuid>` lookup.
+export const installPluginWithInputs = async (
+  name: string,
+  project: string,
+  inputs: Record<string, string>,
+): Promise<string> => {
+  const { data, error } = await client.POST('/api/plugins/install', {
+    body: { name, project, inputs },
+  });
+  if (error) throwErr(error);
+  return data!.instance_uuid;
 };
 
 // filterQuotaDims hides dimensions whose backing resource is
