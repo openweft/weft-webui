@@ -135,6 +135,16 @@ type Config struct {
 	// dashboard hitting the API from a known IP/hostname.
 	AllowedOrigins []string
 
+	// StateHistoryKeep arms snapshot rotation on every flushed state
+	// file (inventory, dns, security, scripts). Each successful flush
+	// renames the previous file to <path>.history/<RFC3339>.json
+	// before installing the new one, then keeps the N most-recent
+	// archives. Zero / negative disables history. Default 0 = off ;
+	// production setups set it to 20 (one snapshot per CRUD ≈ a day
+	// of undo history on a busy cluster). Operator-friendly recovery :
+	// `cp <path>.history/<ts>.json <path>` + restart.
+	StateHistoryKeep int
+
 	// AuditRotateBytes is the rotation threshold for AuditLogPath. The
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
@@ -228,6 +238,14 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
 	cfg.AllowedOrigins = splitCSV(os.Getenv("WEBUI_ALLOWED_ORIGINS"))
 
+	if v := os.Getenv("WEBUI_STATE_HISTORY_KEEP"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("WEBUI_STATE_HISTORY_KEEP: %w", err)
+		}
+		cfg.StateHistoryKeep = n
+	}
+
 	if v := os.Getenv("WEBUI_MAX_REQUEST_BODY_BYTES"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -317,6 +335,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	flagSet.StringVar(&cfg.ScriptsPath, "scripts-path", cfg.ScriptsPath, "JSON file the mock scripts catalogue is rehydrated from + flushed back to ; empty = in-memory only")
 	flagSet.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "max time the server spends draining in-flight requests on SIGTERM before the deadline forces exit")
 	flagSet.Int64Var(&cfg.MaxRequestBodyBytes, "max-request-body-bytes", cfg.MaxRequestBodyBytes, "cap on /api/* request body size in bytes (DoS guard) ; 0 = disabled")
+	flagSet.IntVar(&cfg.StateHistoryKeep, "state-history-keep", cfg.StateHistoryKeep, "snapshots per state file (inventory/dns/security/scripts) to keep under <path>.history/ for one-step undo ; 0 = disabled")
 	// --tls-min-version takes the human form "1.2" / "1.3" and runs
 	// through the same validator as the env var via a flag.Func shim.
 	flagSet.Func("tls-min-version", `TLS handshake floor : "1.2" (default) or "1.3"`, func(s string) error {
