@@ -67,6 +67,64 @@ The audit log writes through `ReadWritePaths=/var/lib/weft-webui`
 even with the strict filesystem hardening ; rotates at 100 MB by
 default (override `WEBUI_AUDIT_ROTATE_BYTES`).
 
+## Mock-layer state persistence
+
+While the live weft-network controller is in mid-rollout, the
+dashboard's inventory / DNS / security-group / scripts surface is
+served by an in-process mock that flushes to JSON files. Production
+deployments should opt-in to disk persistence so operator changes
+survive a restart :
+
+```
+WEBUI_INVENTORY_PATH=/var/lib/weft-webui/inventory.json
+WEBUI_DNS_PATH=/var/lib/weft-webui/dns.json
+WEBUI_SECURITY_PATH=/var/lib/weft-webui/security.json
+WEBUI_SCRIPTS_PATH=/var/lib/weft-webui/scripts.json
+WEBUI_STATE_HISTORY_KEEP=20
+```
+
+Every successful flush atomically renames the previous file under
+`<path>.history/<RFC3339>.json` and prunes the dir down to
+`WEBUI_STATE_HISTORY_KEEP` snapshots. One-step rollback :
+
+```sh
+sudo cp /var/lib/weft-webui/inventory.json.history/2026-06-02T12-37-42Z.json \
+        /var/lib/weft-webui/inventory.json
+sudo systemctl restart weft-webui
+```
+
+Once weft-network exposes the matching gRPC RPCs (`RegisterAZ`,
+`RegisterRack`, `RegisterHost`, …) the mock fallback goes inert and
+the source of truth shifts to etcd. The JSON layer stays around as
+the in-process cache so the dashboard works through brief controller
+outages.
+
+## Operational tunables
+
+| env                                | default        | purpose                                              |
+| ---------------------------------- | -------------- | ---------------------------------------------------- |
+| `WEBUI_MAX_REQUEST_BODY_BYTES`     | 1048576 (1 MiB)| Per-request body cap (DoS guard) on `/api/*`         |
+| `WEBUI_SHUTDOWN_TIMEOUT`           | 10s            | Grace window for in-flight handlers on SIGTERM       |
+| `WEBUI_TLS_MIN_VERSION`            | 1.2            | TLS handshake floor (`1.2` / `1.3`)                  |
+| `WEBUI_ALLOWED_ORIGINS`            | (empty)        | CSV of cross-origin clients allowed to mutate (terraform-provider-weft, ops dashboards) |
+| `WEBUI_STATE_HISTORY_KEEP`         | 0 (off)        | Snapshot retention per state file ; production = 20  |
+| `WEBUI_AUDIT_LOG_PATH`             | (empty=off)    | JSONL audit trail ; production = on                  |
+| `WEBUI_AUDIT_ROTATE_BYTES`         | 104857600      | Audit log rotation threshold (100 MiB)               |
+
+Every `WEBUI_*` env var has a matching `--*` flag for one-off
+overrides ; `weft-webui --help` enumerates them.
+
+## Health probes
+
+- `GET /api/healthz` — liveness (200 + `{ok:true}` while the process
+  is up). Wire to `k8s.io/livenessProbe`.
+- `GET /api/readyz` — readiness. 200 + `{ok:true,mode:live|mock}` in
+  the happy path ; 503 + `{ok:false,degraded:[…]}` when a configured
+  `WEBUI_*_PATH` state file isn't writable (probe creates a sibling
+  `.readyz-probe-*` dir and rolls it back). Take the replica out of
+  rotation on 503 — its mutations would succeed in memory but vanish
+  on restart.
+
 ## Reverse proxy & TLS
 
 The unit does **not** terminate TLS — front it with Caddy / nginx

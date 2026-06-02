@@ -27,6 +27,30 @@ Environment="WEBUI_WEFT_NETWORK_SOCKET=unix:///run/weft-network/weft-network.soc
 Environment="WEBUI_AUTH_MODE=oidc"
 Environment="WEBUI_AUDIT_LOG_PATH=/var/lib/weft-webui/audit.log"
 Environment="WEBUI_AUDIT_ROTATE_BYTES=104857600"
+
+# Mock-layer persistence : the dashboard rehydrates inventory / DNS /
+# security-group / scripts state from JSON files at boot and flushes
+# back atomically after every CRUD. Empty path = in-memory only
+# (operator changes lost on restart). Per-resource so an operator can
+# stage which files survive across deploys.
+Environment="WEBUI_INVENTORY_PATH=/var/lib/weft-webui/inventory.json"
+Environment="WEBUI_DNS_PATH=/var/lib/weft-webui/dns.json"
+Environment="WEBUI_SECURITY_PATH=/var/lib/weft-webui/security.json"
+Environment="WEBUI_SCRIPTS_PATH=/var/lib/weft-webui/scripts.json"
+
+# Snapshot rotation : every successful flush archives the prior file
+# under <path>.history/<RFC3339>.json and keeps the N most recent
+# for one-step rollback. Set 0 to disable.
+Environment="WEBUI_STATE_HISTORY_KEEP=20"
+
+# CSRF / DoS hardening defaults. The browser-origin check enforces
+# same-origin on every mutating /api/* request ; cross-origin tools
+# (terraform-provider-weft etc.) need their base URL whitelisted via
+# WEBUI_ALLOWED_ORIGINS=https://tf.example.com,https://ops.example.com.
+Environment="WEBUI_MAX_REQUEST_BODY_BYTES=1048576"
+Environment="WEBUI_SHUTDOWN_TIMEOUT=10s"
+Environment="WEBUI_TLS_MIN_VERSION=1.2"
+
 # OIDC settings — issuer/client/secret/redirect must come from
 # /etc/default/weft-webui ; this unit deliberately ships no
 # default for them.
