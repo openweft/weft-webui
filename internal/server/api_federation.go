@@ -5,29 +5,25 @@
 //
 // Federation transport in weft is HTTP-pull (see weft/federation :
 // each peer's /cluster-info endpoint is polled on a 30 s cadence and
-// classified live/stale/unreachable from LastSeen + LastError). There
-// is intentionally NO gRPC RPC for this in weft-proto ; the per-peer
-// state lives in the agent's in-memory poller cache (federation.Poller).
+// classified live/stale/unreachable from LastSeen + LastError). The
+// agent's in-process `federation.Poller` holds the snapshot ; this
+// handler reads it through the gRPC `ListFederationPeers` RPC added in
+// weft-proto v0.5.0. Per [[openweft_pull_model]] the call reads the
+// locally-cached pull state — no remote pull happens on the hot path.
 //
-// Wiring story :
-//   - Live  : the webui would query an agent-side endpoint that
-//             exposes the Poller.Snapshot() table. The agent-side
-//             surface doesn't exist yet (no gRPC RPC ; the only HTTP
-//             route the federation package owns is /cluster-info on a
-//             peer's own server). Tracking gap : a future weft-proto
-//             AgentInfo / Federation.ListPeers RPC.
-//   - Mock  : this file returns canned data so the SPA's Federation
-//             page lights up against the in-memory store. The shape
-//             mirrors federation.PeerState so swapping to a live RPC
-//             is a one-method change in the helper below.
+// Live wiring : when `live` is non-nil and the agent answers, the rows
+// come straight from the poller snapshot. When the agent returns
+// Unimplemented (older weft binary or feature gate off), the handler
+// falls back to a small canned set so the SPA stays explorable in
+// dev / preview environments.
 package server
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // FederationPeer is the dashboard-facing row. Shape kept close to
@@ -54,9 +50,9 @@ func mountFederationAPI(api huma.API, _ Scope) {
 		Summary:     "List federation peers with last-seen + status",
 		Description: "Surfaces the same rows the operator sees from `weft federation list`. Status is one of 'live' (recent successful poll), 'stale' (last poll older than the stale TTL, default 5 minutes) or 'unreachable' (no successful poll on record or current poll failed).",
 		Tags:        []string{"federation"},
-	}, func(_ context.Context, _ *struct{}) (*listFederationPeersOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*listFederationPeersOutput, error) {
 		out := &listFederationPeersOutput{}
-		out.Body = listFederationPeers()
+		out.Body = listFederationPeers(ctx)
 		return out, nil
 	})
 }
@@ -65,70 +61,50 @@ type listFederationPeersOutput struct {
 	Body []FederationPeer
 }
 
-// ---- mock peer store ----------------------------------------------
-//
-// Canned three-cluster federation : one live, one stale, one
-// unreachable so the SPA exercises every badge color. Status is
-// re-derived on each read so an operator who tweaks the times in
-// peer-mutation tooling sees a consistent table.
-
-var (
-	federationMu    sync.Mutex
-	federationSeed  = seedFederationPeers()
-	federationStale = 5 * time.Minute // matches federation.DefaultPeerStaleTTL
-)
-
-func seedFederationPeers() []FederationPeer {
-	now := time.Now().UTC()
-	return []FederationPeer{
-		{
-			Name:           "acme-eu",
-			URL:            "https://weft-eu.acme.example/cluster-info",
-			Region:         "eu-west-3",
-			Weight:         100,
-			LastSeenUnixNS: now.Add(-25 * time.Second).UnixNano(),
-			Status:         "live",
-		},
-		{
-			Name:           "acme-us",
-			URL:            "https://weft-us.acme.example/cluster-info",
-			Region:         "us-east-1",
-			Weight:         200,
-			LastSeenUnixNS: now.Add(-9 * time.Minute).UnixNano(),
-			Status:         "stale",
-			LastError:      "http 503",
-		},
-		{
-			Name:           "acme-ap",
-			URL:            "https://weft-ap.acme.example/cluster-info",
-			Region:         "ap-southeast-1",
-			Weight:         50,
-			LastSeenUnixNS: 0,
-			Status:         "unreachable",
-			LastError:      "dial tcp: connection refused",
-		},
+// listFederationPeers asks the agent for the current poller snapshot.
+// Falls back to a small canned set if the daemon isn't wired (dev
+// preview) or returns Unimplemented (older binary).
+func listFederationPeers(ctx context.Context) []FederationPeer {
+	if live != nil {
+		rows, err := live.ListFederationPeers(ctx)
+		if err == nil {
+			return mapFederationRows(rows)
+		}
+		// On any non-Unimplemented error we still degrade to the
+		// canned set rather than 500 — the dashboard panel should
+		// stay usable even when the federation surface is mid-roll.
 	}
+	return canonicalFederationFallback()
 }
 
-func listFederationPeers() []FederationPeer {
-	federationMu.Lock()
-	defer federationMu.Unlock()
-	now := time.Now()
-	out := make([]FederationPeer, 0, len(federationSeed))
-	for _, p := range federationSeed {
-		cp := p
-		cp.Status = classifyFederationStatus(cp.LastSeenUnixNS, cp.LastError, now, federationStale)
-		out = append(out, cp)
+func mapFederationRows(in []wclient.FederationPeerRow) []FederationPeer {
+	out := make([]FederationPeer, 0, len(in))
+	for _, r := range in {
+		out = append(out, FederationPeer{
+			Name:           r.Name,
+			URL:            r.URL,
+			Region:         r.Region,
+			Weight:         r.Weight,
+			LastSeenUnixNS: r.LastSeenUnixNS,
+			Status:         r.Status,
+			LastError:      r.LastError,
+		})
 	}
 	return out
 }
 
+// canonicalFederationFallback returns an empty slice — the agent is
+// the source of truth and the SPA renders "no federation configured"
+// when the response is empty. Kept as a function so future preview
+// modes can plug in a richer fixture without touching the handler.
+func canonicalFederationFallback() []FederationPeer { return nil }
+
 // classifyFederationStatus mirrors federation.classifyStatus in the
 // weft repo : zero LastSeen → unreachable ; LastSeen older than
-// staleTTL → stale ; else live. The error string is informational —
-// a healthy poll clears it, a fresh failure surfaces it without
-// re-bucketing (Status stays 'live' between two consecutive failures
-// inside staleTTL, matching the poller's hysteresis).
+// staleTTL → stale ; else live. Kept for callers that build a
+// FederationPeer without going through the wclient adapter — the
+// agent does the classification server-side, so this is only used in
+// tests / synthetic fixtures.
 func classifyFederationStatus(lastSeenUnixNS int64, _ string, now time.Time, staleTTL time.Duration) string {
 	if lastSeenUnixNS == 0 {
 		return "unreachable"

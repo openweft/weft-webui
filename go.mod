@@ -5,9 +5,9 @@ go 1.26
 require (
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
-	github.com/openweft/weft-client v0.1.1
+	github.com/openweft/weft-client v0.2.2
 	github.com/openweft/weft-network-proto v0.1.0
-	github.com/openweft/weft-proto v0.1.0
+	github.com/openweft/weft-proto v0.5.0
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/time v0.15.0

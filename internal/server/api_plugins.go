@@ -12,26 +12,28 @@
 // Mutations are scoped to ScopeAdmin — the user listener still
 // serves GET so the panel shows up read-only for plain users.
 //
-// The /catalogue + /installed + POST /install surface is the new
-// "weft plugin install" model (form-driven). The agent-side gRPC for
-// this does not yet exist in weft-proto ; canned data lives in
-// pluginCatalogueSeed / pluginInstanceStore below and feeds the SPA
-// directly. A future weft-agent RPC will replace those helpers
-// without changing the wire shape.
+// /catalogue + /installed + POST /install proxy into the agent's gRPC
+// surface (ListPluginCatalogue / ListInstalledPlugins / InstallPlugin
+// landed in weft-proto v0.5.0). When live is wired the rows come
+// straight from `pluginstore.Manager` ; when the agent returns
+// Unimplemented (older binary) or is unset, the handler falls back to
+// an empty list so the SPA renders "no plugins installed" rather than
+// dripping stale canned fixtures.
+//
+// /{id}/install / uninstall / enable / disable still drive the legacy
+// marketplace mock (Plugin struct in plugins.go) — that surface gets
+// its own agent-side wiring in a follow-up.
 
 package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // errBadRequest builds a sentinel-less plain error the install
@@ -64,9 +66,9 @@ func mountPluginsAPI(api huma.API, scope Scope) {
 		Summary:     "List installable plugin definitions with their input schema",
 		Description: "Each catalogue entry advertises the inputs the operator must provide on install — name, kind, type (string|number|bool|secret), required flag, default. The SPA renders a form from this schema and POSTs back to /api/plugins/install.",
 		Tags:        []string{"plugins"},
-	}, func(_ context.Context, _ *struct{}) (*listPluginCatalogueOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*listPluginCatalogueOutput, error) {
 		out := &listPluginCatalogueOutput{}
-		out.Body = listPluginCatalogue()
+		out.Body = listPluginCatalogue(ctx)
 		return out, nil
 	})
 
@@ -77,9 +79,9 @@ func mountPluginsAPI(api huma.API, scope Scope) {
 		Summary:     "List installed plugin instances",
 		Description: "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.",
 		Tags:        []string{"plugins"},
-	}, func(_ context.Context, _ *struct{}) (*listPluginInstancesOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*listPluginInstancesOutput, error) {
 		out := &listPluginInstancesOutput{}
-		out.Body = listPluginInstances()
+		out.Body = listPluginInstances(ctx)
 		return out, nil
 	})
 
@@ -92,22 +94,16 @@ func mountPluginsAPI(api huma.API, scope Scope) {
 		Method:        "POST",
 		Path:          "/api/plugins/install",
 		Summary:       "Install a plugin with form inputs — returns the new instance UUID",
-		Description:   "Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. Mock implementation : the instance is stored in-memory.",
+		Description:   "Body carries the catalogue plugin name, the target project, and a map of input values. The agent provisions the underlying resources (database / cache / topic set / …) and returns the instance UUID the operator can reference in future `weft plugin` commands. When the agent is wired the call drives `pluginstore.Manager.Install` ; otherwise the request fails with 400.",
 		Tags:          []string{"plugins"},
 		DefaultStatus: 200,
 	}, func(ctx context.Context, in *installPluginWithInputsInput) (*installPluginWithInputsOutput, error) {
-		email := ""
-		if u := auth.UserFromContext(ctx); u != nil {
-			email = u.Email
-			if email == "" {
-				email = u.Subject
-			}
-		}
-		inst, err := installPluginInstance(in.Body.Name, in.Body.Project, in.Body.Inputs, email)
+		_ = auth.UserFromContext(ctx) // identity audit handled upstream
+		uuid, err := installPluginInstance(ctx, in.Body.Name, in.Body.Project, in.Body.Inputs)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
-		return &installPluginWithInputsOutput{Body: installPluginResultBody{InstanceUUID: inst.InstanceUUID}}, nil
+		return &installPluginWithInputsOutput{Body: installPluginResultBody{InstanceUUID: uuid}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -277,158 +273,116 @@ type installPluginWithInputsOutput struct {
 	Body installPluginResultBody
 }
 
-// ---- mock catalogue + instance store -----------------------------
+// ---- live-agent adapters -----------------------------------------
 //
-// The store is in-memory ; restarts wipe the instance list. Live
-// wiring lives in weft-agent (see project_driver_plugins memory ;
-// the *-as-a-service plugin install path is the same go-plugin
-// mechanism that backs hypervisor drivers, just at a higher altitude).
+// listPluginCatalogue / listPluginInstances / installPluginInstance
+// route through the live gRPC client when wired. Without a live
+// agent the read endpoints return empty slices ; the install endpoint
+// returns a 400 — the dashboard's install drawer is non-functional
+// in detached / preview mode by design (no resources to provision).
 
-var (
-	pluginInstancesMu sync.Mutex
-	pluginInstances   = seedPluginInstances()
-)
-
-func pluginCatalogueSeed() []PluginCatalogueEntry {
-	return []PluginCatalogueEntry{
-		{
-			Name:        "vitess-dbaas",
-			Kind:        "database",
-			Description: "Sharded MySQL via a Vitess cluster. Provisions a keyspace per instance and exposes a MySQL-compatible endpoint.",
-			Inputs: []PluginInput{
-				{Name: "keyspace", Label: "Keyspace name", Type: "string", Required: true, Description: "Logical database identifier ; becomes the MySQL schema name."},
-				{Name: "shards", Label: "Shard count", Type: "number", Required: true, Default: "2", Description: "How many shards to split the keyspace across."},
-				{Name: "replication_password", Label: "Replication password", Type: "secret", Required: true, Description: "Used between primary and replicas ; never displayed back to the operator."},
-				{Name: "enable_backups", Label: "Enable nightly backups", Type: "bool", Required: false, Default: "true"},
-			},
-		},
-		{
-			Name:        "valkey-cache",
-			Kind:        "cache",
-			Description: "Managed Valkey (BSD-licensed Redis fork). One instance maps to one isolated Valkey cluster.",
-			Inputs: []PluginInput{
-				{Name: "memory_mb", Label: "Memory (MiB)", Type: "number", Required: true, Default: "512"},
-				{Name: "persistence", Label: "Enable persistence (AOF)", Type: "bool", Required: false, Default: "false", Description: "Disable for pure-cache workloads ; enable when you need restart-survival."},
-				{Name: "auth_password", Label: "AUTH password", Type: "secret", Required: false, Description: "Optional — leave empty to disable client authentication (NOT recommended outside private networks)."},
-			},
-		},
-		{
-			Name:        "kafka-streaming",
-			Kind:        "streaming",
-			Description: "Event streaming via Apache Kafka. Provisions a fresh cluster per instance with the requested broker count.",
-			Inputs: []PluginInput{
-				{Name: "brokers", Label: "Broker count", Type: "number", Required: true, Default: "3"},
-				{Name: "retention_hours", Label: "Default retention (hours)", Type: "number", Required: false, Default: "168"},
-				{Name: "tls_keystore", Label: "TLS keystore (PEM)", Type: "secret", Required: false, Description: "Optional client-cert keystore for mTLS between brokers and clients."},
-			},
-		},
-		{
-			Name:        "clickhouse-analytics",
-			Kind:        "analytics",
-			Description: "Column-oriented analytics database. Each instance is a single replicated ClickHouse cluster.",
-			Inputs: []PluginInput{
-				{Name: "cluster_name", Label: "Cluster name", Type: "string", Required: true, Description: "Used as the ClickHouse on-cluster identifier."},
-				{Name: "replicas", Label: "Replicas", Type: "number", Required: true, Default: "2"},
-				{Name: "admin_password", Label: "Admin password", Type: "secret", Required: true},
-			},
-		},
+func listPluginCatalogue(ctx context.Context) []PluginCatalogueEntry {
+	if live == nil {
+		return nil
 	}
-}
-
-func seedPluginInstances() map[string]*PluginInstance {
-	return map[string]*PluginInstance{
-		"inst-7f2e": {
-			Name:         "vitess-dbaas",
-			InstanceUUID: "inst-7f2e",
-			Project:      "billing",
-			VMs:          []string{"vm-vitess-primary-0", "vm-vitess-replica-0", "vm-vitess-replica-1"},
-			InstalledAt:  "2026-05-12T14:22:00Z",
-			InstalledBy:  "alice@weft.local",
-			Status:       "running",
-		},
-		"inst-c14a": {
-			Name:         "valkey-cache",
-			InstanceUUID: "inst-c14a",
-			Project:      "platform",
-			VMs:          []string{"vm-valkey-0"},
-			InstalledAt:  "2026-05-30T09:00:00Z",
-			InstalledBy:  "bob@weft.local",
-			Status:       "provisioning",
-		},
+	rows, err := live.ListPluginCatalogue(ctx)
+	if err != nil {
+		return nil
 	}
+	return mapCatalogueRows(rows)
 }
 
-func listPluginCatalogue() []PluginCatalogueEntry {
-	return pluginCatalogueSeed()
-}
-
-func findCatalogueEntry(name string) (PluginCatalogueEntry, bool) {
-	for _, e := range pluginCatalogueSeed() {
-		if e.Name == name {
-			return e, true
+func mapCatalogueRows(in []wclient.PluginCatalogueRow) []PluginCatalogueEntry {
+	out := make([]PluginCatalogueEntry, 0, len(in))
+	for _, r := range in {
+		entry := PluginCatalogueEntry{
+			Name:        r.Name,
+			Kind:        r.Kind,
+			Description: r.Description,
+			Inputs:      make([]PluginInput, 0, len(r.Inputs)),
 		}
-	}
-	return PluginCatalogueEntry{}, false
-}
-
-func listPluginInstances() []PluginInstance {
-	pluginInstancesMu.Lock()
-	defer pluginInstancesMu.Unlock()
-	out := make([]PluginInstance, 0, len(pluginInstances))
-	for _, inst := range pluginInstances {
-		out = append(out, *inst)
+		for _, inp := range r.Inputs {
+			entry.Inputs = append(entry.Inputs, PluginInput{
+				Name:        inp.Name,
+				Label:       inp.Name, // manifest schema doesn't carry a label ; mirror the name
+				Type:        mapPluginInputType(inp.Type, inp.Secret),
+				Required:    inp.Required,
+				Default:     inp.Default,
+				Description: inp.Help,
+			})
+		}
+		out = append(out, entry)
 	}
 	return out
 }
 
-// installPluginInstance validates the body against the catalogue
-// schema, allocates an instance UUID, and stores the new row. Errors
-// surface as plain errors ; the huma handler maps them to 400.
-func installPluginInstance(name, project string, inputs map[string]string, email string) (*PluginInstance, error) {
-	name = strings.TrimSpace(name)
-	project = strings.TrimSpace(project)
-	if name == "" {
-		return nil, errBadRequest("plugin name is required")
+// mapPluginInputType folds the manifest's flat type column +
+// `secret = true` flag into the SPA's enum (string|number|bool|secret).
+// Secret beats the declared type — a secret string still renders
+// <input type=password>.
+func mapPluginInputType(declared string, secret bool) string {
+	if secret {
+		return "secret"
 	}
-	if project == "" {
-		return nil, errBadRequest("project is required")
+	switch declared {
+	case "int", "number":
+		return "number"
+	case "bool", "boolean":
+		return "bool"
+	case "", "string":
+		return "string"
+	default:
+		return declared
 	}
-	entry, ok := findCatalogueEntry(name)
-	if !ok {
-		return nil, errBadRequest("unknown plugin: " + name)
-	}
-	// Validate every required input is present and non-empty.
-	for _, in := range entry.Inputs {
-		if !in.Required {
-			continue
-		}
-		v, ok := inputs[in.Name]
-		if !ok || strings.TrimSpace(v) == "" {
-			return nil, errBadRequest("required input missing: " + in.Name)
-		}
-	}
-	pluginInstancesMu.Lock()
-	defer pluginInstancesMu.Unlock()
-	inst := &PluginInstance{
-		Name:         name,
-		InstanceUUID: "inst-" + randomHex(4),
-		Project:      project,
-		VMs:          nil,
-		InstalledAt:  time.Now().UTC().Format(time.RFC3339),
-		InstalledBy:  email,
-		Status:       "provisioning",
-	}
-	pluginInstances[inst.InstanceUUID] = inst
-	return inst, nil
 }
 
-func randomHex(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		// crypto/rand failure is unrecoverable at this altitude ; fall
-		// back to a time-derived suffix so the install still goes
-		// through with a unique-enough id.
-		return hex.EncodeToString([]byte(time.Now().UTC().Format("150405")))
+func listPluginInstances(ctx context.Context) []PluginInstance {
+	if live == nil {
+		return nil
 	}
-	return hex.EncodeToString(b)
+	rows, err := live.ListInstalledPlugins(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make([]PluginInstance, 0, len(rows))
+	for _, r := range rows {
+		installedAt := ""
+		if r.InstalledAtUnixNS > 0 {
+			installedAt = time.Unix(0, r.InstalledAtUnixNS).UTC().Format(time.RFC3339)
+		}
+		status := r.Status
+		if status == "" {
+			status = "running"
+		}
+		out = append(out, PluginInstance{
+			Name:         r.Name,
+			InstanceUUID: r.InstanceUUID,
+			Project:      r.Project,
+			VMs:          append([]string(nil), r.VMs...),
+			InstalledAt:  installedAt,
+			Status:       status,
+		})
+	}
+	return out
+}
+
+// installPluginInstance proxies into the agent's Install RPC. Returns
+// the freshly-minted (or re-used, on idempotent retry) instance UUID.
+// Reports the operator-facing error verbatim — pluginstore's
+// ValidateInputs / Install already produce 400-ready messages.
+func installPluginInstance(ctx context.Context, name, project string, inputs map[string]string) (string, error) {
+	if name == "" {
+		return "", errBadRequest("plugin name is required")
+	}
+	if project == "" {
+		return "", errBadRequest("project is required")
+	}
+	if live == nil {
+		return "", errBadRequest("plugin install requires a wired weft-agent")
+	}
+	uuid, err := live.InstallPlugin(ctx, name, project, inputs)
+	if err != nil {
+		return "", err
+	}
+	return uuid, nil
 }
