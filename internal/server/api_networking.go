@@ -1025,13 +1025,23 @@ func mountDNSAPI(api huma.API) {
 }
 
 // ---- Scheduling rules --------------------------------------------
+//
+// Per the openweft pull-model (see memory : openweft-pull-model),
+// weft-agent owns the SchedulingRule state ; weft-network observes
+// changes through its reconcile loop. The mutation handlers therefore
+// prefer `live` (weft-agent) when wired, fall back to `liveNet`
+// (weft-network) on Unimplemented for staged rollouts, then to the
+// in-memory mock store. GET endpoints keep reading from liveNet for
+// the enriched compliance view ; a follow-up will merge them with
+// `live.ListSchedulingRules` + `scheduling-rule.compliant` SSE events.
 
 func mountSchedulingRulesAPI(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-scheduling-rule",
 		Method:        "POST",
 		Path:          "/api/scheduling-rules",
-		Summary:       "Create a scheduling rule (live-first ; mem fallback on Unimplemented)",
+		Summary:       "Create a scheduling rule (live-first via weft-agent ; liveNet/mem fallback on Unimplemented)",
+		Description:   "Routes through `live.CreateSchedulingRule` (weft-agent owns the state per the pull-model) ; on Unimplemented falls back to `liveNet.CreateSchedulingRule` (weft-network) then to the in-memory mock so the affordance works during staged rollouts. Mock store is mirrored on success so /api/resources/scheduling-rules sees the new rule immediately.",
 		Tags:          []string{"scheduling-rules"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createSchedulingRuleInput) (*createSchedRuleOutput, error) {
@@ -1039,12 +1049,47 @@ func mountSchedulingRulesAPI(api huma.API) {
 		if project == "" {
 			project = resolveProjectOrPlatform(ctx, "")
 		}
+		mirror := func(uuid string) {
+			rule := &SchedulingRule{
+				UUID: uuid,
+				Name: in.Body.Name, Count: in.Body.Count, Selector: in.Body.Selector,
+				AZ: in.Body.AZ, Rack: in.Body.Rack, Host: in.Body.Host,
+				Project: project,
+			}
+			// Best-effort : if the name already exists in the mock the
+			// create returns conflict ; the live write was authoritative
+			// regardless, so swallow it.
+			_ = schedulingDB.create(rule)
+		}
+		// Live-first : weft-agent is the source of truth for the rule
+		// catalogue. The proto's CreateSchedulingRule has no project
+		// field (rules are cluster-wide) ; antiAffinity carries the
+		// AZ/Rack/Host compact form.
+		if live != nil {
+			uuid, _, err := live.CreateSchedulingRule(ctx, project, in.Body.Name, in.Body.Selector,
+				int32(in.Body.Count), composeAntiAffinity(in.Body.AZ, in.Body.Rack, in.Body.Host))
+			if err == nil {
+				mirror(uuid)
+				Audit(ctx, auditLogger, "scheduling-rule.create", "scheduling-rule", uuid, "", nil,
+					map[string]string{"name": in.Body.Name, "project": project})
+				userActionCtx(ctx, "scheduling-rule.create")
+				return &createSchedRuleOutput{Body: CreateSchedRuleResp{
+					Name: in.Body.Name, Project: project,
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		if liveNet != nil {
-			_, err := liveNet.CreateSchedulingRule(ctx, wclient.CreateSchedulingRuleNetOpts{
+			uuid, err := liveNet.CreateSchedulingRule(ctx, wclient.CreateSchedulingRuleNetOpts{
 				Project: project, Name: in.Body.Name, Count: int32(in.Body.Count),
 				Selector: in.Body.Selector, AZ: in.Body.AZ, Rack: in.Body.Rack, Host: in.Body.Host,
 			})
 			if err == nil {
+				mirror(uuid)
+				Audit(ctx, auditLogger, "scheduling-rule.create", "scheduling-rule", uuid, "", nil,
+					map[string]string{"name": in.Body.Name, "project": project, "mode": "net"})
 				userActionCtx(ctx, "scheduling-rule.create")
 				return &createSchedRuleOutput{Body: CreateSchedRuleResp{
 					Name: in.Body.Name, Project: project,
@@ -1062,6 +1107,8 @@ func mountSchedulingRulesAPI(api huma.API) {
 		if err := schedulingDB.create(rule); err != nil {
 			return nil, hideHTTPErr(err)
 		}
+		Audit(ctx, auditLogger, "scheduling-rule.create", "scheduling-rule", rule.UUID, "", nil,
+			map[string]string{"name": rule.Name, "project": rule.Project, "mode": "mock"})
 		userActionCtx(ctx, "scheduling-rule.create")
 		return &createSchedRuleOutput{Body: CreateSchedRuleResp{
 			Name: rule.Name, Project: rule.Project,
@@ -1072,42 +1119,158 @@ func mountSchedulingRulesAPI(api huma.API) {
 		OperationID:   "delete-scheduling-rule",
 		Method:        "DELETE",
 		Path:          "/api/scheduling-rules/{name}",
-		Summary:       "Delete a scheduling rule (mem store)",
+		Summary:       "Delete a scheduling rule (live-first via weft-agent ; liveNet/mem fallback)",
+		Description:   "Resolves name → uuid via the mock catalogue, then routes through `live.DeleteSchedulingRule` (weft-agent). On Unimplemented falls back to `liveNet.DeleteSchedulingRule` (weft-network) then to the in-memory mock so the affordance keeps working during staged rollouts.",
 		Tags:          []string{"scheduling-rules"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *struct {
 		Name string `path:"name" minLength:"1" maxLength:"128"`
 	}) (*struct{}, error) {
+		uuid, _ := schedulingDB.ruleUUID(in.Name)
+		if live != nil && uuid != "" {
+			err := live.DeleteSchedulingRule(ctx, uuid)
+			if err == nil {
+				_ = schedulingDB.delete(in.Name)
+				Audit(ctx, auditLogger, "scheduling-rule.delete", "scheduling-rule", uuid, "", nil,
+					map[string]string{"name": in.Name})
+				userActionCtx(ctx, "scheduling-rule.delete")
+				return nil, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if liveNet != nil && uuid != "" {
+			err := liveNet.DeleteSchedulingRule(ctx, uuid)
+			if err == nil {
+				_ = schedulingDB.delete(in.Name)
+				Audit(ctx, auditLogger, "scheduling-rule.delete", "scheduling-rule", uuid, "", nil,
+					map[string]string{"name": in.Name, "mode": "net"})
+				userActionCtx(ctx, "scheduling-rule.delete")
+				return nil, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("net: " + err.Error())
+			}
+		}
 		if err := schedulingDB.delete(in.Name); err != nil {
 			return nil, hideHTTPErr(err)
 		}
+		Audit(ctx, auditLogger, "scheduling-rule.delete", "scheduling-rule", uuid, "", nil,
+			map[string]string{"name": in.Name, "mode": "mock"})
 		userActionCtx(ctx, "scheduling-rule.delete")
 		return nil, nil
 	})
 
 	// PATCH /api/scheduling-rules/{name} — partial update of placement
-	// constraints, replica count, selector, project. weft-network has no
-	// UpdateSchedulingRule RPC yet ; the path is mem-store only so the
-	// affordance keeps working while the daemon catches up. Each field is
-	// optional ; "" explicitly clears an axis back to `any`.
+	// constraints, replica count, selector, project. Live-first via
+	// `live.UpdateSchedulingRule` (weft-agent owns the state) ; on
+	// Unimplemented or absence falls through to the in-memory store.
+	// liveNet (weft-network) has no Update RPC of its own, so it's not
+	// part of the fallback chain here. Each field is optional ; ""
+	// explicitly clears an axis back to `any`.
 	huma.Register(api, huma.Operation{
 		OperationID:   "update-scheduling-rule",
 		Method:        "PATCH",
 		Path:          "/api/scheduling-rules/{name}",
-		Summary:       "Update placement / count / selector of a scheduling rule",
-		Description:   "Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. The live weft-network has no Update RPC yet, so this targets the in-memory store ; the SPA can mutate immediately and the operator sees the refresh.",
+		Summary:       "Update placement / count / selector of a scheduling rule (live-first via weft-agent)",
+		Description:   "Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. Live-first against `live.UpdateSchedulingRule` (weft-agent owns the state) ; the mock store is mirrored on success so the row projection stays in sync. On Unimplemented falls back to the mock store directly.",
 		Tags:          []string{"scheduling-rules"},
 		DefaultStatus: 200,
 	}, func(ctx context.Context, in *updateSchedulingRuleInput) (*createSchedRuleOutput, error) {
+		uuid, _ := schedulingDB.ruleUUID(in.Name)
+		if live != nil && uuid != "" {
+			// Resolve "keep current" semantics : the proto uses
+			// targetCount == -1 to mean "keep" ; "" selectors / anti-
+			// affinity mean "keep" too. The mock store's patch shape
+			// uses nil pointers for "not provided" — translate.
+			count := int32(-1)
+			if in.Body.Count != nil {
+				count = int32(*in.Body.Count)
+			}
+			selector := ""
+			if in.Body.Selector != nil {
+				selector = *in.Body.Selector
+			}
+			anti := ""
+			// Build a fresh compact form only if any axis was patched ;
+			// otherwise leave empty to mean "keep". Existing axes that
+			// the caller didn't touch are read from the mock so the
+			// new wire form represents the post-patch desired state.
+			if in.Body.AZ != nil || in.Body.Rack != nil || in.Body.Host != nil {
+				az, rack, host := "", "", ""
+				if rule, ok := snapshotRule(in.Name); ok {
+					az, rack, host = rule.AZ, rule.Rack, rule.Host
+				}
+				if in.Body.AZ != nil {
+					az = *in.Body.AZ
+				}
+				if in.Body.Rack != nil {
+					rack = *in.Body.Rack
+				}
+				if in.Body.Host != nil {
+					host = *in.Body.Host
+				}
+				anti = composeAntiAffinity(az, rack, host)
+			}
+			err := live.UpdateSchedulingRule(ctx, uuid, in.Name, selector, count, anti)
+			if err == nil {
+				r, perr := schedulingDB.update(in.Name, in.Body)
+				if perr != nil {
+					return nil, hideHTTPErr(perr)
+				}
+				Audit(ctx, auditLogger, "scheduling-rule.update", "scheduling-rule", uuid, "", nil,
+					map[string]string{"name": in.Name})
+				userActionCtx(ctx, "scheduling-rule.update")
+				return &createSchedRuleOutput{Body: CreateSchedRuleResp{
+					Name: r.Name, Project: r.Project,
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		r, err := schedulingDB.update(in.Name, in.Body)
 		if err != nil {
 			return nil, hideHTTPErr(err)
 		}
+		Audit(ctx, auditLogger, "scheduling-rule.update", "scheduling-rule", uuid, "", nil,
+			map[string]string{"name": in.Name, "mode": "mock"})
 		userActionCtx(ctx, "scheduling-rule.update")
 		return &createSchedRuleOutput{Body: CreateSchedRuleResp{
 			Name: r.Name, Project: r.Project,
 		}}, nil
 	})
+}
+
+// composeAntiAffinity builds the compact "az=…, rack=…, host=…" wire
+// form the weft-agent proto expects for the antiAffinity field.
+// Absent axes drop out so a fully-unconstrained rule serialises as "".
+func composeAntiAffinity(az, rack, host string) string {
+	parts := make([]string, 0, 3)
+	if az != "" {
+		parts = append(parts, "az="+az)
+	}
+	if rack != "" {
+		parts = append(parts, "rack="+rack)
+	}
+	if host != "" {
+		parts = append(parts, "host="+host)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// snapshotRule returns a copy of the mock-store rule under read-lock,
+// so callers can read AZ/Rack/Host without racing against subsequent
+// mutations. ok=false when the name isn't in the store.
+func snapshotRule(name string) (SchedulingRule, bool) {
+	schedulingDB.mu.RLock()
+	defer schedulingDB.mu.RUnlock()
+	r, ok := schedulingDB.rules[name]
+	if !ok {
+		return SchedulingRule{}, false
+	}
+	return *r, true
 }
 
 // ---- Network topology --------------------------------------------
