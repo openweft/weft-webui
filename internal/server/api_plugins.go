@@ -283,13 +283,189 @@ type installPluginWithInputsOutput struct {
 
 func listPluginCatalogue(ctx context.Context) []PluginCatalogueEntry {
 	if live == nil {
-		return nil
+		return staticPluginCatalogue()
 	}
 	rows, err := live.ListPluginCatalogue(ctx)
 	if err != nil {
-		return nil
+		// Live agent unreachable / Unimplemented (older binary) :
+		// fall back to the static catalogue so the SPA still renders
+		// the install drawer in preview / detached mode.
+		return staticPluginCatalogue()
 	}
-	return mapCatalogueRows(rows)
+	mapped := mapCatalogueRows(rows)
+	if len(mapped) == 0 {
+		// Empty live response : the agent answered but the cluster
+		// hasn't loaded any plugins yet. Use the static list as a
+		// preview ; the install drawer will still 400 because the
+		// install endpoint hits the live RPC.
+		return staticPluginCatalogue()
+	}
+	return mapped
+}
+
+// staticPluginCatalogue mirrors the HCL plugins shipped under
+// `weft/catalogue/` so the superadmin dashboard's Plugins panel
+// still renders entries when the live weft-agent isn't wired (dev
+// mode, preview, or a freshly-installed agent that hasn't loaded
+// the catalogue yet).
+//
+// Keep this list in lock-step with `weft/catalogue/*/plugin.hcl`.
+// The inputs surfaced here are the minimal set operators care
+// about for the install drawer ; the full schema comes from the
+// live agent's `pluginstore.Manager` when wired. The install
+// drawer always POSTs into the live RPC, so an unconnected agent
+// surfaces "plugin install requires a wired weft-agent" — the
+// catalogue still being visible is the point.
+func staticPluginCatalogue() []PluginCatalogueEntry {
+	return []PluginCatalogueEntry{
+		{
+			Name:        "caddy-edge",
+			Kind:        "edge-proxy",
+			Description: "Three Caddy replicas at the cluster edge for north-south L7 ingress, ACME-managed TLS, one per DC.",
+			Inputs: []PluginInput{
+				{Name: "domains", Label: "Domains", Type: "string", Required: true, Description: "Comma-separated FQDNs Caddy will serve + provision TLS for."},
+				{Name: "acme_email", Label: "ACME contact", Type: "string", Required: true, Description: "Let's Encrypt account email."},
+			},
+		},
+		{
+			Name:        "github-runners-ha",
+			Kind:        "runner-farm",
+			Description: "Three GitHub Actions runner replicas with hard anti-affinity across DCs.",
+			Inputs: []PluginInput{
+				{Name: "github_pat", Label: "GitHub PAT", Type: "secret", Required: true, Description: "PAT with admin:org (org runners) or repo:admin (repo runners)."},
+				{Name: "github_url", Label: "Org or repo URL", Type: "string", Required: true, Description: "https://github.com/<org> or https://github.com/<org>/<repo>."},
+				{Name: "labels", Label: "Runner labels", Type: "string", Default: "weft,self-hosted,linux,x64", Description: "Comma-separated runner labels."},
+				{Name: "replicas", Label: "Replicas", Type: "number", Default: "3", Description: "Number of runner replicas (default 3, one per DC)."},
+			},
+		},
+		{
+			Name:        "gitlab-runners-ha",
+			Kind:        "runner-farm",
+			Description: "Three GitLab CI runner replicas with hard anti-affinity across DCs.",
+			Inputs: []PluginInput{
+				{Name: "gitlab_url", Label: "GitLab URL", Type: "string", Default: "https://gitlab.com", Description: "GitLab instance base URL."},
+				{Name: "registration_token", Label: "Registration token", Type: "secret", Required: true, Description: "Runner registration token from GitLab admin or group settings."},
+				{Name: "description", Label: "Description", Type: "string", Default: "weft microVM runner", Description: "Description shown in the GitLab runner UI."},
+			},
+		},
+		{
+			Name:        "forgejo-runners-ha",
+			Kind:        "runner-farm",
+			Description: "Three Forgejo (act_runner) replicas with hard anti-affinity across DCs.",
+			Inputs: []PluginInput{
+				{Name: "forgejo_url", Label: "Forgejo URL", Type: "string", Required: true, Description: "Forgejo base URL (e.g. https://codeberg.org or self-hosted instance)."},
+				{Name: "registration_token", Label: "Registration token", Type: "secret", Required: true, Description: "Runner token minted in Forgejo admin → Actions → Runners."},
+			},
+		},
+		{
+			Name:        "forgejo-ha",
+			Kind:        "git-forge",
+			Description: "Three Forgejo Git-forge replicas behind Caddy with shared Postgres + S3 storage, one per DC. Managed by the weft-ha-forgejo Go agent (install bootstrap, secret sync, health probe).",
+			Inputs: []PluginInput{
+				{Name: "domain", Label: "Public domain", Type: "string", Required: true, Description: "Public hostname Forgejo serves (e.g. git.example.com). Must resolve to the Caddy edge listener."},
+				{Name: "admin_username", Label: "Admin username", Type: "string", Required: true, Description: "Bootstrap admin username."},
+				{Name: "admin_password", Label: "Admin password", Type: "secret", Required: true, Description: "Bootstrap admin password. Rotate via the web UI after install."},
+				{Name: "admin_email", Label: "Admin email", Type: "string", Required: true, Description: "Bootstrap admin email."},
+				{Name: "db_host", Label: "Catalog DB host", Type: "string", Required: true, Description: "Catalog Postgres host (typically `postgres-ha-<short>.weft`)."},
+				{Name: "db_password", Label: "Catalog DB password", Type: "secret", Required: true, Description: "Catalog Postgres password for the `forgejo` user."},
+				{Name: "s3_endpoint", Label: "S3 endpoint", Type: "string", Description: "Object storage endpoint for attachments + LFS (e.g. https://versitygw-ha-<short>.weft:7070). Empty falls back to local disk (NOT HA)."},
+			},
+		},
+		{
+			Name:        "irods-ha",
+			Kind:        "data-management",
+			Description: "Three iRODS catalog providers on a shared Postgres catalog, one per DC. Managed by the weft-ha-irods Go agent (zone bootstrap, key sync, health probe).",
+			Inputs: []PluginInput{
+				{Name: "zone_name", Label: "Zone name", Type: "string", Default: "weftZone", Description: "iRODS zone (namespace clients address). Immutable once bootstrapped."},
+				{Name: "admin_password", Label: "rodsadmin password", Type: "secret", Required: true, Description: "Bootstrap password for the rodsadmin user. Rotate via `iadmin moduser` once the zone is live."},
+				{Name: "icat_db_host", Label: "Catalog DB host", Type: "string", Required: true, Description: "Catalog Postgres host (typically `postgres-ha-<short>.weft`). Postgres must already be installed."},
+				{Name: "icat_db_password", Label: "Catalog DB password", Type: "secret", Required: true, Description: "Catalog Postgres password for the `irods` user."},
+			},
+		},
+		{
+			Name:        "postgres-ha",
+			Kind:        "database",
+			Description: "Three-member PostgreSQL cluster managed by weft-ha-postgresql (etcd DCS + VMFencer + Caddy routing).",
+			Inputs: []PluginInput{
+				{Name: "superuser_password", Label: "Superuser password", Type: "secret", Required: true, Description: "Password for the `postgres` superuser."},
+				{Name: "replication_password", Label: "Replication password", Type: "secret", Required: true, Description: "Password used by replicas to stream WAL from the primary."},
+				{Name: "database_name", Label: "Initial database", Type: "string", Default: "app", Description: "Initial database created on bootstrap."},
+				{Name: "synchronous_commit", Label: "synchronous_commit", Type: "string", Default: "on", Description: "`on` waits for one off-DC replica ack (RPO 0 on DC outage) ; `off` = async."},
+			},
+		},
+		{
+			Name:        "redis-ha",
+			Kind:        "cache",
+			Description: "Three-node Redis with Sentinel sidecars for automatic failover, one per DC.",
+			Inputs: []PluginInput{
+				{Name: "auth_password", Label: "Auth password", Type: "secret", Required: true, Description: "Redis AUTH password — required even for in-cluster clients."},
+				{Name: "max_memory_mb", Label: "Max memory per node (MB)", Type: "number", Default: "2048", Description: "Per-node Redis maxmemory."},
+			},
+		},
+		{
+			Name:        "versitygw-ha",
+			Kind:        "object-storage",
+			Description: "Three-node versitygw (Apache-2.0) S3 gateway, one per DC ; durability via weft-block-replicated volumes.",
+			Inputs: []PluginInput{
+				{Name: "root_access_key", Label: "Root access key", Type: "string", Required: true, Description: "S3 access-key-id used by the first `aws configure`."},
+				{Name: "root_secret_key", Label: "Root secret key", Type: "secret", Required: true, Description: "S3 secret-access-key. Stored in the cluster secret store."},
+				{Name: "backend", Label: "Backend", Type: "string", Default: "block", Description: "`block` = per-replica weft-block volumes ; `cubefs` = shared CubeFS mount."},
+				{Name: "volumes_per_node", Label: "Volumes per node", Type: "number", Default: "4", Description: "Block volumes per replica when backend=block."},
+			},
+		},
+		{
+			Name:        "loki-ha",
+			Kind:        "logs",
+			Description: "Three Loki replicas in simple-scalable mode, one per DC, with S3 chunk + index storage.",
+			Inputs: []PluginInput{
+				{Name: "s3_endpoint", Label: "S3 endpoint", Type: "string", Required: true, Description: "S3 endpoint URL (e.g. https://versitygw-ha-<short>.weft:7070)."},
+				{Name: "s3_access_key", Label: "S3 access key", Type: "string", Required: true, Description: "S3 access-key-id."},
+				{Name: "s3_secret_key", Label: "S3 secret key", Type: "secret", Required: true, Description: "S3 secret-access-key."},
+				{Name: "s3_bucket", Label: "S3 bucket", Type: "string", Default: "loki", Description: "Bucket name for chunk + index storage."},
+				{Name: "retention_days", Label: "Retention (days)", Type: "number", Default: "30", Description: "Log retention before chunks are dropped."},
+			},
+		},
+		{
+			Name:        "prometheus-ha",
+			Kind:        "metrics",
+			Description: "Three federated Prometheus replicas, one per DC, with TSDB persistence and optional remote_write.",
+			Inputs: []PluginInput{
+				{Name: "retention_days", Label: "Retention (days)", Type: "number", Default: "15", Description: "Local TSDB retention."},
+				{Name: "remote_write_url", Label: "remote_write URL", Type: "string", Description: "Optional Cortex/Mimir/Thanos remote-write endpoint for long-term storage."},
+			},
+		},
+		{
+			Name:        "grafana-ha",
+			Kind:        "dashboards",
+			Description: "Three Grafana replicas behind Caddy with sticky sessions, OIDC auth, postgres-ha-backed state.",
+			Inputs: []PluginInput{
+				{Name: "oidc_issuer", Label: "OIDC issuer", Type: "string", Required: true, Description: "OIDC discovery URL (e.g. https://login.example.com/realms/weft)."},
+				{Name: "oidc_client_id", Label: "OIDC client ID", Type: "string", Required: true, Description: "OAuth2 client ID registered with the IdP."},
+				{Name: "oidc_client_secret", Label: "OIDC client secret", Type: "secret", Required: true, Description: "OAuth2 client secret."},
+				{Name: "admin_password", Label: "Bootstrap admin password", Type: "secret", Required: true, Description: "Initial admin user password (rotate via Grafana after first login)."},
+			},
+		},
+		{
+			Name:        "vault-ha",
+			Kind:        "secrets",
+			Description: "Three Vault members with Raft HA and KMS auto-unseal, one per DC.",
+			Inputs: []PluginInput{
+				{Name: "kms_provider", Label: "KMS provider", Type: "string", Default: "awskms", Description: "Auto-unseal provider : awskms / gcpckms / azurekeyvault / transit."},
+				{Name: "kms_key_id", Label: "KMS key ID", Type: "string", Required: true, Description: "Provider-specific key identifier (ARN / resource name)."},
+			},
+		},
+		{
+			Name:        "jupyterhub-ha",
+			Kind:        "portal",
+			Description: "JupyterHub HA portal — per-user microVM notebooks, 3-DC controllers, OIDC auth.",
+			Inputs: []PluginInput{
+				{Name: "oidc_issuer", Label: "OIDC issuer", Type: "string", Required: true, Description: "OIDC discovery URL."},
+				{Name: "oidc_client_id", Label: "OIDC client ID", Type: "string", Required: true},
+				{Name: "oidc_client_secret", Label: "OIDC client secret", Type: "secret", Required: true},
+				{Name: "notebook_image", Label: "Notebook image", Type: "string", Default: "ghcr.io/openweft/jupyter-base:v0.1.0", Description: "Per-user notebook microVM image."},
+			},
+		},
+	}
 }
 
 func mapCatalogueRows(in []wclient.PluginCatalogueRow) []PluginCatalogueEntry {
