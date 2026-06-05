@@ -25,6 +25,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 func mountVolumeMetadataAPI(api huma.API, scope Scope) {
@@ -118,7 +119,7 @@ func mountVolumeMetadataAPI(api huma.API, scope Scope) {
 		Method:        "POST",
 		Path:          "/api/volumes/{key}/properties",
 		Summary:       "Upsert a property on a volume (admin)",
-		Description:   "Inserts or updates by Key. The orchestration layer reads these to make placement / lifecycle decisions.",
+		Description:   "Inserts or updates by Key. Live-first via weft-agent's SetVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. The `key` path segment doubles as the volume UUID when live wiring is on (the mock stores by name ; live keys by UUID — the dashboard already moved to UUID-shaped keys for new volumes).",
 		Tags:          []string{"volumes"},
 		DefaultStatus: 200,
 	}, func(ctx context.Context, in *setVolumePropertyInput) (*setVolumePropertyOutput, error) {
@@ -128,7 +129,21 @@ func mountVolumeMetadataAPI(api huma.API, scope Scope) {
 			return nil, huma.Error400BadRequest("key is required")
 		}
 		p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if live != nil {
+			err := live.SetVolumeProperty(ctx, in.Key, p.Key, p.Value)
+			if err == nil {
+				setVolumeProperty(in.Key, p)
+				Audit(ctx, auditLogger, "volume.property.set", "volume", in.Key, "", nil,
+					map[string]string{"key": p.Key})
+				return &setVolumePropertyOutput{Body: p}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		setVolumeProperty(in.Key, p)
+		Audit(ctx, auditLogger, "volume.property.set", "volume", in.Key, "", nil,
+			map[string]string{"key": p.Key})
 		return &setVolumePropertyOutput{Body: p}, nil
 	})
 
@@ -137,10 +152,27 @@ func mountVolumeMetadataAPI(api huma.API, scope Scope) {
 		Method:        "DELETE",
 		Path:          "/api/volumes/{key}/properties/{prop_key}",
 		Summary:       "Delete one property on a volume (admin) — idempotent",
+		Description:   "Live-first via weft-agent's DeleteVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented.",
 		Tags:          []string{"volumes"},
 		DefaultStatus: 200,
-	}, func(_ context.Context, in *deleteVolumePropertyInput) (*deleteVolumePropertyOutput, error) {
+	}, func(ctx context.Context, in *deleteVolumePropertyInput) (*deleteVolumePropertyOutput, error) {
+		if live != nil {
+			err := live.DeleteVolumeProperty(ctx, in.Key, in.PropKey)
+			if err == nil {
+				deleteVolumeProperty(in.Key, in.PropKey)
+				Audit(ctx, auditLogger, "volume.property.delete", "volume", in.Key, "", nil,
+					map[string]string{"key": in.PropKey})
+				out := &deleteVolumePropertyOutput{}
+				out.Body.Deleted = in.PropKey
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		deleteVolumeProperty(in.Key, in.PropKey)
+		Audit(ctx, auditLogger, "volume.property.delete", "volume", in.Key, "", nil,
+			map[string]string{"key": in.PropKey})
 		out := &deleteVolumePropertyOutput{}
 		out.Body.Deleted = in.PropKey
 		return out, nil

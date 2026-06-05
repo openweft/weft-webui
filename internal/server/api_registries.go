@@ -16,6 +16,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 func mountRegistriesAPI(api huma.API, scope Scope) {
@@ -82,7 +83,7 @@ func mountRegistriesRemotesAPI(api huma.API, scope Scope) {
 		Method:      "POST",
 		Path:        "/api/registries/remotes",
 		Summary:     "Create or update a remote registry (cluster-admin)",
-		Description: "Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored.",
+		Description: "Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored. Live-first via weft-agent's SetRegistryRemote (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. Insecure flag derived from URL scheme (http:// = insecure) ; the proto's CredentialSecretRef stays empty until the secret-store ref lands in the SPA form.",
 		Tags:        []string{"registries"},
 	}, func(ctx context.Context, in *setRegistryRemoteInput) (*setRegistryRemoteOutput, error) {
 		body := in.Body
@@ -104,10 +105,26 @@ func mountRegistriesRemotesAPI(api huma.API, scope Scope) {
 				body.UpdatedBy = u.Subject
 			}
 		}
+		if live != nil {
+			insecure := strings.HasPrefix(strings.ToLower(body.URL), "http://")
+			_, _, err := live.SetRegistryRemote(ctx, body.Name, body.URL, insecure, "")
+			if err == nil {
+				registryRemoteUpsert(body)
+				saved, _ := registryRemoteFind(body.Name)
+				Audit(ctx, auditLogger, "registry.remote.set", "registry-remote", body.Name, "", nil,
+					map[string]string{"url": body.URL, "kind": body.Kind})
+				return &setRegistryRemoteOutput{Body: saved}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		registryRemoteUpsert(body)
 		// Re-fetch so we return the canonical row (including the
 		// LastSync the store preserved across updates).
 		saved, _ := registryRemoteFind(body.Name)
+		Audit(ctx, auditLogger, "registry.remote.set", "registry-remote", body.Name, "", nil,
+			map[string]string{"url": body.URL, "kind": body.Kind})
 		return &setRegistryRemoteOutput{Body: saved}, nil
 	})
 
@@ -116,9 +133,37 @@ func mountRegistriesRemotesAPI(api huma.API, scope Scope) {
 		Method:      "DELETE",
 		Path:        "/api/registries/remotes/{name}",
 		Summary:     "Delete a remote registry (cluster-admin) — idempotent",
+		Description: "Live-first via weft-agent's DeleteRegistryRemote (proto v0.9.0) ; the call resolves Name → UUID via ListRegistryRemotes when the live remote exists. Mock store mirrored on success and is the source of truth on Unimplemented.",
 		Tags:        []string{"registries"},
-	}, func(_ context.Context, in *registryRemoteNameInput) (*deleteRegistryRemoteOutput, error) {
+	}, func(ctx context.Context, in *registryRemoteNameInput) (*deleteRegistryRemoteOutput, error) {
+		if live != nil {
+			// Resolve name → uuid by listing. The proto's
+			// DeleteRegistryRemote also accepts a name field on the
+			// wire, but the wclient wrapper sticks to UUID for
+			// symmetry with the rest of the delete RPCs ; ListRemotes
+			// is cheap (cluster-wide, typically <10 rows).
+			rows, lerr := live.ListRegistryRemotes(ctx)
+			if lerr != nil && !wclient.IsUnimplemented(lerr) {
+				return nil, huma.Error502BadGateway("live: " + lerr.Error())
+			}
+			if lerr == nil {
+				for _, r := range rows {
+					if name, _ := r["name"].(string); name == in.Name {
+						uuid, _ := r["uuid"].(string)
+						if uuid != "" {
+							if derr := live.DeleteRegistryRemote(ctx, uuid); derr != nil {
+								if !wclient.IsUnimplemented(derr) {
+									return nil, huma.Error502BadGateway("live: " + derr.Error())
+								}
+							}
+						}
+						break
+					}
+				}
+			}
+		}
 		registryRemoteDelete(in.Name)
+		Audit(ctx, auditLogger, "registry.remote.delete", "registry-remote", in.Name, "", nil, nil)
 		out := &deleteRegistryRemoteOutput{}
 		out.Body.Deleted = in.Name
 		return out, nil

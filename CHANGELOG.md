@@ -7,7 +7,110 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- **wclient : VolumeProperty + Share (Get/Resize) + Bucket +
+  SSHKeyCatalogue + SchedulingRule + RegistryRemote RPC wrappers
+  (proto v0.9.0)**. Twenty-two new methods on `*Client` covering the
+  Tier 4-6 control-plane surface — free-form volume metadata, S3
+  bucket lifecycle + policies, cluster-wide SSH-key catalogue,
+  scheduling rules and OCI registry remotes :
+  - **VolumeProperty** (3) : `GetVolumeProperty(ctx, volumeUUID, key)`,
+    `SetVolumeProperty(ctx, volumeUUID, key, value)`,
+    `DeleteVolumeProperty(ctx, volumeUUID, key)`. Empty value is
+    preserved (distinct from absence).
+  - **Share extended** (2) : `GetShare(ctx, uuid)`,
+    `ResizeShare(ctx, uuid, newSizeGiB)`. Project / name lookup
+    + lifecycle calls (`ListShares`, `CreateShare`, `DeleteShare`)
+    already shipped pre-v0.8.0. Shrinks are rejected server-side
+    (`FailedPrecondition`).
+  - **Bucket** (6) : `ListBuckets(ctx, projectUUID)`,
+    `GetBucket(ctx, uuid)` (includes `secret_access_key` + `policy`
+    that the list response omits),
+    `CreateBucket(ctx, projectUUID, name, endpoint, region, accessKeyID, secretAccessKey, policy)`
+    (chains a `SetBucketPolicy` when a non-empty policy is passed
+    — the proto's `CreateBucketRequest` has no policy field),
+    `DeleteBucket(ctx, uuid)`, `GetBucketPolicy(ctx, uuid)`,
+    `SetBucketPolicy(ctx, uuid, policy)`.
+  - **SSHKeyCatalogue** (4) : `ListSSHKeyCatalogue(ctx)`,
+    `AddSSHKeyCatalogue(ctx, name, publicKey, comment)` (fingerprint
+    + UUID computed server-side ; idempotent on (name, fingerprint)),
+    `RemoveSSHKeyCatalogue(ctx, uuid)`,
+    `ImportSSHKeyCatalogue(ctx, blob)` (one entry per
+    authorized_keys line ; returns `(imported, skipped)`).
+  - **SchedulingRule** (4) : `ListSchedulingRules(ctx, projectUUID)`,
+    `CreateSchedulingRule(ctx, projectUUID, name, selector, targetCount, antiAffinity)`,
+    `UpdateSchedulingRule(ctx, uuid, name, selector, targetCount, antiAffinity)`
+    (partial PATCH ; empty string / `targetCount == -1` keep
+    current),
+    `DeleteSchedulingRule(ctx, uuid)`. The proto is cluster-wide ;
+    `projectUUID` and `name` (for Update) are accepted on the Go
+    surface for caller symmetry but dropped on the wire.
+  - **RegistryRemote** (4) : `ListRegistryRemotes(ctx)`,
+    `SetRegistryRemote(ctx, name, endpoint, insecure, credentialSecretRef)`
+    (upsert on name),
+    `DeleteRegistryRemote(ctx, uuid)`,
+    `SearchRegistryRemote(ctx, query)` (server-side stub today ;
+    the wrapper projects `repositories[]` → `[]map[string]any{ {"repository": ..., "registry_name": ...} }`
+    so the dashboard's catalogue renderer round-trips).
+
+  Every method follows the existing `defer measured(...) + dial() +
+  rpcCtx(withBearer(ctx)) + Request{...}` shape. Row projections
+  (`shareRow`, `bucketRow`, `sshKeyCatalogueRow`,
+  `schedulingRuleRow`, `registryRemoteRow`) mirror the JSON keys
+  the webui already expects.
+
 ### Changed
+
+- **api : live-first migration for the v0.9.0 Tier 4-6 surface**.
+  Four handlers rewired to "live-first → fallback local store",
+  matching the pattern in `api_inventory.go` (AZ + Rack, commit
+  `e465bc4`) and `api_subnets.go` / `api_networking.go` (Subnet +
+  LB + DNS, commit `8c564c6`) :
+  - `POST /api/volumes/{key}/properties` and
+    `DELETE /api/volumes/{key}/properties/{prop_key}` —
+    `live.SetVolumeProperty` / `live.DeleteVolumeProperty`.
+    The `key` path segment doubles as the volume UUID on the live
+    side (the mock indexes by name ; UUID-shaped keys already flow
+    from new-volume creation).
+  - `POST /api/registries/remotes` — `live.SetRegistryRemote`
+    (upserts on name). The `insecure` flag is derived from the URL
+    scheme (`http://` → insecure) ; `credentialSecretRef` stays
+    empty until the SPA form gains a secret-store ref picker.
+  - `DELETE /api/registries/remotes/{name}` — Name → UUID
+    resolved through `live.ListRegistryRemotes` (a cluster-wide
+    call, typically < 10 rows), then `live.DeleteRegistryRemote`
+    with the UUID. Local store cleanup runs unconditionally so the
+    affordance stays idempotent.
+
+  Every successful mutation emits an `Audit(...)` event tagged with
+  the resource kind. Non-`codes.Unimplemented` gRPC errors return
+  `502 Bad Gateway` ; `codes.Unimplemented` falls through to the
+  existing local branch so an older agent build keeps serving
+  reads.
+
+  **Deferred to follow-ups** :
+  - **Bucket / Share / SchedulingRule local stores are
+    name-keyed** ; the proto's `Delete` / `Get` / `SetBucketPolicy`
+    / `ResizeShare` / `DeleteShare` RPCs are UUID-keyed. Migrating
+    the local mock to carry an opaque `uuid` field next to `name`
+    is a data-model change that lands in a follow-up before live
+    wiring on those routes.
+  - **SSHKeyCatalogue** : the existing mock is name-keyed and
+    builds the fingerprint client-side ; the live RPC owns
+    UUIDs + server-computed fingerprints + a different on-disk
+    schema. The migration pairs with a SPA refresh that uses UUIDs
+    as the path segment.
+  - **CreateBucket / CreateShare** : the local mock seeds with
+    project-as-tenant rules, but the proto's CreateBucket wants
+    endpoint + region + access keys per bucket — the form does not
+    surface those today. A follow-up wires the form, then the
+    handler.
+  - **CreateSchedulingRule / UpdateSchedulingRule** already live
+    on `liveNet` (weft-network's `CreateSchedulingRule`). The
+    weft-agent proto adds a parallel control-plane surface ; the
+    handler split lands once the two daemons converge on a single
+    rules store.
 
 - **api : live-first migration for the v0.8.0 network plane
   (Subnet + LoadBalancer + DNSZone + DNSRecord)**. Twelve handlers

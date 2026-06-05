@@ -2605,3 +2605,558 @@ func dnsRecordRow(r *weftv1.DNSRecordInfo) map[string]any {
 		"created":   tsDate(r.GetCreatedAtUnixNs()),
 	}
 }
+
+// --- Tier 4-6 : VolumeProperty + Share (extended) + Bucket + SSHKeyCatalogue + SchedulingRule + RegistryRemote (weft-proto v0.9.0)
+
+// --- VolumeProperty ----------------------------------------------
+
+// GetVolumeProperty fetches a single (volumeUUID, key) tuple from the
+// volume's free-form metadata bag. The agent owns the canonical store ;
+// the webui's existing micro-vm metadata endpoints reuse the same
+// shape so the SPA can target either without a wire change.
+func (c *Client) GetVolumeProperty(ctx context.Context, volumeUUID, key string) (value string, retErr error) {
+	defer c.measured("GetVolumeProperty", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetVolumeProperty(cctx, &weftv1.GetVolumePropertyRequest{
+		VolumeUuid: volumeUUID, Key: key,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetProperty().GetValue(), nil
+}
+
+// SetVolumeProperty upserts the (volumeUUID, key) -> value tuple.
+// Empty value is preserved as-is — the agent's contract treats an
+// empty string as a legitimate value, distinct from absence.
+func (c *Client) SetVolumeProperty(ctx context.Context, volumeUUID, key, value string) (retErr error) {
+	defer c.measured("SetVolumeProperty", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetVolumeProperty(cctx, &weftv1.SetVolumePropertyRequest{
+		VolumeUuid: volumeUUID, Key: key, Value: value,
+	})
+	return err
+}
+
+// DeleteVolumeProperty removes a single key from a volume's property
+// bag. Idempotent on the server side ; missing keys do not error.
+func (c *Client) DeleteVolumeProperty(ctx context.Context, volumeUUID, key string) (retErr error) {
+	defer c.measured("DeleteVolumeProperty", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVolumeProperty(cctx, &weftv1.DeleteVolumePropertyRequest{
+		VolumeUuid: volumeUUID, Key: key,
+	})
+	return err
+}
+
+// --- Share extended (Get + Resize) -------------------------------
+
+// GetShare fetches a single share by UUID. Mirrors the ListShares
+// projection so the dashboard's row schema stays identical between
+// list + get views.
+func (c *Client) GetShare(ctx context.Context, uuid string) (row map[string]any, retErr error) {
+	defer c.measured("GetShare", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetShare(cctx, &weftv1.GetShareRequest{Uuid: uuid})
+	if err != nil {
+		return nil, err
+	}
+	return shareRow(resp.GetShare()), nil
+}
+
+// ResizeShare grows a share's hard quota. newSizeGiB must be strictly
+// greater than the current size — the server rejects shrinks with
+// FailedPrecondition. The proto field is named new_size_gb ; the
+// wrapper sticks to "GiB" in the Go signature to match the units used
+// elsewhere in the webui (CreateShare's size_gb is similarly GiB on
+// the wire — pre-existing naming we live with).
+func (c *Client) ResizeShare(ctx context.Context, uuid string, newSizeGiB int64) (retErr error) {
+	defer c.measured("ResizeShare", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.ResizeShare(cctx, &weftv1.ResizeShareRequest{
+		Uuid: uuid, NewSizeGb: newSizeGiB,
+	})
+	return err
+}
+
+func shareRow(s *weftv1.ShareInfo) map[string]any {
+	if s == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"name":     s.GetName(),
+		"uuid":     s.GetUuid(),
+		"project":  s.GetProjectUuid(),
+		"backend":  s.GetBackend(),
+		"size_gb":  s.GetSizeGb(),
+		"readonly": s.GetReadonly(),
+		"mounts":   s.GetMounts(),
+		"status":   s.GetStatus(),
+	}
+}
+
+// --- Buckets (S3-compatible) -------------------------------------
+
+// ListBuckets returns every bucket in projectUUID ; an empty
+// projectUUID falls back to the caller's accessible set.
+func (c *Client) ListBuckets(ctx context.Context, projectUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListBuckets", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListBuckets(cctx, &weftv1.ListBucketsRequest{Project: projectUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetBuckets()))
+	for _, b := range resp.GetBuckets() {
+		out = append(out, bucketRow(b))
+	}
+	return out, nil
+}
+
+// GetBucket fetches a single bucket by UUID. The response includes
+// the secret_access_key + policy fields that the list response omits
+// (admin-only by server contract — the wrapper does no extra gating).
+func (c *Client) GetBucket(ctx context.Context, uuid string) (row map[string]any, retErr error) {
+	defer c.measured("GetBucket", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetBucket(cctx, &weftv1.GetBucketRequest{Uuid: uuid})
+	if err != nil {
+		return nil, err
+	}
+	return bucketRow(resp.GetBucket()), nil
+}
+
+// CreateBucket registers a new S3 bucket under projectUUID. The proto
+// has no policy field on CreateBucketRequest — policies move via
+// SetBucketPolicy. When the caller passes a non-empty policy the
+// wrapper chains a SetBucketPolicy call after a successful create so
+// the create-with-policy affordance round-trips in a single API call
+// on the webui's surface.
+func (c *Client) CreateBucket(ctx context.Context, projectUUID, name, endpoint, region, accessKeyID, secretAccessKey, policy string) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateBucket", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateBucket(cctx, &weftv1.CreateBucketRequest{
+		Project:         projectUUID,
+		Name:            name,
+		Endpoint:        endpoint,
+		Region:          region,
+		AccessKeyId:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	newUUID := resp.GetBucket().GetUuid()
+	if policy != "" && newUUID != "" {
+		// Best-effort policy attach on a freshly created bucket. A
+		// policy that fails to apply does not roll back the bucket
+		// itself — the caller sees the error and can retry the
+		// SetBucketPolicy independently.
+		cctx2, cancel2 := rpcCtx(withBearer(ctx))
+		defer cancel2()
+		if _, perr := rpc.SetBucketPolicy(cctx2, &weftv1.SetBucketPolicyRequest{
+			Uuid: newUUID, Policy: policy,
+		}); perr != nil {
+			return newUUID, resp.GetCreated(), perr
+		}
+	}
+	return newUUID, resp.GetCreated(), nil
+}
+
+// DeleteBucket removes a bucket. The server is the source of truth for
+// cascade safety (objects must be drained first ; the policy is
+// removed atomically with the bucket).
+func (c *Client) DeleteBucket(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteBucket", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteBucket(cctx, &weftv1.DeleteBucketRequest{Uuid: uuid})
+	return err
+}
+
+// GetBucketPolicy returns the IAM-style policy JSON for a bucket.
+// Empty string means "no policy" (not an error).
+func (c *Client) GetBucketPolicy(ctx context.Context, uuid string) (policy string, retErr error) {
+	defer c.measured("GetBucketPolicy", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetBucketPolicy(cctx, &weftv1.GetBucketPolicyRequest{Uuid: uuid})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetPolicy(), nil
+}
+
+// SetBucketPolicy atomically replaces the bucket policy with the
+// supplied JSON. An empty policy clears it.
+func (c *Client) SetBucketPolicy(ctx context.Context, uuid, policy string) (retErr error) {
+	defer c.measured("SetBucketPolicy", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetBucketPolicy(cctx, &weftv1.SetBucketPolicyRequest{
+		Uuid: uuid, Policy: policy,
+	})
+	return err
+}
+
+func bucketRow(b *weftv1.BucketInfo) map[string]any {
+	if b == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":              b.GetUuid(),
+		"project_uuid":      b.GetProjectUuid(),
+		"name":              b.GetName(),
+		"endpoint":          b.GetEndpoint(),
+		"region":            b.GetRegion(),
+		"access_key_id":     b.GetAccessKeyId(),
+		"secret_access_key": b.GetSecretAccessKey(),
+		"policy":            b.GetPolicy(),
+		"created":           tsDate(b.GetCreatedAtUnixNs()),
+	}
+}
+
+// --- SSHKey catalogue (cluster-wide) ------------------------------
+
+// ListSSHKeyCatalogue returns every entry in the cluster-wide SSH-key
+// catalogue. The proto has no project / scope filter — the catalogue
+// is global by design (per-VM authorization layers on top via
+// MicroVMSSHKey assignments).
+func (c *Client) ListSSHKeyCatalogue(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListSSHKeyCatalogue", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListSSHKeyCatalogue(cctx, &weftv1.ListSSHKeyCatalogueRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetKeys()))
+	for _, k := range resp.GetKeys() {
+		out = append(out, sshKeyCatalogueRow(k))
+	}
+	return out, nil
+}
+
+// AddSSHKeyCatalogue registers a single key. The server parses the
+// public key, computes the SHA256 fingerprint, and rejects unknown
+// algorithms. Idempotent on (name, fingerprint).
+func (c *Client) AddSSHKeyCatalogue(ctx context.Context, name, publicKey, comment string) (uuid, fingerprint string, added bool, retErr error) {
+	defer c.measured("AddSSHKeyCatalogue", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.AddSSHKeyCatalogue(cctx, &weftv1.AddSSHKeyCatalogueRequest{
+		Name: name, PublicKey: publicKey, Comment: comment,
+	})
+	if err != nil {
+		return "", "", false, err
+	}
+	return resp.GetKey().GetUuid(), resp.GetKey().GetFingerprint(), resp.GetAdded(), nil
+}
+
+// RemoveSSHKeyCatalogue removes one entry by UUID. The proto also
+// accepts a name as a fallback ; the wrapper sticks to UUID because
+// that's the stable handle once the entry is in the catalogue.
+func (c *Client) RemoveSSHKeyCatalogue(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("RemoveSSHKeyCatalogue", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RemoveSSHKeyCatalogue(cctx, &weftv1.RemoveSSHKeyCatalogueRequest{Uuid: uuid})
+	return err
+}
+
+// ImportSSHKeyCatalogue ingests an authorized_keys-formatted blob in
+// one shot. The server splits by line, parses each (skipping
+// comments / blanks), and dedups against the existing fingerprints.
+// Returns (imported, skipped) counts ; the SPA renders them as the
+// op's progress.
+func (c *Client) ImportSSHKeyCatalogue(ctx context.Context, blob string) (imported int32, skipped int32, retErr error) {
+	defer c.measured("ImportSSHKeyCatalogue", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return 0, 0, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ImportSSHKeyCatalogue(cctx, &weftv1.ImportSSHKeyCatalogueRequest{Blob: blob})
+	if err != nil {
+		return 0, 0, err
+	}
+	return int32(len(resp.GetImported())), resp.GetSkippedDuplicates(), nil
+}
+
+func sshKeyCatalogueRow(k *weftv1.SSHKeyCatalogueEntry) map[string]any {
+	if k == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":        k.GetUuid(),
+		"name":        k.GetName(),
+		"public_key":  k.GetPublicKey(),
+		"fingerprint": k.GetFingerprint(),
+		"comment":     k.GetComment(),
+		"added":       tsDate(k.GetAddedAtUnixNs()),
+	}
+}
+
+// --- Scheduling rules (cluster-wide) -----------------------------
+
+// ListSchedulingRules returns every scheduling rule in the cluster.
+// The proto has no project / scope filter — rules are cluster-wide.
+// The projectUUID parameter is accepted for symmetry with the rest of
+// the webui's listing wrappers but is currently ignored on the wire ;
+// caller-side filtering happens after the row projection lands.
+func (c *Client) ListSchedulingRules(ctx context.Context, projectUUID string) (rows []map[string]any, retErr error) {
+	_ = projectUUID
+	defer c.measured("ListSchedulingRules", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListSchedulingRules(cctx, &weftv1.ListSchedulingRulesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetRules()))
+	for _, r := range resp.GetRules() {
+		out = append(out, schedulingRuleRow(r))
+	}
+	return out, nil
+}
+
+// CreateSchedulingRule registers a new placement rule. The proto's
+// CreateSchedulingRuleRequest has no project field — rules are
+// cluster-wide. The projectUUID parameter is accepted for symmetry
+// with the rest of the webui's create wrappers and dropped on the wire.
+func (c *Client) CreateSchedulingRule(ctx context.Context, projectUUID, name, selector string, targetCount int32, antiAffinity string) (uuid string, created bool, retErr error) {
+	_ = projectUUID
+	defer c.measured("CreateSchedulingRule", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateSchedulingRule(cctx, &weftv1.CreateSchedulingRuleRequest{
+		Name:         name,
+		Selector:     selector,
+		TargetCount:  targetCount,
+		AntiAffinity: antiAffinity,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetRule().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateSchedulingRule patches the mutable fields. selector / antiAffinity
+// empty = keep current ; targetCount == -1 = keep current (proto3 int32
+// has no nil — matches the server's contract).
+func (c *Client) UpdateSchedulingRule(ctx context.Context, uuid, name, selector string, targetCount int32, antiAffinity string) (retErr error) {
+	_ = name // The proto's UpdateSchedulingRuleRequest does not carry name (immutable in v0.9.0). Kept in the signature for caller symmetry ; dropped on the wire.
+	defer c.measured("UpdateSchedulingRule", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateSchedulingRule(cctx, &weftv1.UpdateSchedulingRuleRequest{
+		Uuid:         uuid,
+		Selector:     selector,
+		TargetCount:  targetCount,
+		AntiAffinity: antiAffinity,
+	})
+	return err
+}
+
+// DeleteSchedulingRule removes a placement rule. The cascade contract
+// (whether bound VMs prevent deletion) lives on the server.
+func (c *Client) DeleteSchedulingRule(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteSchedulingRule", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteSchedulingRule(cctx, &weftv1.DeleteSchedulingRuleRequest{Uuid: uuid})
+	return err
+}
+
+func schedulingRuleRow(r *weftv1.SchedulingRuleInfo) map[string]any {
+	if r == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":          r.GetUuid(),
+		"name":          r.GetName(),
+		"selector":      r.GetSelector(),
+		"target_count":  r.GetTargetCount(),
+		"anti_affinity": r.GetAntiAffinity(),
+		"created":       tsDate(r.GetCreatedAtUnixNs()),
+	}
+}
+
+// --- Registry remotes (cluster-wide) -----------------------------
+
+// ListRegistryRemotes returns every configured OCI registry mirror.
+func (c *Client) ListRegistryRemotes(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListRegistryRemotes", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListRegistryRemotes(cctx, &weftv1.ListRegistryRemotesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetRemotes()))
+	for _, r := range resp.GetRemotes() {
+		out = append(out, registryRemoteRow(r))
+	}
+	return out, nil
+}
+
+// SetRegistryRemote upserts a remote by name. credentialSecretRef
+// refers into the secret store ; empty = anonymous access.
+func (c *Client) SetRegistryRemote(ctx context.Context, name, endpoint string, insecure bool, credentialSecretRef string) (uuid string, created bool, retErr error) {
+	defer c.measured("SetRegistryRemote", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.SetRegistryRemote(cctx, &weftv1.SetRegistryRemoteRequest{
+		Name:                name,
+		Endpoint:            endpoint,
+		Insecure:            insecure,
+		CredentialSecretRef: credentialSecretRef,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetRemote().GetUuid(), resp.GetCreated(), nil
+}
+
+// DeleteRegistryRemote removes a remote by UUID.
+func (c *Client) DeleteRegistryRemote(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteRegistryRemote", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteRegistryRemote(cctx, &weftv1.DeleteRegistryRemoteRequest{Uuid: uuid})
+	return err
+}
+
+// SearchRegistryRemote proxies a query to the remote registry's
+// catalogue endpoint. Today the server returns canned results /
+// stub data ; the wrapper's shape is forward-compatible. The result
+// is a slice of {repository: "<repo>"} rows so the dashboard's
+// existing artifact renderer works without a special case.
+func (c *Client) SearchRegistryRemote(ctx context.Context, query string) (results []map[string]any, retErr error) {
+	defer c.measured("SearchRegistryRemote", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.SearchRegistryRemote(cctx, &weftv1.SearchRegistryRemoteRequest{Query: query})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetRepositories()))
+	for _, r := range resp.GetRepositories() {
+		out = append(out, map[string]any{
+			"repository":    r,
+			"registry_name": resp.GetRegistryName(),
+		})
+	}
+	return out, nil
+}
+
+func registryRemoteRow(r *weftv1.RegistryRemoteInfo) map[string]any {
+	if r == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":                  r.GetUuid(),
+		"name":                  r.GetName(),
+		"endpoint":              r.GetEndpoint(),
+		"insecure":              r.GetInsecure(),
+		"credential_secret_ref": r.GetCredentialSecretRef(),
+		"created":               tsDate(r.GetCreatedAtUnixNs()),
+	}
+}
