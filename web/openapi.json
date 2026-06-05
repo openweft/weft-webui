@@ -992,7 +992,19 @@
             "readOnly": true,
             "type": "string"
           },
+          "access_key_id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
           "name": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "uuid": {
             "type": "string"
           }
         },
@@ -1074,10 +1086,30 @@
             "readOnly": true,
             "type": "string"
           },
+          "access_key_id": {
+            "description": "S3 access key id — required for live-first creation",
+            "type": "string"
+          },
+          "endpoint": {
+            "description": "S3 endpoint URL (https://...) — required for live-first creation",
+            "type": "string"
+          },
           "name": {
             "description": "Bucket name (3–63 chars, lowercase letters / digits / hyphens)",
             "maxLength": 63,
             "minLength": 3,
+            "type": "string"
+          },
+          "policy": {
+            "description": "Optional initial IAM policy (JSON ; attached via SetBucketPolicy after create)",
+            "type": "string"
+          },
+          "region": {
+            "description": "S3 region — required for live-first creation",
+            "type": "string"
+          },
+          "secret_access_key": {
+            "description": "S3 secret access key — stored server-side, never returned by the API",
             "type": "string"
           }
         },
@@ -5470,7 +5502,20 @@
     },
     "/api/buckets": {
       "post": {
+        "description": "Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access keys) the daemon needs to register the bucket against the backend ; the secret_access_key stays server-side and is never echoed back. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.",
         "operationId": "create-bucket",
+        "parameters": [
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

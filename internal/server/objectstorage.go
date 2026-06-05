@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/openweft/weft-webui/internal/auth"
 )
@@ -34,6 +35,17 @@ type bucket struct {
 	Name    string
 	Created string
 	Objects []s3object
+
+	// S3 credentials surfaced by `live.CreateBucket` (proto v0.9.0).
+	// Endpoint / Region / AccessKeyID are mirrored so the SPA can
+	// echo back the wiring after creation ; SecretAccessKey is
+	// intentionally NEVER mirrored from the live response — it stays
+	// server-side and the UI label points the operator at the
+	// dedicated credentials vault instead.
+	Endpoint    string
+	Region      string
+	AccessKeyID string
+	Project     string // optional, for live-first symmetry with shares
 }
 
 var (
@@ -316,9 +328,42 @@ func bucketSummaries() []map[string]any {
 			"uuid", b.UUID,
 			"name", b.Name, "objects", len(b.Objects),
 			"size", humanSize(total), "created", b.Created,
+			// New columns ; empty on seeded buckets, populated for
+			// rows minted via POST /api/buckets with credentials.
+			"endpoint", b.Endpoint,
+			"region", b.Region,
+			"access_key_id", b.AccessKeyID,
+			"project", b.Project,
 		))
 	}
 	return out
+}
+
+// appendBucket stores a new bucket row in the mock backing store.
+// Locks bucketsMu itself ; callers MUST NOT hold the mutex. The
+// helper is used by the live-first POST /api/buckets path to mirror
+// the just-created bucket so the dashboard's name-keyed reads
+// (objects list, policy GET, …) resolve without a round-trip. The
+// SecretAccessKey is deliberately absent from the parameter list —
+// the mock store never stores it (sensitive ; lives server-side
+// only).
+func appendBucket(uuid, name, endpoint, region, accessKeyID, project string) *bucket {
+	bucketsMu.Lock()
+	defer bucketsMu.Unlock()
+	if uuid == "" {
+		uuid = mockUUID("bucket", name)
+	}
+	b := &bucket{
+		UUID:        uuid,
+		Name:        name,
+		Created:     time.Now().UTC().Format("2006-01-02"),
+		Endpoint:    endpoint,
+		Region:      region,
+		AccessKeyID: accessKeyID,
+		Project:     project,
+	}
+	buckets = append(buckets, b)
+	return b
 }
 
 // (Bucket / object handlers moved to huma — see api_storage.go.)

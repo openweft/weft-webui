@@ -9,6 +9,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **Bucket form : `endpoint` / `region` / `access_key_id` /
+  `secret_access_key` / `policy` fields surfaced** in the SPA's
+  Object Storage create-bucket modal. Required by `live.CreateBucket`
+  (proto v0.9.0) for the daemon to register the bucket against the
+  S3 backend ; the `secret_access_key` is encrypted server-side and
+  never returned via the API (the API response carries everything
+  except the secret). Validation : when any S3 wiring field is set,
+  all four must be present and `endpoint` must be an `https://` URL ;
+  an entirely empty wiring set falls through to the mock-only path
+  for backward compat with pre-v0.9 callers. The mock store mirrors
+  `endpoint` / `region` / `access_key_id` (NOT the secret) so the
+  dashboard's bucket list can echo the wiring without a round-trip.
+
 - **mock stores : opaque `uuid` field on Bucket / Share /
   SchedulingRule / SSHKey rows** (data-model migration follow-up to
   commit `a7276c4`). Every mock row now carries a stable opaque
@@ -74,6 +87,20 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
   the webui already expects.
 
 ### Changed
+
+- **api : `POST /api/buckets` now reaches `live.CreateBucket` first**
+  (proto v0.9.0 follow-up to commit `a489222`, which skipped this RPC
+  because the SPA form surfaced only the bucket name). The handler
+  now accepts `endpoint` / `region` / `access_key_id` /
+  `secret_access_key` / `policy` in the request body, gates on the
+  same `live != nil` + `Unimplemented` fallback pattern as the other
+  bucket lifecycle handlers, mirrors the server-minted UUID into the
+  mock store on success (sans secret) and emits a `bucket.create`
+  audit event with the operator-visible wiring. On `Unimplemented`
+  or no daemon, the mock-only branch is preserved verbatim so pre-v0.9
+  callers that POST `{ name }` alone still work. Response body adds
+  `uuid` + the echoed wiring (still no secret) ; `BucketNameResp`
+  shape stays backward-compatible (`omitempty` on the new fields).
 
 - **api : SchedulingRule mutations now prefer `live`
   (weft-agent) over `liveNet` (weft-network) per the openweft

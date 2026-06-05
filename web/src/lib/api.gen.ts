@@ -119,7 +119,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an object-storage bucket */
+        /**
+         * Create an object-storage bucket
+         * @description Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access keys) the daemon needs to register the bucket against the backend ; the secret_access_key stays server-side and is never echoed back. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.
+         */
         post: operations["create-bucket"];
         delete?: never;
         options?: never;
@@ -2670,7 +2673,11 @@ export interface components {
              * @example https://example.com/schemas/BucketNameResp.json
              */
             readonly $schema?: string;
+            access_key_id?: string;
+            endpoint?: string;
             name: string;
+            region?: string;
+            uuid?: string;
         };
         BucketPolicy: {
             /**
@@ -2699,8 +2706,18 @@ export interface components {
              * @example https://example.com/schemas/CreateBucketInputBody.json
              */
             readonly $schema?: string;
+            /** @description S3 access key id — required for live-first creation */
+            access_key_id?: string;
+            /** @description S3 endpoint URL (https://...) — required for live-first creation */
+            endpoint?: string;
             /** @description Bucket name (3–63 chars, lowercase letters / digits / hyphens) */
             name: string;
+            /** @description Optional initial IAM policy (JSON ; attached via SetBucketPolicy after create) */
+            policy?: string;
+            /** @description S3 region — required for live-first creation */
+            region?: string;
+            /** @description S3 secret access key — stored server-side, never returned by the API */
+            secret_access_key?: string;
         };
         CreateDNSRecordInputBody: {
             /**
@@ -4493,7 +4510,10 @@ export interface operations {
     };
     "create-bucket": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

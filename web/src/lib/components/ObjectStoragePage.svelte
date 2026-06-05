@@ -30,6 +30,14 @@
   let policyOpen = $state(false);
   let bucketDialog: HTMLDialogElement;
   let newName = $state('');
+  // S3 wiring fields — required by live.CreateBucket (proto v0.9.0).
+  // Optional from the UI's perspective : mock-mode keeps accepting a
+  // bare name so the empty defaults below round-trip cleanly.
+  let newEndpoint = $state('');
+  let newRegion = $state('');
+  let newAccessKeyId = $state('');
+  let newSecretAccessKey = $state('');
+  let newPolicy = $state('');
   let creating = $state(false);
   let bucketError = $state('');
   let actionBusy = $state(false);
@@ -41,14 +49,50 @@
     else bucketDialog?.close();
   });
 
+  // validateLiveFields gates submission when the operator has filled
+  // in any of the S3 wiring : all four must be present + the endpoint
+  // must be an HTTPS URL. An entirely empty set is allowed (mock-mode
+  // create). Returns the validation error string, or '' when OK.
+  function validateLiveFields(): string {
+    const ep = newEndpoint.trim();
+    const rg = newRegion.trim();
+    const ak = newAccessKeyId.trim();
+    const sk = newSecretAccessKey;
+    const anyFilled = ep || rg || ak || sk;
+    if (!anyFilled) return '';
+    if (!ep || !rg || !ak || !sk) {
+      return 'endpoint, region, access key id and secret access key are all required when any S3 wiring is set';
+    }
+    try {
+      const u = new URL(ep);
+      if (u.protocol !== 'https:') return 'endpoint must be an https:// URL';
+    } catch {
+      return 'endpoint must be a valid https:// URL';
+    }
+    return '';
+  }
+
   async function submitBucket(e: SubmitEvent) {
     e.preventDefault();
     bucketError = '';
+    const vErr = validateLiveFields();
+    if (vErr) { bucketError = vErr; return; }
     creating = true;
     try {
-      await createBucket(newName.trim());
+      const body: Parameters<typeof createBucket>[0] = { name: newName.trim() };
+      if (newEndpoint.trim()) body.endpoint = newEndpoint.trim();
+      if (newRegion.trim()) body.region = newRegion.trim();
+      if (newAccessKeyId.trim()) body.access_key_id = newAccessKeyId.trim();
+      if (newSecretAccessKey) body.secret_access_key = newSecretAccessKey;
+      if (newPolicy.trim()) body.policy = newPolicy.trim();
+      await createBucket(body);
       const created = newName.trim();
       newName = '';
+      newEndpoint = '';
+      newRegion = '';
+      newAccessKeyId = '';
+      newSecretAccessKey = '';
+      newPolicy = '';
       createOpen = false;
       await loadBuckets(created);
     } catch (err) {
@@ -182,7 +226,7 @@
 {/if}
 
 <dialog class="modal" bind:this={bucketDialog} onclose={() => (createOpen = false)}>
-  <div class="modal-box max-w-md">
+  <div class="modal-box max-w-lg">
     <h3 class="text-lg font-bold">New bucket</h3>
     <form class="mt-4 flex flex-col gap-3" onsubmit={submitBucket}>
       <label class="form-control">
@@ -190,6 +234,38 @@
         <input class="input input-sm input-bordered" placeholder="my-bucket" bind:value={newName} />
         <span class="mt-1 text-xs text-base-content/50">3–63 chars · lowercase letters, digits, hyphens</span>
       </label>
+
+      <div class="divider my-0 text-xs text-base-content/50">S3 wiring (live agent)</div>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs">Endpoint</span>
+        <input class="input input-sm input-bordered" type="url" placeholder="https://s3.example.com" bind:value={newEndpoint} />
+        <span class="mt-1 text-xs text-base-content/50">https:// URL only · leave blank for mock-mode buckets</span>
+      </label>
+
+      <div class="grid grid-cols-2 gap-3">
+        <label class="form-control">
+          <span class="label-text mb-1 text-xs">Region</span>
+          <input class="input input-sm input-bordered" placeholder="us-east-1" bind:value={newRegion} />
+        </label>
+        <label class="form-control">
+          <span class="label-text mb-1 text-xs">Access key id</span>
+          <input class="input input-sm input-bordered" placeholder="AKIA…" bind:value={newAccessKeyId} />
+        </label>
+      </div>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs">Secret access key</span>
+        <input class="input input-sm input-bordered" type="password" autocomplete="new-password" placeholder="••••••••" bind:value={newSecretAccessKey} />
+        <span class="mt-1 text-xs text-base-content/50">S3 credentials are encrypted server-side and never returned via the API</span>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs">Initial policy (optional)</span>
+        <textarea class="textarea textarea-sm textarea-bordered font-mono text-xs" rows="4" placeholder={'{"Version":"2012-10-17","Statement":[…]}'} bind:value={newPolicy}></textarea>
+        <span class="mt-1 text-xs text-base-content/50">Attached via SetBucketPolicy after creation · raw JSON</span>
+      </label>
+
       {#if bucketError}<div class="alert alert-error py-2 text-sm">{bucketError}</div>{/if}
       <div class="modal-action mt-1">
         <button type="button" class="btn btn-sm btn-ghost" onclick={() => (createOpen = false)}>Cancel</button>

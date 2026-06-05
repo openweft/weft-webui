@@ -355,24 +355,94 @@ func mountBucketsAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/buckets",
 		Summary:       "Create an object-storage bucket",
+		Description:   "Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access keys) the daemon needs to register the bucket against the backend ; the secret_access_key stays server-side and is never echoed back. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.",
 		Tags:          []string{"buckets"},
 		DefaultStatus: 201,
-	}, func(_ context.Context, in *createBucketInput) (*bucketNameOutput, error) {
+	}, func(ctx context.Context, in *createBucketInput) (*bucketNameOutput, error) {
 		name := strings.TrimSpace(in.Body.Name)
 		if !bucketName.MatchString(name) {
 			return nil, huma.Error400BadRequest("bucket name must be 3–63 chars, lowercase letters/digits/hyphens")
 		}
-		bucketsMu.Lock()
-		defer bucketsMu.Unlock()
-		if findBucket(name) != nil {
+		endpoint := strings.TrimSpace(in.Body.Endpoint)
+		region := strings.TrimSpace(in.Body.Region)
+		accessKeyID := strings.TrimSpace(in.Body.AccessKeyID)
+		secretAccessKey := in.Body.SecretAccessKey // do NOT TrimSpace — secrets may legitimately have edge whitespace
+		policy := in.Body.Policy
+
+		// Bucket-name uniqueness is enforced against the mock store
+		// either way : the live daemon owns the global namespace, but
+		// the local mirror is the source of truth for the dashboard's
+		// name → uuid lookup, and a duplicate row there would shadow
+		// the live record.
+		if _, exists := bucketUUID(name); exists {
 			return nil, huma.Error409Conflict("bucket already exists")
 		}
-		buckets = append(buckets, &bucket{
-			UUID:    mockUUID("bucket", name),
-			Name:    name,
-			Created: time.Now().UTC().Format("2006-01-02"),
-		})
-		return &bucketNameOutput{Body: BucketNameResp{Name: name}}, nil
+
+		// Resolve the project for the live-first path. Mock-mode falls
+		// through with an empty project (the local store doesn't key
+		// on it for buckets — same shape as the seeded rows).
+		project := ""
+		if live != nil {
+			resolved, perr := resolveVMProjectCtx(ctx, in.Project)
+			if perr == nil {
+				project = resolved
+			}
+		}
+
+		if live != nil && endpoint != "" && region != "" && accessKeyID != "" && secretAccessKey != "" {
+			if project == "" {
+				return nil, huma.Error400BadRequest("project is required for live-first bucket creation (set scope via the topbar or pass ?project=...)")
+			}
+			uuid, _, cerr := live.CreateBucket(ctx, project, name, endpoint, region, accessKeyID, secretAccessKey, policy)
+			Audit(ctx, auditLogger, "bucket.create", "bucket", name, "", cerr, map[string]string{
+				"project":  project,
+				"endpoint": endpoint,
+				"region":   region,
+				// access_key_id is operator-visible by design (the
+				// secret is the credential) ; secret_access_key is
+				// NEVER logged.
+				"access_key_id": accessKeyID,
+			})
+			if cerr == nil {
+				// Mirror into the mock store so the bucket list, the
+				// objects browser and the policy editor all resolve
+				// without an extra round-trip. SecretAccessKey is
+				// intentionally NOT mirrored.
+				appendBucket(uuid, name, endpoint, region, accessKeyID, project)
+				if policy != "" {
+					// Best-effort mirror of the initial policy into the
+					// local store so the SPA's policy editor pre-fills
+					// even before the next GET. Decode failures are
+					// swallowed — the live store remains authoritative
+					// (next GetBucketPolicy serves the truth).
+					var p BucketPolicy
+					if jerr := json.Unmarshal([]byte(policy), &p); jerr == nil {
+						bucketsMu.Lock()
+						policies[name] = &p
+						bucketsMu.Unlock()
+					}
+				}
+				userActionCtx(ctx, "bucket.create")
+				return &bucketNameOutput{Body: BucketNameResp{
+					Name: name, UUID: uuid,
+					Endpoint: endpoint, Region: region, AccessKeyID: accessKeyID,
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(cerr) {
+				return nil, huma.Error502BadGateway("create bucket: " + cerr.Error())
+			}
+			// fallthrough to mock on Unimplemented
+		}
+
+		// Mock-only path : kept verbatim from the legacy handler so
+		// pre-v0.9 callers that POST `{name}` only still work in
+		// daemon-less / Unimplemented mode.
+		b := appendBucket("", name, endpoint, region, accessKeyID, project)
+		userActionCtx(ctx, "bucket.create")
+		return &bucketNameOutput{Body: BucketNameResp{
+			Name: b.Name, UUID: b.UUID,
+			Endpoint: b.Endpoint, Region: b.Region, AccessKeyID: b.AccessKeyID,
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -698,8 +768,23 @@ type uploadShareObjectsInput struct {
 }
 
 type createBucketInput struct {
-	Body struct {
+	// Project lets the caller override the session-bound project for
+	// callers like the CLI that don't carry a scope cookie. Falls back
+	// to the auth.User scope, then to the platform fallback (same
+	// resolution shares use).
+	Project string `query:"project" doc:"Override the session project"`
+	Body    struct {
 		Name string `json:"name" doc:"Bucket name (3–63 chars, lowercase letters / digits / hyphens)" minLength:"3" maxLength:"63"`
+
+		// S3 wiring required by `live.CreateBucket` (proto v0.9.0).
+		// The fields are optional on the wire so legacy mock-mode
+		// callers (just `{name}`) keep working ; the live-first path
+		// 400s when they're missing.
+		Endpoint        string `json:"endpoint,omitempty" doc:"S3 endpoint URL (https://...) — required for live-first creation"`
+		Region          string `json:"region,omitempty" doc:"S3 region — required for live-first creation"`
+		AccessKeyID     string `json:"access_key_id,omitempty" doc:"S3 access key id — required for live-first creation"`
+		SecretAccessKey string `json:"secret_access_key,omitempty" doc:"S3 secret access key — stored server-side, never returned by the API"`
+		Policy          string `json:"policy,omitempty" doc:"Optional initial IAM policy (JSON ; attached via SetBucketPolicy after create)"`
 	}
 }
 
@@ -746,9 +831,19 @@ type createVolumeOutput struct{ Body CreateVolumeResp }
 type attachVolumeOutput struct{ Body AttachVolumeResp }
 type createShareOutput  struct{ Body CreateShareResp }
 
-// BucketNameResp is the create-bucket ack — just the new name.
+// BucketNameResp is the create-bucket ack. UUID is empty on the
+// mock-fallback path (the mock mints a stable mockUUID either way ;
+// the field is still typed `omitempty` to keep the mock-mode
+// response shape unchanged for legacy SPA clients). Endpoint /
+// Region / AccessKeyID round-trip the operator's input so the SPA
+// can echo the wiring in the success toast. SecretAccessKey is
+// intentionally absent — the secret never leaves the server.
 type BucketNameResp struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	UUID        string `json:"uuid,omitempty"`
+	Endpoint    string `json:"endpoint,omitempty"`
+	Region      string `json:"region,omitempty"`
+	AccessKeyID string `json:"access_key_id,omitempty"`
 }
 type bucketNameOutput struct{ Body BucketNameResp }
 
