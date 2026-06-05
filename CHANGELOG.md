@@ -9,6 +9,27 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **Plugin catalogue : static fallback when no live agent is wired**.
+  `/api/plugins/catalogue` previously returned an empty list when
+  `live == nil`, which made the superadmin Plugins panel look
+  broken in dev / preview / detached mode. New
+  `staticPluginCatalogue()` in `internal/server/api_plugins.go`
+  mirrors the 14 plugins shipped under `weft/catalogue/*` so the
+  list is always non-empty. The install drawer's POST still hits
+  the live RPC, so a disconnected webui surfaces a clean
+  "plugin install requires a wired weft-agent" — the catalogue
+  remaining visible is the point. Test guard
+  (`api_plugins_static_test.go`) locks the slug set so any HCL
+  change forces an explicit update of the fallback.
+
+- **Volume snapshots + backups in the dashboard**.
+  - Two new tabs on `VolumeDrawer` : *Snapshots* (list + per-row Revert / Restore / Backup / Delete actions, with backend-aware gating of Revert + Backup) and *Backups* (target URL input, list scoped to the volume, per-row Restore / Delete).
+  - Two modals : `CreateSnapshotModal` and `CreateBackupModal` (scheme dropdown defaulting to `oci://`, scheme-aware placeholder URL ; explicit note that the passphrase is daemon-side env-only, never seen by the SPA).
+  - Nine typed wrappers in `wclient` (`ListVolumeSnapshots` / `CreateVolumeSnapshot` / `RestoreVolumeSnapshot` / `RevertVolumeSnapshot` / `DeleteVolumeSnapshot` / `CreateVolumeBackup` / `ListVolumeBackups` / `DeleteVolumeBackup` / `RestoreVolumeBackup`).
+  - Nine huma routes in `internal/server/api_volume_snapshots.go` + `internal/server/api_volume_backups.go`. Live-only with Audit + `userActionCtx` instrumentation ; no mock fallback (persistence is daemon-owned, mocking would lie).
+  - Nine typed `api.ts` helpers + projection types (`VolumeSnapshotRow`, `VolumeBackupRow`) regenerated through `openapi-typescript`.
+  - `Volume.backend` propagated end-to-end : wclient `ListVolumes` → row projection → drawer affordance gating + Backups-tab warning banner when the volume isn't block-backed.
+
 - **Live per-VM firewall status badge** (`FirewallStatusBadge`).
   Subscribes to the synthetic `firewall.status` PlatformEvent the
   host-side `firewallpub.StatusReceiver` re-emits onto the existing
