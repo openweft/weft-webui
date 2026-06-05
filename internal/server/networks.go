@@ -82,3 +82,68 @@ func renameNetworkRow(oldName, newName string) bool {
 	}
 	return true
 }
+
+// ---- LoadBalancer row helpers ----------------------------------
+//
+// The Load Balancers resource (resourceByID["loadbalancers"]) is the
+// catalogue the dashboard tree + map polls ; the v0.8.0 live wiring
+// keeps it in sync by mirroring every successful create / update /
+// delete here. Mock-mode (no live, or live returns Unimplemented)
+// mutates the same store so the affordance survives staged rollouts.
+
+var lbStoreMu sync.Mutex
+
+func appendLoadBalancerRow(row map[string]any) {
+	lbStoreMu.Lock()
+	defer lbStoreMu.Unlock()
+	if lb, ok := resourceByID["loadbalancers"]; ok {
+		lb.Rows = append(lb.Rows, row)
+	}
+}
+
+func updateLoadBalancerRow(uuid string, patch func(map[string]any)) bool {
+	lbStoreMu.Lock()
+	defer lbStoreMu.Unlock()
+	lb, ok := resourceByID["loadbalancers"]
+	if !ok {
+		return false
+	}
+	for _, row := range lb.Rows {
+		if str(row["uuid"]) == uuid {
+			patch(row)
+			return true
+		}
+	}
+	return false
+}
+
+func deleteLoadBalancerRow(uuid string) bool {
+	lbStoreMu.Lock()
+	defer lbStoreMu.Unlock()
+	lb, ok := resourceByID["loadbalancers"]
+	if !ok {
+		return false
+	}
+	for i, row := range lb.Rows {
+		if str(row["uuid"]) == uuid {
+			lb.Rows = append(lb.Rows[:i], lb.Rows[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+func findLoadBalancerRow(uuid string) (map[string]any, bool) {
+	lbStoreMu.Lock()
+	defer lbStoreMu.Unlock()
+	lb, ok := resourceByID["loadbalancers"]
+	if !ok {
+		return nil, false
+	}
+	for _, row := range lb.Rows {
+		if str(row["uuid"]) == uuid {
+			return row, true
+		}
+	}
+	return nil, false
+}

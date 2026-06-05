@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 func mountSubnetsAPI(api huma.API, scope Scope) {
@@ -35,7 +36,7 @@ func mountSubnetsAPI(api huma.API, scope Scope) {
 		Method:        "POST",
 		Path:          "/api/networks/{key}/subnets",
 		Summary:       "Create or update a subnet inside a network (admin)",
-		Description:   "Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side.",
+		Description:   "Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side. Live-first against weft-agent's CreateSubnet / UpdateSubnet (proto v0.8.0) ; mock store mirrored on success and is the source of truth on Unimplemented.",
 		Tags:          []string{"networks", "subnets"},
 		DefaultStatus: 200,
 	}, func(ctx context.Context, in *subnetSetInput) (*subnetSetOutput, error) {
@@ -56,7 +57,44 @@ func mountSubnetsAPI(api huma.API, scope Scope) {
 				s.UpdatedBy = u.Subject
 			}
 		}
-		saved, _ := upsertSubnet(in.Key, s)
+		// Live-first : try CreateSubnet (new row) or UpdateSubnet
+		// (existing uuid). The dashboard upsert semantics map to
+		// "PUT-shaped POST" : if the uuid is supplied we update, else
+		// we create. Live errors flow as 502 (except Unimplemented,
+		// which lets the mock fallback handle the request).
+		if live != nil {
+			if s.UUID != "" {
+				err := live.UpdateSubnet(ctx, s.UUID, s.Name, "", s.Gateway, nil, false)
+				if err == nil {
+					saved, _ := upsertSubnet(in.Key, s)
+					Audit(ctx, auditLogger, "subnet.update", "subnet", s.UUID, "", nil,
+						map[string]string{"network": in.Key, "name": s.Name})
+					return &subnetSetOutput{Body: saved}, nil
+				}
+				if !wclient.IsUnimplemented(err) {
+					return nil, huma.Error502BadGateway("live: " + err.Error())
+				}
+			} else {
+				uuid, _, err := live.CreateSubnet(ctx, in.Key, s.CIDR, s.Name, "", s.Gateway, nil)
+				if err == nil {
+					s.UUID = uuid
+					saved, _ := upsertSubnet(in.Key, s)
+					Audit(ctx, auditLogger, "subnet.create", "subnet", s.UUID, "", nil,
+						map[string]string{"network": in.Key, "name": s.Name, "cidr": s.CIDR})
+					return &subnetSetOutput{Body: saved}, nil
+				}
+				if !wclient.IsUnimplemented(err) {
+					return nil, huma.Error502BadGateway("live: " + err.Error())
+				}
+			}
+		}
+		saved, updated := upsertSubnet(in.Key, s)
+		action := "subnet.create"
+		if updated {
+			action = "subnet.update"
+		}
+		Audit(ctx, auditLogger, action, "subnet", saved.UUID, "", nil,
+			map[string]string{"network": in.Key, "name": s.Name})
 		return &subnetSetOutput{Body: saved}, nil
 	})
 
@@ -67,8 +105,24 @@ func mountSubnetsAPI(api huma.API, scope Scope) {
 		Summary:       "Delete a subnet (admin) — idempotent",
 		Tags:          []string{"networks", "subnets"},
 		DefaultStatus: 200,
-	}, func(_ context.Context, in *subnetDeleteInput) (*subnetDeleteOutput, error) {
+	}, func(ctx context.Context, in *subnetDeleteInput) (*subnetDeleteOutput, error) {
+		if live != nil {
+			err := live.DeleteSubnet(ctx, in.UUID)
+			if err == nil {
+				deleteSubnet(in.Key, in.UUID)
+				Audit(ctx, auditLogger, "subnet.delete", "subnet", in.UUID, "", nil,
+					map[string]string{"network": in.Key})
+				out := &subnetDeleteOutput{}
+				out.Body.Deleted = in.UUID
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		deleteSubnet(in.Key, in.UUID)
+		Audit(ctx, auditLogger, "subnet.delete", "subnet", in.UUID, "", nil,
+			map[string]string{"network": in.Key})
 		out := &subnetDeleteOutput{}
 		out.Body.Deleted = in.UUID
 		return out, nil

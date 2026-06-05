@@ -210,7 +210,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a DNS record */
+        /**
+         * Create a DNS record
+         * @description Live-first against weft-agent's CreateDNSRecord (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.
+         */
         post: operations["create-dns-record"];
         delete?: never;
         options?: never;
@@ -227,12 +230,15 @@ export interface paths {
         };
         get?: never;
         /**
-         * Update a DNS record (mock-friendly ; live wiring TBD)
-         * @description Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.
+         * Update a DNS record (live-first ; mock fallback)
+         * @description Live-first against weft-agent's UpdateDNSRecord (proto v0.8.0 — patches value + ttl + priority ; name/type immutable). The mock-layer `enabled` flag keeps flowing through the local store so the dashboard toggle remains responsive.
          */
         put: operations["update-dns-record"];
         post?: never;
-        /** Delete a DNS record */
+        /**
+         * Delete a DNS record
+         * @description Live-first against weft-agent's DeleteDNSRecord (proto v0.8.0). On Unimplemented falls back to weft-network controller, then the local catalogue.
+         */
         delete: operations["delete-dns-record"];
         options?: never;
         head?: never;
@@ -248,7 +254,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a DNS zone */
+        /**
+         * Create a DNS zone
+         * @description Live-first against weft-agent's CreateDNSZone (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.
+         */
         post: operations["create-dns-zone"];
         delete?: never;
         options?: never;
@@ -265,12 +274,15 @@ export interface paths {
         };
         get?: never;
         /**
-         * Update a DNS zone (mock-friendly ; live wiring TBD)
-         * @description Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.
+         * Update a DNS zone (live-first ; mock fallback)
+         * @description Live-first against weft-agent's UpdateDNSZone (proto v0.8.0 — patches soa_email + ttl). The mock-layer fields (role / backend / push_target / enabled) keep flowing through the local store so the dashboard's editor remains rich while staged rollouts catch up.
          */
         put: operations["update-dns-zone"];
         post?: never;
-        /** Delete a DNS zone */
+        /**
+         * Delete a DNS zone
+         * @description Live-first against weft-agent's DeleteDNSZone (proto v0.8.0). Cascade refusal (records remain) surfaces as 409 Conflict carrying the blocking-records count so the SPA can render a 'drain X records first' hint.
+         */
         delete: operations["delete-dns-zone"];
         options?: never;
         head?: never;
@@ -501,7 +513,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a load balancer */
+        /**
+         * Create a load balancer
+         * @description Live-first against weft-agent's CreateLoadBalancer (proto v0.8.0) ; the local catalogue row gets mirrored on success so the dashboard tree + map see the new LB without a re-list. On Unimplemented (or no live wiring) the existing weft-network controller path takes over.
+         */
         post: operations["create-loadbalancer"];
         delete?: never;
         options?: never;
@@ -517,9 +532,16 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update a load balancer's mutable listener fields (live-first)
+         * @description Patches name / mode / port — empty strings keep the current value. Live-first against weft-agent's UpdateLoadBalancer (proto v0.8.0). Mock store mirrored on success ; on Unimplemented falls back to mutating the local row directly.
+         */
+        put: operations["update-loadbalancer"];
         post?: never;
-        /** Delete a load balancer */
+        /**
+         * Delete a load balancer
+         * @description Live-first against weft-agent's DeleteLoadBalancer (proto v0.8.0). Cascade refusal (FloatingIPs mapped to the LB) surfaces as 409 Conflict carrying the blocking-fips count. On Unimplemented falls back to the weft-network controller path then the local catalogue.
+         */
         delete: operations["delete-loadbalancer"];
         options?: never;
         head?: never;
@@ -951,7 +973,7 @@ export interface paths {
         put?: never;
         /**
          * Create or update a subnet inside a network (admin)
-         * @description Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side.
+         * @description Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side. Live-first against weft-agent's CreateSubnet / UpdateSubnet (proto v0.8.0) ; mock store mirrored on success and is the source of truth on Unimplemented.
          */
         post: operations["set-subnet"];
         delete?: never;
@@ -3972,6 +3994,33 @@ export interface components {
             ttl_default: number;
             uuid: string;
         };
+        UpdateLBInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateLBInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description L4 / L7. Empty = keep current. */
+            mode?: string;
+            /** @description New name. Empty = keep current. */
+            name?: string;
+            /**
+             * Format: int32
+             * @description New listener port (>0 to change)
+             */
+            port?: number;
+        };
+        UpdateLBResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateLBResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            uuid: string;
+        };
         UpdateSGInputBody: {
             /**
              * Format: uri
@@ -5369,6 +5418,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateNameUUID"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-loadbalancer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Load-balancer uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLBInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateLBResp"];
                 };
             };
             /** @description Error */

@@ -7,6 +7,53 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Changed
+
+- **api : live-first migration for the v0.8.0 network plane
+  (Subnet + LoadBalancer + DNSZone + DNSRecord)**. Twelve handlers
+  rewired to "live-first → fallback local store", matching the
+  pattern already in `api_inventory.go` for AZ + Rack
+  (commit `e465bc4`) :
+  - `POST/DELETE /api/networks/{key}/subnets[/{uuid}]` —
+    upsert now routes through `live.CreateSubnet` /
+    `live.UpdateSubnet` ; delete routes through
+    `live.DeleteSubnet`. Mock store
+    (`subnetsByNetwork` in `subnets.go`) mirrored on success
+    so the dashboard's NetworkDrawer keeps polling without an
+    extra round-trip.
+  - `POST/PUT/DELETE /api/loadbalancers[/{uuid}]` —
+    `live.CreateLoadBalancer` / `live.UpdateLoadBalancer` /
+    `live.DeleteLoadBalancer` with `resourceByID["loadbalancers"]`
+    mirrored via new `appendLoadBalancerRow` /
+    `updateLoadBalancerRow` / `deleteLoadBalancerRow` helpers in
+    `networks.go`. New `PUT` route exposes the listener-patch
+    affordance. Cascade refusal (FloatingIPs still mapped) surfaces
+    as `409 Conflict` carrying the `blocked_by_fips` count. On
+    `codes.Unimplemented` the existing weft-network controller
+    path (`liveNet`) takes over so staged rollouts don't break.
+  - `POST/PUT/DELETE /api/dns-zones[/{uuid}]` —
+    `live.CreateDNSZone` / `live.UpdateDNSZone` /
+    `live.DeleteDNSZone`. New `appendDNSZoneRow` helper in
+    `dns_mock.go` mirrors creations. Cascade refusal (records
+    remain) surfaces as `409 Conflict` with `blocked_by_records`.
+    The PUT keeps mock-only fields (role / backend / push_target /
+    enabled) flowing through the local store so the editor stays
+    rich until the proto catches up.
+  - `POST/PUT/DELETE /api/dns-records[/{uuid}]` —
+    `live.CreateDNSRecord` / `live.UpdateDNSRecord` /
+    `live.DeleteDNSRecord`. New `appendDNSRecordRow` helper.
+    The PUT keeps `name`/`type` field mutations local because
+    proto v0.8.0's `UpdateDNSRecordRequest` only carries
+    value + ttl + priority (the proto's contract is "delete +
+    recreate to rename or change record class").
+
+  Every successful mutation emits an `Audit(...)` event tagged
+  with the resource kind. Non-`codes.Unimplemented` gRPC errors
+  return `502 Bad Gateway` ; `codes.Unimplemented` falls through
+  to the existing branch so an older agent build still serves the
+  request from the local catalogue. List (`GET`) handlers stay
+  on the local store path and ship in a follow-up.
+
 ### Added
 
 - **wclient : Subnet + LoadBalancer + DNSZone + DNSRecord RPC

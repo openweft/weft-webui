@@ -4561,6 +4561,63 @@
         ],
         "type": "object"
       },
+      "UpdateLBInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateLBInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "mode": {
+            "description": "L4 / L7. Empty = keep current.",
+            "maxLength": 16,
+            "type": "string"
+          },
+          "name": {
+            "description": "New name. Empty = keep current.",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "port": {
+            "description": "New listener port (\u003e0 to change)",
+            "format": "int32",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateLBResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateLBResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name"
+        ],
+        "type": "object"
+      },
       "UpdateSGInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -5827,6 +5884,7 @@
     },
     "/api/dns-records": {
       "post": {
+        "description": "Live-first against weft-agent's CreateDNSRecord (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.",
         "operationId": "create-dns-record",
         "requestBody": {
           "content": {
@@ -5868,6 +5926,7 @@
     },
     "/api/dns-records/{uuid}": {
       "delete": {
+        "description": "Live-first against weft-agent's DeleteDNSRecord (proto v0.8.0). On Unimplemented falls back to weft-network controller, then the local catalogue.",
         "operationId": "delete-dns-record",
         "parameters": [
           {
@@ -5904,7 +5963,7 @@
         ]
       },
       "put": {
-        "description": "Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.",
+        "description": "Live-first against weft-agent's UpdateDNSRecord (proto v0.8.0 — patches value + ttl + priority ; name/type immutable). The mock-layer `enabled` flag keeps flowing through the local store so the dashboard toggle remains responsive.",
         "operationId": "update-dns-record",
         "parameters": [
           {
@@ -5952,7 +6011,7 @@
             "description": "Error"
           }
         },
-        "summary": "Update a DNS record (mock-friendly ; live wiring TBD)",
+        "summary": "Update a DNS record (live-first ; mock fallback)",
         "tags": [
           "dns"
         ]
@@ -5960,6 +6019,7 @@
     },
     "/api/dns-zones": {
       "post": {
+        "description": "Live-first against weft-agent's CreateDNSZone (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.",
         "operationId": "create-dns-zone",
         "parameters": [
           {
@@ -6013,6 +6073,7 @@
     },
     "/api/dns-zones/{uuid}": {
       "delete": {
+        "description": "Live-first against weft-agent's DeleteDNSZone (proto v0.8.0). Cascade refusal (records remain) surfaces as 409 Conflict carrying the blocking-records count so the SPA can render a 'drain X records first' hint.",
         "operationId": "delete-dns-zone",
         "parameters": [
           {
@@ -6049,7 +6110,7 @@
         ]
       },
       "put": {
-        "description": "Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.",
+        "description": "Live-first against weft-agent's UpdateDNSZone (proto v0.8.0 — patches soa_email + ttl). The mock-layer fields (role / backend / push_target / enabled) keep flowing through the local store so the dashboard's editor remains rich while staged rollouts catch up.",
         "operationId": "update-dns-zone",
         "parameters": [
           {
@@ -6097,7 +6158,7 @@
             "description": "Error"
           }
         },
-        "summary": "Update a DNS zone (mock-friendly ; live wiring TBD)",
+        "summary": "Update a DNS zone (live-first ; mock fallback)",
         "tags": [
           "dns"
         ]
@@ -6728,6 +6789,7 @@
     },
     "/api/loadbalancers": {
       "post": {
+        "description": "Live-first against weft-agent's CreateLoadBalancer (proto v0.8.0) ; the local catalogue row gets mirrored on success so the dashboard tree + map see the new LB without a re-list. On Unimplemented (or no live wiring) the existing weft-network controller path takes over.",
         "operationId": "create-loadbalancer",
         "parameters": [
           {
@@ -6781,6 +6843,7 @@
     },
     "/api/loadbalancers/{uuid}": {
       "delete": {
+        "description": "Live-first against weft-agent's DeleteLoadBalancer (proto v0.8.0). Cascade refusal (FloatingIPs mapped to the LB) surfaces as 409 Conflict carrying the blocking-fips count. On Unimplemented falls back to the weft-network controller path then the local catalogue.",
         "operationId": "delete-loadbalancer",
         "parameters": [
           {
@@ -6812,6 +6875,60 @@
           }
         },
         "summary": "Delete a load balancer",
+        "tags": [
+          "loadbalancers"
+        ]
+      },
+      "put": {
+        "description": "Patches name / mode / port — empty strings keep the current value. Live-first against weft-agent's UpdateLoadBalancer (proto v0.8.0). Mock store mirrored on success ; on Unimplemented falls back to mutating the local row directly.",
+        "operationId": "update-loadbalancer",
+        "parameters": [
+          {
+            "description": "Load-balancer uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Load-balancer uuid",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLBInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateLBResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Update a load balancer's mutable listener fields (live-first)",
         "tags": [
           "loadbalancers"
         ]
@@ -8479,7 +8596,7 @@
         ]
       },
       "post": {
-        "description": "Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side.",
+        "description": "Upsert by uuid (when supplied) or by name. UpdatedAt / UpdatedBy stamped server-side. Live-first against weft-agent's CreateSubnet / UpdateSubnet (proto v0.8.0) ; mock store mirrored on success and is the source of truth on Unimplemented.",
         "operationId": "set-subnet",
         "parameters": [
           {
