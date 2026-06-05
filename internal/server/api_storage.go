@@ -18,6 +18,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"strconv"
 	"strings"
@@ -169,6 +170,14 @@ func mountSharesAPI(api huma.API) {
 		if live != nil {
 			uuid, err := live.CreateShare(ctx, project, in.Body.Name, in.Body.SizeGB, in.Body.ReadOnly, in.Body.Backend)
 			if err == nil {
+				// Mirror the live UUID into the mock store so the
+				// subsequent UUID-keyed Resize / Delete RPCs resolve
+				// through sharesDB.shareUUID without an extra round-trip.
+				_ = sharesDB.create(&Share{
+					UUID: uuid,
+					Name: in.Body.Name, Project: project, Backend: in.Body.Backend,
+					SizeGB: in.Body.SizeGB, ReadOnly: in.Body.ReadOnly,
+				})
 				userActionCtx(ctx, "share.create")
 				return &createShareOutput{Body: CreateShareResp{
 					Name: in.Body.Name, Project: project, UUID: uuid,
@@ -200,7 +209,7 @@ func mountSharesAPI(api huma.API) {
 		Method:        "PUT",
 		Path:          "/api/shares/{name}",
 		Summary:       "Resize a share / toggle read-only (tenant admin)",
-		Description:   "Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile.",
+		Description:   "Live-first via weft-agent's ResizeShare (proto v0.9.0 ; UUID resolved through the local store). Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile (mock-side only — the proto resize doesn't carry the read-only flag).",
 		Tags:          []string{"shares"},
 		DefaultStatus: 200,
 	}, func(ctx context.Context, in *resizeShareInput) (*resizeShareOutput, error) {
@@ -216,6 +225,15 @@ func mountSharesAPI(api huma.API) {
 		if !tenantsDB.isTenantAdmin(u, tenant) {
 			return nil, huma.Error403Forbidden("tenant admin required")
 		}
+		if live != nil {
+			if uuid, ok := sharesDB.shareUUID(in.Name); ok && uuid != "" {
+				if err := live.ResizeShare(ctx, uuid, in.Body.SizeGB); err != nil {
+					if !wclient.IsUnimplemented(err) {
+						return nil, huma.Error502BadGateway("live: " + err.Error())
+					}
+				}
+			}
+		}
 		if err := sharesDB.resize(in.Name, in.Body.SizeGB, in.Body.ReadOnly); err != nil {
 			return nil, hideHTTPErr(err)
 		}
@@ -230,6 +248,7 @@ func mountSharesAPI(api huma.API) {
 		Method:        "DELETE",
 		Path:          "/api/shares/{name}",
 		Summary:       "Delete a share (tenant admin)",
+		Description:   "Live-first via weft-agent's DeleteShare (proto v0.9.0 ; UUID resolved through the local store). The mock store is mirrored on success ; on codes.Unimplemented the local path is the source of truth.",
 		Tags:          []string{"shares"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *shareNameInput) (*struct{}, error) {
@@ -244,6 +263,15 @@ func mountSharesAPI(api huma.API) {
 		u := auth.UserFromContext(ctx)
 		if !tenantsDB.isTenantAdmin(u, tenant) {
 			return nil, huma.Error403Forbidden("tenant admin required")
+		}
+		if live != nil {
+			if uuid, ok := sharesDB.shareUUID(in.Name); ok && uuid != "" {
+				if err := live.DeleteShare(ctx, uuid); err != nil {
+					if !wclient.IsUnimplemented(err) {
+						return nil, huma.Error502BadGateway("live: " + err.Error())
+					}
+				}
+			}
 		}
 		if err := sharesDB.delete(in.Name); err != nil {
 			return nil, hideHTTPErr(err)
@@ -339,7 +367,11 @@ func mountBucketsAPI(api huma.API) {
 		if findBucket(name) != nil {
 			return nil, huma.Error409Conflict("bucket already exists")
 		}
-		buckets = append(buckets, &bucket{Name: name, Created: time.Now().UTC().Format("2006-01-02")})
+		buckets = append(buckets, &bucket{
+			UUID:    mockUUID("bucket", name),
+			Name:    name,
+			Created: time.Now().UTC().Format("2006-01-02"),
+		})
 		return &bucketNameOutput{Body: BucketNameResp{Name: name}}, nil
 	})
 
@@ -348,8 +380,18 @@ func mountBucketsAPI(api huma.API) {
 		Method:      "DELETE",
 		Path:        "/api/buckets/{name}",
 		Summary:     "Delete a bucket (cascades the attached policy)",
+		Description: "Live-first via weft-agent's DeleteBucket (proto v0.9.0) ; name is resolved to UUID through the local mock store before dialling. Local store is mirrored so the dashboard's bucket list refreshes without a round-trip. On codes.Unimplemented the local path is the source of truth.",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *bucketNameInput) (*deletedNameOutput, error) {
+	}, func(ctx context.Context, in *bucketNameInput) (*deletedNameOutput, error) {
+		if live != nil {
+			if uuid, ok := bucketUUID(in.Name); ok && uuid != "" {
+				if err := live.DeleteBucket(ctx, uuid); err != nil {
+					if !wclient.IsUnimplemented(err) {
+						return nil, huma.Error502BadGateway("live: " + err.Error())
+					}
+				}
+			}
+		}
 		bucketsMu.Lock()
 		defer bucketsMu.Unlock()
 		for i, b := range buckets {
@@ -367,8 +409,29 @@ func mountBucketsAPI(api huma.API) {
 		Method:      "GET",
 		Path:        "/api/buckets/{name}/policy",
 		Summary:     "Get a bucket's IAM policy (empty {Statements:[]} when none)",
+		Description: "Live-first via weft-agent's GetBucketPolicy (proto v0.9.0) ; the wire form is a single JSON string which we decode into the SPA's typed shape. On codes.Unimplemented or a decode failure we fall back to the in-memory mock so the editor never sees a 502 for a known-good bucket.",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *bucketNameInput) (*bucketPolicyOutput, error) {
+	}, func(ctx context.Context, in *bucketNameInput) (*bucketPolicyOutput, error) {
+		if live != nil {
+			if uuid, ok := bucketUUID(in.Name); ok && uuid != "" {
+				policyJSON, err := live.GetBucketPolicy(ctx, uuid)
+				if err == nil {
+					if policyJSON == "" {
+						return &bucketPolicyOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
+					}
+					var p BucketPolicy
+					if jerr := json.Unmarshal([]byte(policyJSON), &p); jerr == nil {
+						if p.Statements == nil {
+							p.Statements = []PolicyStatement{}
+						}
+						return &bucketPolicyOutput{Body: p}, nil
+					}
+					// fall through to mock on decode error
+				} else if !wclient.IsUnimplemented(err) {
+					return nil, huma.Error502BadGateway("live: " + err.Error())
+				}
+			}
+		}
 		bucketsMu.Lock()
 		defer bucketsMu.Unlock()
 		if findBucket(in.Name) == nil {
@@ -385,9 +448,9 @@ func mountBucketsAPI(api huma.API) {
 		Method:      "PUT",
 		Path:        "/api/buckets/{name}/policy",
 		Summary:     "Atomically set a bucket's policy",
-		Description: "An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.",
+		Description: "Live-first via weft-agent's SetBucketPolicy (proto v0.9.0 ; policy serialised to JSON on the wire ; empty body clears). An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.",
 		Tags:        []string{"buckets"},
-	}, func(_ context.Context, in *setBucketPolicyInput) (*bucketPolicyOutput, error) {
+	}, func(ctx context.Context, in *setBucketPolicyInput) (*bucketPolicyOutput, error) {
 		body := in.Body
 		for i, s := range body.Statements {
 			if !validPolicyEffects[s.Effect] {
@@ -400,6 +463,24 @@ func mountBucketsAPI(api huma.API) {
 				return nil, huma.Error400BadRequest("statement " + itoaSafe(i) + ": principal and resource are required")
 			}
 		}
+		if body.Version == "" {
+			body.Version = "2012-10-17"
+		}
+		if live != nil {
+			if uuid, ok := bucketUUID(in.Name); ok && uuid != "" {
+				policyJSON := ""
+				if len(body.Statements) > 0 {
+					if blob, jerr := json.Marshal(body); jerr == nil {
+						policyJSON = string(blob)
+					}
+				}
+				if err := live.SetBucketPolicy(ctx, uuid, policyJSON); err != nil {
+					if !wclient.IsUnimplemented(err) {
+						return nil, huma.Error502BadGateway("live: " + err.Error())
+					}
+				}
+			}
+		}
 		bucketsMu.Lock()
 		defer bucketsMu.Unlock()
 		if findBucket(in.Name) == nil {
@@ -408,9 +489,6 @@ func mountBucketsAPI(api huma.API) {
 		if len(body.Statements) == 0 {
 			delete(policies, in.Name)
 			return &bucketPolicyOutput{Body: BucketPolicy{Version: "2012-10-17", Statements: []PolicyStatement{}}}, nil
-		}
-		if body.Version == "" {
-			body.Version = "2012-10-17"
 		}
 		policies[in.Name] = &body
 		return &bucketPolicyOutput{Body: body}, nil

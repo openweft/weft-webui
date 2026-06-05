@@ -31,6 +31,13 @@ import (
 // the refresh flow (re-fetch + reconcile when an account changes
 // keys upstream).
 type SSHKey struct {
+	// UUID is the opaque handle proto v0.9.0 keys on
+	// (RemoveSSHKeyCatalogue takes a UUID). The mock continues to
+	// look entries up by name ; the live-first paths resolve
+	// name → uuid before dialling the wclient. Server-side
+	// fingerprint is authoritative when the live RPC succeeds —
+	// the mock recomputes it client-side for the same field.
+	UUID          string `json:"uuid,omitempty"`
 	Name          string `json:"name"`
 	PublicKey     string `json:"public_key"`
 	Description   string `json:"description"`
@@ -79,6 +86,7 @@ func seedSSHKeys() []SSHKey {
 			continue // skip silently — bad generation means an empty catalogue, not a panic
 		}
 		out = append(out, SSHKey{
+			UUID: mockUUID("ssh-key", d.name),
 			Name: d.name, PublicKey: line, Description: d.descr,
 			Source: "manual", Fingerprint: fp,
 			Owner:     d.owner,
@@ -157,9 +165,18 @@ func (m *memSSHKeyCatalogue) Set(ctx context.Context, k SSHKey) error {
 	defer m.mu.Unlock()
 	for i, x := range m.keys {
 		if x.Name == k.Name {
+			// Preserve the existing UUID on update : the SPA
+			// addresses keys by name but the wire keeps the UUID
+			// stable across edits.
+			if k.UUID == "" {
+				k.UUID = x.UUID
+			}
 			m.keys[i] = k
 			return nil
 		}
+	}
+	if k.UUID == "" {
+		k.UUID = mockUUID("ssh-key", k.Name)
 	}
 	m.keys = append(m.keys, k)
 	return nil
@@ -182,6 +199,17 @@ func (m *memSSHKeyCatalogue) Delete(ctx context.Context, name string) error {
 // own ListSSHKeys / SetSSHKey / DeleteSSHKey RPCs.
 var sshKeysCatalogue sshKeyCatalogue = newMemSSHKeyCatalogue()
 
+// sshKeyUUID resolves a catalogue entry's name to its opaque UUID
+// handle. Used by live-first handlers that need the wclient's
+// UUID-keyed Remove RPC while the SPA still addresses keys by name.
+func sshKeyUUID(ctx context.Context, name string) (string, bool) {
+	k, ok := sshKeysCatalogue.Get(ctx, name)
+	if !ok {
+		return "", false
+	}
+	return k.UUID, true
+}
+
 // sshKeyRows projects the catalogue to the map[string]any shape the
 // generic /api/resources/{id} catch-all expects. Same indirection
 // as flavorRows / scriptRows.
@@ -193,6 +221,7 @@ func sshKeyRows(ctx context.Context) []map[string]any {
 	out := make([]map[string]any, 0, len(ks))
 	for _, k := range ks {
 		out = append(out, map[string]any{
+			"uuid":           k.UUID,
 			"name":           k.Name,
 			"description":    k.Description,
 			"fingerprint":    k.Fingerprint,

@@ -14,18 +14,20 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 // APISSHKey is the typed wire shape exposed by /api/ssh-keys/*. The
 // fingerprint is computed server-side from PublicKey — the client
 // can't pre-fill it.
 type APISSHKey struct {
+	UUID          string `json:"uuid,omitempty" doc:"Opaque server-side handle ; proto v0.9.0 uses this to address the entry on Remove. The SPA still uses Name as the URL slug." example:"abc123…" readOnly:"true"`
 	Name          string `json:"name" doc:"Operator-chosen unique name" example:"alice@laptop" minLength:"1" maxLength:"128"`
 	PublicKey     string `json:"public_key" doc:"OpenSSH-format line : '<type> <b64> [comment]'" example:"ssh-ed25519 AAAA… alice@laptop" minLength:"1"`
 	Description   string `json:"description" doc:"Short description ; falls back to the OpenSSH comment when empty" example:"alice's laptop"`
 	Source        string `json:"source" doc:"Provenance" example:"manual" enum:"manual,github,gitlab,forgejo"`
 	SourceAccount string `json:"source_account" doc:"Upstream login when imported" example:"alice"`
-	Fingerprint   string `json:"fingerprint" doc:"SHA256:<base64-no-pad>, server-computed" example:"SHA256:abc…" readOnly:"true"`
+	Fingerprint   string `json:"fingerprint" doc:"SHA256:<base64-no-pad>, server-computed (live fingerprint is authoritative when the wclient succeeds)" example:"SHA256:abc…" readOnly:"true"`
 	Owner         string `json:"owner,omitempty" doc:"Email of the user who owns the key. Drives group-based authz : a VM authorized for group G inherits keys whose owner is a member of G." example:"alice@weft.local"`
 	UpdatedAt     string `json:"updated_at" doc:"RFC3339, server-stamped" readOnly:"true"`
 	UpdatedBy     string `json:"updated_by" doc:"OIDC sub / email of the last editor" readOnly:"true"`
@@ -33,6 +35,7 @@ type APISSHKey struct {
 
 func toAPISSHKey(k SSHKey) APISSHKey {
 	return APISSHKey{
+		UUID: k.UUID,
 		Name: k.Name, PublicKey: k.PublicKey, Description: k.Description,
 		Source: k.Source, SourceAccount: k.SourceAccount,
 		Fingerprint: k.Fingerprint, Owner: k.Owner,
@@ -42,6 +45,7 @@ func toAPISSHKey(k SSHKey) APISSHKey {
 
 func fromAPISSHKey(k APISSHKey) SSHKey {
 	return SSHKey{
+		UUID: k.UUID,
 		Name: k.Name, PublicKey: k.PublicKey, Description: k.Description,
 		Source: k.Source, SourceAccount: k.SourceAccount,
 		Fingerprint: k.Fingerprint, Owner: k.Owner,
@@ -55,9 +59,35 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 		Method:      "GET",
 		Path:        "/api/ssh-keys",
 		Summary:     "List the SSH-key catalogue",
-		Description: "Cluster-wide named SSH keys. Operators push their own keys here ; per-VM key assignments reference these by name.",
+		Description: "Live-first via weft-agent's ListSSHKeyCatalogue (proto v0.9.0) — server-side UUIDs + fingerprints flow through unchanged. Mock store mirrors successful live rows so subsequent name-keyed Set / Delete paths resolve without an extra round-trip. On codes.Unimplemented the mock is the source of truth. Cluster-wide named SSH keys ; per-VM key assignments reference these by name.",
 		Tags:        []string{"ssh-keys"},
 	}, func(ctx context.Context, _ *struct{}) (*listSSHKeysOutput, error) {
+		if live != nil {
+			rows, err := live.ListSSHKeyCatalogue(ctx)
+			if err == nil {
+				out := &listSSHKeysOutput{}
+				out.Body = make([]APISSHKey, 0, len(rows))
+				for _, r := range rows {
+					k := SSHKey{
+						UUID:        str(r["uuid"]),
+						Name:        str(r["name"]),
+						PublicKey:   str(r["public_key"]),
+						Fingerprint: str(r["fingerprint"]),
+						Description: str(r["comment"]),
+						Source:      "manual",
+					}
+					// Mirror into the mock so name-keyed lookups
+					// (Set / Delete) carry the server-side UUID +
+					// authoritative fingerprint.
+					_ = sshKeysCatalogue.Set(ctx, k)
+					out.Body = append(out.Body, toAPISSHKey(k))
+				}
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		ks, err := sshKeysCatalogue.List(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("list ssh-keys", err)
@@ -89,7 +119,7 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 		Method:      "POST",
 		Path:        "/api/ssh-keys",
 		Summary:     "Create or update an SSH key (tenant-admin or cluster-admin)",
-		Description: "PublicKey is parsed server-side ; the algorithm whitelist is closed (ssh-ed25519, ssh-rsa, ssh-dss, ecdsa-sha2-nistp{256,384,521}). The fingerprint is computed from the decoded blob and overwrites whatever the client sent.",
+		Description: "Live-first via weft-agent's AddSSHKeyCatalogue (proto v0.9.0). Server-side fingerprint is authoritative — the mock is mirrored from the live response so the client-side SHA256 only surfaces when the wclient is offline / Unimplemented. PublicKey is parsed server-side ; the algorithm whitelist is closed (ssh-ed25519, ssh-rsa, ssh-dss, ecdsa-sha2-nistp{256,384,521}).",
 		Tags:        []string{"ssh-keys"},
 	}, func(ctx context.Context, in *setSSHKeyInput) (*setSSHKeyOutput, error) {
 		u := auth.UserFromContext(ctx)
@@ -119,6 +149,23 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 				body.UpdatedBy = u.Subject
 			}
 		}
+		if live != nil {
+			uuid, liveFP, _, err := live.AddSSHKeyCatalogue(ctx, body.Name, body.PublicKey, body.Description)
+			if err == nil {
+				// Live fingerprint authoritative ; UUID stamped from
+				// server. Mirror into mock so subsequent name-keyed
+				// reads carry the same handle.
+				body.UUID = uuid
+				if liveFP != "" {
+					body.Fingerprint = liveFP
+				}
+				_ = sshKeysCatalogue.Set(ctx, body)
+				return &setSSHKeyOutput{Body: toAPISSHKey(body)}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		if err := sshKeysCatalogue.Set(ctx, body); err != nil {
 			return nil, huma.Error500InternalServerError("set ssh-key", err)
 		}
@@ -130,10 +177,20 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 		Method:      "DELETE",
 		Path:        "/api/ssh-keys/{name}",
 		Summary:     "Delete an SSH key (tenant-admin or cluster-admin) — idempotent",
+		Description: "Live-first via weft-agent's RemoveSSHKeyCatalogue (proto v0.9.0 ; UUID resolved through the local store). Mock store mirrored on success ; on codes.Unimplemented the local path is the source of truth.",
 		Tags:        []string{"ssh-keys"},
 	}, func(ctx context.Context, in *sshKeyNameInput) (*deleteSSHKeyOutput, error) {
 		if err := requireSSHKeyWriterCtx(auth.UserFromContext(ctx)); err != nil {
 			return nil, err
+		}
+		if live != nil {
+			if uuid, ok := sshKeyUUID(ctx, in.Name); ok && uuid != "" {
+				if err := live.RemoveSSHKeyCatalogue(ctx, uuid); err != nil {
+					if !wclient.IsUnimplemented(err) {
+						return nil, huma.Error502BadGateway("live: " + err.Error())
+					}
+				}
+			}
 		}
 		if err := sshKeysCatalogue.Delete(ctx, in.Name); err != nil {
 			return nil, huma.Error500InternalServerError("delete ssh-key", err)
@@ -170,6 +227,22 @@ func mountSSHKeysCatalogueAPI(api huma.API) {
 		lines, err := fetchKeysFile(ctx, endpoint)
 		if err != nil {
 			return nil, huma.Error502BadGateway("fetch " + endpoint + ": " + err.Error())
+		}
+
+		// Live-first : if the agent ships ImportSSHKeyCatalogue, push
+		// the blob whole — the server splits, parses, dedups by
+		// fingerprint, and returns the imported/skipped counts. The
+		// mock mirror happens below via the regular Set per line so
+		// the dashboard's per-key drawer keeps working.
+		if live != nil {
+			blob := strings.Join(lines, "\n")
+			if blob != "" {
+				if _, _, ierr := live.ImportSSHKeyCatalogue(ctx, blob); ierr != nil {
+					if !wclient.IsUnimplemented(ierr) {
+						return nil, huma.Error502BadGateway("live: " + ierr.Error())
+					}
+				}
+			}
 		}
 
 		existing, _ := sshKeysCatalogue.List(ctx)

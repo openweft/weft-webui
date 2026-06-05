@@ -21,6 +21,11 @@ import (
 // compact joined string the UI surfaces ; the typed AZ/Rack/Host
 // directives are kept too so the future RPC mapping stays mechanical.
 type SchedulingRule struct {
+	// UUID is the opaque handle proto v0.9.0 keys on
+	// (Update/Delete take a UUID). Carried alongside Name so the
+	// SPA can keep addressing rules by name while live-first paths
+	// resolve to UUID before dialling the wclient.
+	UUID      string
 	Name      string
 	Count     int    // desired replicas
 	Ready     int    // observed compliant replicas
@@ -60,6 +65,7 @@ var schedulingDB = func() *schedulingStore {
 		{Name: "ci-burst", Count: 0, Ready: 0, Selector: "kind=ci-job",
 			Project: "team-beta", Status: "compliant"},
 	} {
+		r.UUID = mockUUID("scheduling-rule", r.Project, r.Name)
 		s.rules[r.Name] = r
 	}
 	return s
@@ -105,6 +111,7 @@ func ruleToRow(r *SchedulingRule) map[string]any {
 		placement = strings.Join(parts, ", ")
 	}
 	return map[string]any{
+		"uuid":      r.UUID,
 		"name":      r.Name,
 		"count":     fmtCount(r.Ready, r.Count),
 		"placement": placement,
@@ -157,6 +164,9 @@ func (s *schedulingStore) create(r *SchedulingRule) error {
 	if _, exists := s.rules[r.Name]; exists {
 		return errConflict("rule already exists")
 	}
+	if r.UUID == "" {
+		r.UUID = mockUUID("scheduling-rule", r.Project, r.Name)
+	}
 	// Newly-created rules start "drifting" with ready=0 until the
 	// scheduler reports back ; treat count=0 as already-satisfied.
 	if r.Count == 0 {
@@ -166,6 +176,19 @@ func (s *schedulingStore) create(r *SchedulingRule) error {
 	}
 	s.rules[r.Name] = r
 	return nil
+}
+
+// ruleUUID resolves a scheduling-rule name to its opaque UUID handle.
+// Used by live-first handlers that need the wclient's UUID-keyed
+// Update/Delete RPCs while the SPA still addresses rules by name.
+func (s *schedulingStore) ruleUUID(name string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.rules[name]
+	if !ok {
+		return "", false
+	}
+	return r.UUID, true
 }
 
 // delete removes a rule. Returns ErrNotFound on a missing name.
