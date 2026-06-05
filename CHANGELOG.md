@@ -9,6 +9,60 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **wclient : Subnet + LoadBalancer + DNSZone + DNSRecord RPC
+  wrappers (proto v0.8.0)**. Twenty new methods on `*Client`
+  covering the network plane now that subnets, L4/L7 load
+  balancers and authoritative DNS are first-class control-plane
+  RPCs :
+  - **Subnet** (5) : `ListSubnets(ctx, networkUUID)`,
+    `GetSubnet`, `CreateSubnet(ctx, networkUUID, cidr, name, description, gateway, dnsServers)`,
+    `UpdateSubnet(...)` (partial PATCH ; `clearDNSServers=true`
+    drops the list, proto3 has no nil/empty distinction on the
+    wire), `DeleteSubnet`. `cidr` is immutable — delete + recreate
+    to renumber.
+  - **LoadBalancer** (6) : `ListLoadBalancers`, `GetLoadBalancer`,
+    `CreateLoadBalancer(ctx, projectUUID, name, listenAddr, protocol, backends)`,
+    `UpdateLoadBalancer` (listener fields only),
+    `SetLoadBalancerBackends(ctx, uuid, backends)` (atomic
+    replace ; empty slice clears every member),
+    `DeleteLoadBalancer(ctx, uuid) → (blockedFips, err)` —
+    cascade refusal surfaces the FloatingIP count. Backends
+    travel as `[]map[string]any{ {"address": ..., "weight": ...} }`,
+    the same JSON shape the webui handlers already deal in.
+  - **DNSZone** (5) : `ListDNSZones`, `GetDNSZone`,
+    `CreateDNSZone(ctx, projectUUID, name, soaEmail, ttl)`,
+    `UpdateDNSZone(ctx, uuid, soaEmail, ttl)` (`ttl == -1` keeps
+    current — proto3 int32 sentinel),
+    `DeleteDNSZone(ctx, uuid) → (blockedRecords, err)` — cascade
+    refusal surfaces the blocking record count.
+  - **DNSRecord** (4) : `ListDNSRecords(ctx, zoneUUID)`,
+    `CreateDNSRecord(ctx, zoneUUID, name, recordType, value, ttl, priority)`,
+    `UpdateDNSRecord` (value + ttl + priority only ; name +
+    recordType are immutable in v0.8.0 — wrapper keeps the fuller
+    signature for caller symmetry but the proto strips them),
+    `DeleteDNSRecord`.
+
+  Row projections (`subnetRow`, `loadBalancerRow`, `dnsZoneRow`,
+  `dnsRecordRow`) mirror the `map[string]any` shape every other
+  `List*` method on the client returns ; the dashboard's table
+  renderer doesn't change.
+
+  Migration scope : the handlers under
+  `internal/server/api_subnets.go`, `api_networking.go` and the
+  `dns_mock.go` editing layer still read + write the local
+  `resourceByID["subnets"|"load-balancers"|"dns-zones"|"dns-records"]`
+  store. Now that the wclient methods are in place, swapping each
+  CRUD endpoint to live-first is mechanical ; it lands in a
+  follow-up commit so this drop stays small and reviewable. CLI
+  parity is already achieved : operators using
+  `weft subnet create`, `weft lb create`, `weft dns-zone create`
+  and `weft dns-record create` reach the same live registry the
+  migrated handlers will read.
+
+  `go.mod` : weft-proto bumped to v0.8.0 in lockstep with the
+  weft core consumer. No vendor directory in this repo (build
+  downloads modules normally).
+
 - **wclient : AZ + Rack RPC wrappers (proto v0.7.0)**. Eight new
   methods on `*Client` covering the inventory hierarchy now that
   AZ + Rack are first-class control-plane RPCs :
