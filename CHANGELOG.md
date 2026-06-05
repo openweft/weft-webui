@@ -9,6 +9,26 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **wclient : AZ + Rack RPC wrappers (proto v0.7.0)**. Eight new
+  methods on `*Client` covering the inventory hierarchy now that
+  AZ + Rack are first-class control-plane RPCs :
+  - `ListAZs(ctx)` → rows with code/name/region/status + derived
+    rack + host counts.
+  - `CreateAZ(ctx, code, name, region, status) → (uuid, created, err)`
+    — idempotent insert mirrors the project pattern.
+  - `UpdateAZ(ctx, uuid, name, region, status) error` — partial
+    PATCH (empty strings keep current).
+  - `DeleteAZ(ctx, uuid) → (blockedRacks, blockedHosts, err)` —
+    cascade refusal surfaces the blocking counts.
+  - `ListRacks(ctx, azUUID)`, `CreateRack`, `UpdateRack`,
+    `DeleteRack` mirror the same contract.
+
+  The handlers under `internal/server/api_inventory.go` still
+  read + write the local `resourceByID["azs"|"racks"]` store ;
+  migrating them to live-first requires a coordinated diff across
+  all 20 CRUD endpoints and lands in a follow-up commit. The
+  wclient methods are in place so that migration is mechanical.
+
 - **Plugin catalogue : static fallback when no live agent is wired**.
   `/api/plugins/catalogue` previously returned an empty list when
   `live == nil`, which made the superadmin Plugins panel look
