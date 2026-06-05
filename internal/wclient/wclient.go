@@ -2074,3 +2074,534 @@ func (c *Client) DeleteRack(ctx context.Context, uuid string) (blockedHosts int3
 	}
 	return 0, nil
 }
+
+// -----------------------------------------------------------------
+// Network plane : Subnet + LoadBalancer + DNSZone + DNSRecord
+// (weft-proto v0.8.0)
+//
+// These methods wrap the 20 network-plane RPCs that landed in
+// v0.8.0 of the proto. The webui's api_subnets / api_networking
+// handlers still write into the local resourceByID store ; now
+// that the wclient calls are in place, migrating each CRUD path
+// to live-first is mechanical and lands in a follow-up commit so
+// this drop stays small and reviewable. CLI parity is already
+// achieved : operators using `weft subnet create`,
+// `weft lb create`, `weft dns-zone create` and
+// `weft dns-record create` reach the same live registry the
+// migrated handlers will read.
+
+// --- Subnets -----------------------------------------------------
+
+// ListSubnets returns every subnet under networkUUID ; an empty
+// networkUUID lists across every accessible network.
+func (c *Client) ListSubnets(ctx context.Context, networkUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListSubnets", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListSubnets(cctx, &weftv1.ListSubnetsRequest{NetworkUuid: networkUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetSubnets()))
+	for _, s := range resp.GetSubnets() {
+		out = append(out, subnetRow(s))
+	}
+	return out, nil
+}
+
+// GetSubnet fetches a single subnet by UUID.
+func (c *Client) GetSubnet(ctx context.Context, uuid string) (row map[string]any, retErr error) {
+	defer c.measured("GetSubnet", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetSubnet(cctx, &weftv1.GetSubnetRequest{Uuid: uuid})
+	if err != nil {
+		return nil, err
+	}
+	return subnetRow(resp.GetSubnet()), nil
+}
+
+// CreateSubnet carves a new subnet under networkUUID. The cidr is
+// immutable for the lifetime of the subnet ; gateway + dnsServers
+// can move via UpdateSubnet.
+func (c *Client) CreateSubnet(ctx context.Context, networkUUID, cidr, name, description, gateway string, dnsServers []string) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateSubnet", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateSubnet(cctx, &weftv1.CreateSubnetRequest{
+		NetworkUuid: networkUUID,
+		Name:        name,
+		Description: description,
+		Cidr:        cidr,
+		Gateway:     gateway,
+		DnsServers:  dnsServers,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetSubnet().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateSubnet patches the mutable fields. Empty strings keep the
+// current value (partial PATCH). dnsServers == nil keeps the
+// current list ; clearDNSServers=true explicitly clears it
+// (proto3 repeated has no nil/empty distinction on the wire — see
+// the proto's UpdateSubnetRequest comment).
+func (c *Client) UpdateSubnet(ctx context.Context, uuid, name, description, gateway string, dnsServers []string, clearDNSServers bool) (retErr error) {
+	defer c.measured("UpdateSubnet", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateSubnet(cctx, &weftv1.UpdateSubnetRequest{
+		Uuid:            uuid,
+		Name:            name,
+		Description:     description,
+		Gateway:         gateway,
+		ClearDnsServers: clearDNSServers,
+		DnsServers:      dnsServers,
+	})
+	return err
+}
+
+// DeleteSubnet removes a subnet. The parent network's port
+// registry is the source of truth for cascade safety — the server
+// refuses while allocations remain.
+func (c *Client) DeleteSubnet(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteSubnet", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteSubnet(cctx, &weftv1.DeleteSubnetRequest{Uuid: uuid})
+	return err
+}
+
+func subnetRow(s *weftv1.SubnetInfo) map[string]any {
+	if s == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":         s.GetUuid(),
+		"network_uuid": s.GetNetworkUuid(),
+		"project_uuid": s.GetProjectUuid(),
+		"name":         s.GetName(),
+		"description":  s.GetDescription(),
+		"cidr":         s.GetCidr(),
+		"gateway":      s.GetGateway(),
+		"dns_servers":  append([]string(nil), s.GetDnsServers()...),
+		"created":      tsDate(s.GetCreatedAtUnixNs()),
+	}
+}
+
+// --- LoadBalancers -----------------------------------------------
+
+// ListLoadBalancers returns every LB in projectUUID ; an empty
+// projectUUID falls back to the caller's accessible set.
+func (c *Client) ListLoadBalancers(ctx context.Context, projectUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListLoadBalancers", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListLoadBalancers(cctx, &weftv1.ListLoadBalancersRequest{Project: projectUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetLoadBalancers()))
+	for _, lb := range resp.GetLoadBalancers() {
+		out = append(out, loadBalancerRow(lb))
+	}
+	return out, nil
+}
+
+// GetLoadBalancer fetches a single LB by UUID.
+func (c *Client) GetLoadBalancer(ctx context.Context, uuid string) (row map[string]any, retErr error) {
+	defer c.measured("GetLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetLoadBalancer(cctx, &weftv1.GetLoadBalancerRequest{Uuid: uuid})
+	if err != nil {
+		return nil, err
+	}
+	return loadBalancerRow(resp.GetLoadBalancer()), nil
+}
+
+// CreateLoadBalancer registers a new LB. backends is a slice of
+// map[string]any with `address` (string) and `weight` (int /
+// int32 / float64) entries — the standard JSON shape the webui's
+// handlers already deal in.
+func (c *Client) CreateLoadBalancer(ctx context.Context, projectUUID, name, listenAddr, protocol string, backends []map[string]any) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateLoadBalancer(cctx, &weftv1.CreateLoadBalancerRequest{
+		Project:    projectUUID,
+		Name:       name,
+		ListenAddr: listenAddr,
+		Protocol:   protocol,
+		Backends:   lbBackendsFromRows(backends),
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetLoadBalancer().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateLoadBalancer patches the mutable listener fields. Empty
+// strings keep the current value. Backends are managed separately
+// via SetLoadBalancerBackends (atomic replace).
+func (c *Client) UpdateLoadBalancer(ctx context.Context, uuid, name, listenAddr, protocol string) (retErr error) {
+	defer c.measured("UpdateLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateLoadBalancer(cctx, &weftv1.UpdateLoadBalancerRequest{
+		Uuid:       uuid,
+		Name:       name,
+		ListenAddr: listenAddr,
+		Protocol:   protocol,
+	})
+	return err
+}
+
+// SetLoadBalancerBackends replaces the backend list atomically.
+// An empty slice clears every member (LB becomes a black hole
+// until the next set call).
+func (c *Client) SetLoadBalancerBackends(ctx context.Context, uuid string, backends []map[string]any) (retErr error) {
+	defer c.measured("SetLoadBalancerBackends", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetLoadBalancerBackends(cctx, &weftv1.SetLoadBalancerBackendsRequest{
+		Uuid:     uuid,
+		Backends: lbBackendsFromRows(backends),
+	})
+	return err
+}
+
+// DeleteLoadBalancer removes an LB. Returns the blocking
+// FloatingIP count on cascade refusal — the caller unmaps the
+// FIP first, then retries.
+func (c *Client) DeleteLoadBalancer(ctx context.Context, uuid string) (blockedFips int32, retErr error) {
+	defer c.measured("DeleteLoadBalancer", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return 0, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.DeleteLoadBalancer(cctx, &weftv1.DeleteLoadBalancerRequest{Uuid: uuid})
+	if err != nil {
+		if resp != nil {
+			return resp.GetBlockedByFips(), err
+		}
+		return 0, err
+	}
+	return 0, nil
+}
+
+func loadBalancerRow(lb *weftv1.LoadBalancerInfo) map[string]any {
+	if lb == nil {
+		return map[string]any{}
+	}
+	backends := make([]map[string]any, 0, len(lb.GetBackends()))
+	for _, b := range lb.GetBackends() {
+		backends = append(backends, map[string]any{
+			"address": b.GetAddress(),
+			"weight":  b.GetWeight(),
+		})
+	}
+	return map[string]any{
+		"uuid":         lb.GetUuid(),
+		"project_uuid": lb.GetProjectUuid(),
+		"name":         lb.GetName(),
+		"listen_addr":  lb.GetListenAddr(),
+		"protocol":     lb.GetProtocol(),
+		"backends":     backends,
+		"created":      tsDate(lb.GetCreatedAtUnixNs()),
+	}
+}
+
+// lbBackendsFromRows projects the webui's JSON-style
+// []map[string]any backends into the proto's []*LBBackend. Keys
+// recognised : `address` (string) and `weight` (any numeric the
+// JSON decoder produces — int, int32, int64, float64). Unknown
+// or missing keys collapse to their zero value.
+func lbBackendsFromRows(rows []map[string]any) []*weftv1.LBBackend {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]*weftv1.LBBackend, 0, len(rows))
+	for _, r := range rows {
+		addr, _ := r["address"].(string)
+		weight := int32(0)
+		switch v := r["weight"].(type) {
+		case int:
+			weight = int32(v)
+		case int32:
+			weight = v
+		case int64:
+			weight = int32(v)
+		case float64:
+			weight = int32(v)
+		}
+		out = append(out, &weftv1.LBBackend{Address: addr, Weight: weight})
+	}
+	return out
+}
+
+// --- DNS Zones ---------------------------------------------------
+
+// ListDNSZones returns every zone in projectUUID ; an empty
+// projectUUID falls back to the caller's accessible set.
+func (c *Client) ListDNSZones(ctx context.Context, projectUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListDNSZones", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListDNSZones(cctx, &weftv1.ListDNSZonesRequest{Project: projectUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetZones()))
+	for _, z := range resp.GetZones() {
+		out = append(out, dnsZoneRow(z))
+	}
+	return out, nil
+}
+
+// GetDNSZone fetches a single zone by UUID.
+func (c *Client) GetDNSZone(ctx context.Context, uuid string) (row map[string]any, retErr error) {
+	defer c.measured("GetDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetDNSZone(cctx, &weftv1.GetDNSZoneRequest{Uuid: uuid})
+	if err != nil {
+		return nil, err
+	}
+	return dnsZoneRow(resp.GetZone()), nil
+}
+
+// CreateDNSZone registers a new apex under projectUUID. ttl == 0
+// asks the server for the default (3600).
+func (c *Client) CreateDNSZone(ctx context.Context, projectUUID, name, soaEmail string, ttl int32) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateDNSZone(cctx, &weftv1.CreateDNSZoneRequest{
+		Project:  projectUUID,
+		Name:     name,
+		SoaEmail: soaEmail,
+		Ttl:      ttl,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetZone().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateDNSZone patches the mutable fields. Empty soaEmail keeps
+// the current value ; ttl == -1 keeps the current value (proto3
+// int32 has no nil ; matches the server's contract).
+func (c *Client) UpdateDNSZone(ctx context.Context, uuid, soaEmail string, ttl int32) (retErr error) {
+	defer c.measured("UpdateDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateDNSZone(cctx, &weftv1.UpdateDNSZoneRequest{
+		Uuid:     uuid,
+		SoaEmail: soaEmail,
+		Ttl:      ttl,
+	})
+	return err
+}
+
+// DeleteDNSZone removes a zone. Returns the blocking record count
+// on cascade refusal so the UI can surface a "drain X records
+// first" hint verbatim.
+func (c *Client) DeleteDNSZone(ctx context.Context, uuid string) (blockedRecords int32, retErr error) {
+	defer c.measured("DeleteDNSZone", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return 0, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.DeleteDNSZone(cctx, &weftv1.DeleteDNSZoneRequest{Uuid: uuid})
+	if err != nil {
+		if resp != nil {
+			return resp.GetBlockedByRecords(), err
+		}
+		return 0, err
+	}
+	return 0, nil
+}
+
+func dnsZoneRow(z *weftv1.DNSZoneInfo) map[string]any {
+	if z == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":         z.GetUuid(),
+		"project_uuid": z.GetProjectUuid(),
+		"name":         z.GetName(),
+		"soa_email":    z.GetSoaEmail(),
+		"ttl":          z.GetTtl(),
+		"records":      z.GetRecords(),
+		"created":      tsDate(z.GetCreatedAtUnixNs()),
+	}
+}
+
+// --- DNS Records -------------------------------------------------
+
+// ListDNSRecords returns every record under zoneUUID.
+func (c *Client) ListDNSRecords(ctx context.Context, zoneUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListDNSRecords", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListDNSRecords(cctx, &weftv1.ListDNSRecordsRequest{ZoneUuid: zoneUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetRecords()))
+	for _, r := range resp.GetRecords() {
+		out = append(out, dnsRecordRow(r))
+	}
+	return out, nil
+}
+
+// CreateDNSRecord registers a new record under zoneUUID.
+// recordType is one of "A" | "AAAA" | "CNAME" | "MX" | "TXT" |
+// "SRV". priority is only meaningful for MX + SRV (ignored
+// otherwise). ttl == 0 inherits the zone default.
+func (c *Client) CreateDNSRecord(ctx context.Context, zoneUUID, name, recordType, value string, ttl, priority int32) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateDNSRecord", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateDNSRecord(cctx, &weftv1.CreateDNSRecordRequest{
+		ZoneUuid: zoneUUID,
+		Name:     name,
+		Type:     recordType,
+		Value:    value,
+		Ttl:      ttl,
+		Priority: priority,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetRecord().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateDNSRecord patches the mutable fields. The proto's
+// UpdateDNSRecordRequest only carries value + ttl + priority —
+// name + type are immutable in v0.8.0 (delete + recreate to
+// rename or change the record class). The wrapper keeps the
+// fuller `name, recordType` parameters in the signature for
+// caller symmetry but the proto strips them on the wire ; the
+// server is the source of truth.
+//
+// value == "" keeps the current value ; ttl == -1 keeps the
+// current value ; priority == -1 keeps the current value
+// (proto3 int32 has no nil — matches the server's contract).
+func (c *Client) UpdateDNSRecord(ctx context.Context, uuid, name, recordType, value string, ttl, priority int32) (retErr error) {
+	_ = name
+	_ = recordType
+	defer c.measured("UpdateDNSRecord", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateDNSRecord(cctx, &weftv1.UpdateDNSRecordRequest{
+		Uuid:     uuid,
+		Value:    value,
+		Ttl:      ttl,
+		Priority: priority,
+	})
+	return err
+}
+
+// DeleteDNSRecord removes a record.
+func (c *Client) DeleteDNSRecord(ctx context.Context, uuid string) (retErr error) {
+	defer c.measured("DeleteDNSRecord", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteDNSRecord(cctx, &weftv1.DeleteDNSRecordRequest{Uuid: uuid})
+	return err
+}
+
+func dnsRecordRow(r *weftv1.DNSRecordInfo) map[string]any {
+	if r == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"uuid":      r.GetUuid(),
+		"zone_uuid": r.GetZoneUuid(),
+		"name":      r.GetName(),
+		"type":      r.GetType(),
+		"value":     r.GetValue(),
+		"ttl":       r.GetTtl(),
+		"priority":  r.GetPriority(),
+		"created":   tsDate(r.GetCreatedAtUnixNs()),
+	}
+}
