@@ -9,6 +9,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **mock stores : opaque `uuid` field on Bucket / Share /
+  SchedulingRule / SSHKey rows** (data-model migration follow-up to
+  commit `a7276c4`). Every mock row now carries a stable opaque
+  `uuid` (computed via `mockUUID(...)`) alongside its `name`, so
+  live-first handlers can resolve name → uuid for the proto v0.9.0
+  UUID-keyed RPCs without changing the SPA path layout. Helpers
+  `bucketUUID`, `sharesDB.shareUUID`, `schedulingDB.ruleUUID`,
+  `sshKeyUUID` mirror the `findAZByUUID` / `findRackByUUID` style
+  used by inventory. The `uuid` is surfaced in the `/api/resources/*`
+  row projections and in the `APISSHKey` typed body so the SPA can
+  pick it up when needed ; existing name-as-path-segment URLs are
+  unchanged.
+
 - **wclient : VolumeProperty + Share (Get/Resize) + Bucket +
   SSHKeyCatalogue + SchedulingRule + RegistryRemote RPC wrappers
   (proto v0.9.0)**. Twenty-two new methods on `*Client` covering the
@@ -61,6 +74,78 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
   the webui already expects.
 
 ### Changed
+
+- **api : live-first migration for Bucket / Share / SSH-key
+  catalogue handlers (v0.9.0 Tier 4-6, follow-up to commit
+  `a7276c4`)**. Now that the mock rows carry a stable opaque `uuid`
+  (see Added), the UUID-keyed RPCs introduced in `a7276c4` are
+  wired through "live-first → mock fallback" on every mutation /
+  read where the proto exists :
+  - **Bucket** :
+    - `DELETE /api/buckets/{name}` — `bucketUUID(name)` →
+      `live.DeleteBucket(uuid)` ; mock cascade (bucket row +
+      policy) runs unconditionally so the affordance stays
+      idempotent.
+    - `GET /api/buckets/{name}/policy` —
+      `live.GetBucketPolicy(uuid)` ; wire form is a single JSON
+      string which the handler decodes into the SPA's typed
+      `BucketPolicy`. Decode-fail or `Unimplemented` falls back
+      to the mock store so the editor never sees a 502 for a
+      known-good bucket.
+    - `PUT /api/buckets/{name}/policy` —
+      `live.SetBucketPolicy(uuid, json)` ; an empty statement
+      list serialises to `""` (clear). Mock mirrors the same
+      payload so dual-mode dashboards stay consistent.
+  - **Share** :
+    - `PUT /api/shares/{name}` (resize) —
+      `live.ResizeShare(uuid, sizeGB)`. The `read_only` flag is
+      mock-only (proto's `ResizeShareRequest` carries size
+      only) — a follow-up extends the proto.
+    - `DELETE /api/shares/{name}` — `live.DeleteShare(uuid)`.
+    - `POST /api/shares` (existing live-first create) now
+      mirrors the server-returned UUID into the mock store so
+      the subsequent Resize / Delete paths resolve through
+      `sharesDB.shareUUID` without re-querying the agent.
+  - **SSHKeyCatalogue** :
+    - `GET /api/ssh-keys` — `live.ListSSHKeyCatalogue(ctx)` ;
+      every row is mirrored into the mock so name-keyed Set /
+      Delete carries the server-side UUID + authoritative
+      fingerprint.
+    - `POST /api/ssh-keys` —
+      `live.AddSSHKeyCatalogue(name, publicKey, comment)`. The
+      server-side fingerprint overwrites the client-side
+      compute ; the UUID is stamped from the response.
+    - `DELETE /api/ssh-keys/{name}` —
+      `live.RemoveSSHKeyCatalogue(uuid)` with the name resolved
+      through `sshKeyUUID(ctx, name)`.
+    - `POST /api/ssh-keys/import` —
+      `live.ImportSSHKeyCatalogue(blob)` pushes the
+      authorized_keys blob whole ; the per-line mirror still
+      runs locally so the dashboard's per-key drawer stays
+      populated.
+
+  Every successful mutation keeps emitting `Audit(...)` events
+  through the existing per-handler taps ; non-`codes.Unimplemented`
+  gRPC errors return `502 Bad Gateway` ; `codes.Unimplemented`
+  falls through to the existing mock branch so an older agent
+  build keeps serving.
+
+  **Remaining follow-ups** :
+  - **`POST /api/buckets` (create)** — the proto's
+    `CreateBucketRequest` wants `endpoint` + `region` +
+    `access_key_id` + `secret_access_key` per bucket, but the SPA
+    form only collects `name` today ; live wiring lands once the
+    form surfaces those fields.
+  - **`SchedulingRule` Create / Update / Delete** — already on
+    `liveNet.*SchedulingRule` (weft-network controller). The
+    weft-agent proto v0.9.0 ships a parallel control-plane surface
+    on `live.*SchedulingRule` ; the arbitration between the two
+    daemons lands in a follow-up before the dual surface goes live.
+    The mock rows now carry a `uuid` so either side can be wired
+    without a second migration.
+  - **`POST /api/shares` (CreateShare)** — `ReadOnly` flag stays
+    mock-only because the proto's `CreateShareRequest` doesn't
+    carry it ; ditto `ResizeShare`.
 
 - **api : live-first migration for the v0.9.0 Tier 4-6 surface**.
   Four handlers rewired to "live-first → fallback local store",

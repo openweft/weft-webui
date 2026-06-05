@@ -22,6 +22,11 @@ import (
 )
 
 type Share struct {
+	// UUID is the opaque handle proto v0.9.0 keys on (GetShare /
+	// ResizeShare / DeleteShare all take a UUID). The mock continues
+	// to look entries up by name — the field exists so the live-first
+	// branch can resolve name → uuid before dialling the wclient.
+	UUID     string
 	Name     string
 	Project  string
 	Backend  string // currently always "cubefs"
@@ -44,6 +49,7 @@ var sharesDB = func() *shareStore {
 		{Name: "notebooks", Project: "research", Backend: "cubefs", SizeGB: 512, Mounts: 9, Status: "active"},
 		{Name: "models", Project: "research", Backend: "cubefs", SizeGB: 4096, ReadOnly: true, Mounts: 3, Status: "active"},
 	} {
+		sh.UUID = mockUUID("share", sh.Project, sh.Name)
 		s.shares[sh.Name] = sh
 	}
 	return s
@@ -103,6 +109,7 @@ func (s *shareStore) listByTenant(tenant string) []map[string]any {
 
 func shareToRow(sh *Share) map[string]any {
 	return map[string]any{
+		"uuid":     sh.UUID,
 		"name":     sh.Name,
 		"project":  sh.Project,
 		"backend":  sh.Backend,
@@ -131,6 +138,9 @@ func (s *shareStore) create(sh *Share) error {
 	defer s.mu.Unlock()
 	if _, exists := s.shares[sh.Name]; exists {
 		return errConflict("share already exists")
+	}
+	if sh.UUID == "" {
+		sh.UUID = mockUUID("share", sh.Project, sh.Name)
 	}
 	sh.Status = "provisioning" // becomes "active" once CubeFS reports back
 	s.shares[sh.Name] = sh
@@ -178,6 +188,19 @@ func (s *shareStore) shareProject(name string) (string, bool) {
 		return "", false
 	}
 	return sh.Project, true
+}
+
+// shareUUID resolves a share name to its opaque UUID handle. Used by
+// live-first handlers that need the wclient's UUID-keyed RPCs while
+// the SPA still addresses shares by name.
+func (s *shareStore) shareUUID(name string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sh, ok := s.shares[name]
+	if !ok {
+		return "", false
+	}
+	return sh.UUID, true
 }
 
 // (Share lifecycle handlers moved to huma — see api_storage.go.)

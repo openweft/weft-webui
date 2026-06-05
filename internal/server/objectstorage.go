@@ -25,6 +25,12 @@ type s3object struct {
 }
 
 type bucket struct {
+	// UUID is the opaque handle proto v0.9.0 keys on
+	// (Delete/GetPolicy/SetPolicy all take a UUID). The mock keeps
+	// indexing buckets by name so the SPA's path layout stays
+	// unchanged ; the live-first paths resolve name → uuid before
+	// dialling the wclient.
+	UUID    string
 	Name    string
 	Created string
 	Objects []s3object
@@ -192,7 +198,7 @@ func resourceMatch(rule, key string) bool {
 // file keeps just the policy data + evaluator.)
 
 func seedBuckets() []*bucket {
-	return []*bucket{
+	bs := []*bucket{
 		{Name: "team-data", Created: "2026-03-02", Objects: []s3object{
 			obj("README.md", "# team-data\n\nShared datasets and models for team-alpha.\nServed by CubeFS over its S3 endpoint.\n"),
 			obj("datasets/2026/jan/report.csv", "date,region,requests,errors\n2026-01-01,dc-a,18422,3\n2026-01-02,dc-b,21044,0\n2026-01-03,dc-c,17310,5\n"),
@@ -209,6 +215,10 @@ func seedBuckets() []*bucket {
 			obj("db/2026-05-02.dump", ""),
 		}},
 	}
+	for _, b := range bs {
+		b.UUID = mockUUID("bucket", b.Name)
+	}
+	return bs
 }
 
 func obj(key, content string) s3object {
@@ -272,6 +282,19 @@ func findBucket(name string) *bucket {
 	return nil
 }
 
+// bucketUUID resolves a bucket name to its opaque UUID. Used by
+// live-first handlers (Delete / GetPolicy / SetPolicy take UUIDs).
+// Returns "" and false when the bucket is unknown ; callers fall
+// back to the local mutation path in that case.
+func bucketUUID(name string) (string, bool) {
+	bucketsMu.Lock()
+	defer bucketsMu.Unlock()
+	if b := findBucket(name); b != nil {
+		return b.UUID, true
+	}
+	return "", false
+}
+
 func bucketsCount() int {
 	bucketsMu.Lock()
 	defer bucketsMu.Unlock()
@@ -290,6 +313,7 @@ func bucketSummaries() []map[string]any {
 			total += o.Size
 		}
 		out = append(out, row(
+			"uuid", b.UUID,
 			"name", b.Name, "objects", len(b.Objects),
 			"size", humanSize(total), "created", b.Created,
 		))

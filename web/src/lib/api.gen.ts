@@ -137,7 +137,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a bucket (cascades the attached policy) */
+        /**
+         * Delete a bucket (cascades the attached policy)
+         * @description Live-first via weft-agent's DeleteBucket (proto v0.9.0) ; name is resolved to UUID through the local mock store before dialling. Local store is mirrored so the dashboard's bucket list refreshes without a round-trip. On codes.Unimplemented the local path is the source of truth.
+         */
         delete: operations["delete-bucket"];
         options?: never;
         head?: never;
@@ -187,11 +190,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a bucket's IAM policy (empty {Statements:[]} when none) */
+        /**
+         * Get a bucket's IAM policy (empty {Statements:[]} when none)
+         * @description Live-first via weft-agent's GetBucketPolicy (proto v0.9.0) ; the wire form is a single JSON string which we decode into the SPA's typed shape. On codes.Unimplemented or a decode failure we fall back to the in-memory mock so the editor never sees a 502 for a known-good bucket.
+         */
         get: operations["get-bucket-policy"];
         /**
          * Atomically set a bucket's policy
-         * @description An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.
+         * @description Live-first via weft-agent's SetBucketPolicy (proto v0.9.0 ; policy serialised to JSON on the wire ; empty body clears). An empty statement list clears the policy back to the default-allow state. One bad statement rejects the whole submission so the editor and server don't go out of sync.
          */
         put: operations["set-bucket-policy"];
         post?: never;
@@ -1701,11 +1707,14 @@ export interface paths {
         get?: never;
         /**
          * Resize a share / toggle read-only (tenant admin)
-         * @description Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile.
+         * @description Live-first via weft-agent's ResizeShare (proto v0.9.0 ; UUID resolved through the local store). Grows capacity ; shrinking is not supported (returns 400). The CubeFS volume owns physical capacity — this updates the metadata that drives mount-time enforcement. ReadOnly toggles re-fan to mounting VMs on the next reconcile (mock-side only — the proto resize doesn't carry the read-only flag).
          */
         put: operations["resize-share"];
         post?: never;
-        /** Delete a share (tenant admin) */
+        /**
+         * Delete a share (tenant admin)
+         * @description Live-first via weft-agent's DeleteShare (proto v0.9.0 ; UUID resolved through the local store). The mock store is mirrored on success ; on codes.Unimplemented the local path is the source of truth.
+         */
         delete: operations["delete-share"];
         options?: never;
         head?: never;
@@ -1813,13 +1822,13 @@ export interface paths {
         };
         /**
          * List the SSH-key catalogue
-         * @description Cluster-wide named SSH keys. Operators push their own keys here ; per-VM key assignments reference these by name.
+         * @description Live-first via weft-agent's ListSSHKeyCatalogue (proto v0.9.0) — server-side UUIDs + fingerprints flow through unchanged. Mock store mirrors successful live rows so subsequent name-keyed Set / Delete paths resolve without an extra round-trip. On codes.Unimplemented the mock is the source of truth. Cluster-wide named SSH keys ; per-VM key assignments reference these by name.
          */
         get: operations["list-ssh-keys"];
         put?: never;
         /**
          * Create or update an SSH key (tenant-admin or cluster-admin)
-         * @description PublicKey is parsed server-side ; the algorithm whitelist is closed (ssh-ed25519, ssh-rsa, ssh-dss, ecdsa-sha2-nistp{256,384,521}). The fingerprint is computed from the decoded blob and overwrites whatever the client sent.
+         * @description Live-first via weft-agent's AddSSHKeyCatalogue (proto v0.9.0). Server-side fingerprint is authoritative — the mock is mirrored from the live response so the client-side SHA256 only surfaces when the wclient is offline / Unimplemented. PublicKey is parsed server-side ; the algorithm whitelist is closed (ssh-ed25519, ssh-rsa, ssh-dss, ecdsa-sha2-nistp{256,384,521}).
          */
         post: operations["set-ssh-key"];
         delete?: never;
@@ -1859,7 +1868,10 @@ export interface paths {
         get: operations["get-ssh-key"];
         put?: never;
         post?: never;
-        /** Delete an SSH key (tenant-admin or cluster-admin) — idempotent */
+        /**
+         * Delete an SSH key (tenant-admin or cluster-admin) — idempotent
+         * @description Live-first via weft-agent's RemoveSSHKeyCatalogue (proto v0.9.0 ; UUID resolved through the local store). Mock store mirrored on success ; on codes.Unimplemented the local path is the source of truth.
+         */
         delete: operations["delete-ssh-key"];
         options?: never;
         head?: never;
@@ -2372,7 +2384,7 @@ export interface components {
              */
             description: string;
             /**
-             * @description SHA256:<base64-no-pad>, server-computed
+             * @description SHA256:<base64-no-pad>, server-computed (live fingerprint is authoritative when the wclient succeeds)
              * @example SHA256:abc…
              */
             readonly fingerprint: string;
@@ -2406,6 +2418,11 @@ export interface components {
             readonly updated_at: string;
             /** @description OIDC sub / email of the last editor */
             readonly updated_by: string;
+            /**
+             * @description Opaque server-side handle ; proto v0.9.0 uses this to address the entry on Remove. The SPA still uses Name as the URL slug.
+             * @example abc123…
+             */
+            readonly uuid?: string;
         };
         APIScript: {
             /**
