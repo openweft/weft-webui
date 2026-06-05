@@ -1893,3 +1893,184 @@ func (c *Client) RestoreVolumeBackup(ctx context.Context, url, newVolumeName, pr
 	})
 	return err
 }
+
+// -----------------------------------------------------------------
+// Inventory : AZs + Racks (weft-proto v0.7.0)
+//
+// These methods wrap the AZ + Rack RPCs that landed in v0.7.0 of
+// the proto. The webui's api_inventory handlers can now reach the
+// live registry instead of writing only into resourceByID — see
+// the live-first fallback pattern in api_inventory.go.
+
+// ListAZs returns every registered AZ + the derived rack/host
+// counts the proto's AZInfo carries.
+func (c *Client) ListAZs(ctx context.Context) (rows []map[string]any, retErr error) {
+	defer c.measured("ListAZs", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListAZs(cctx, &weftv1.ListAZsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetAzs()))
+	for _, a := range resp.GetAzs() {
+		out = append(out, map[string]any{
+			"uuid":    a.Uuid,
+			"code":    a.Code,
+			"name":    a.Name,
+			"region":  a.Region,
+			"status":  a.Status,
+			"racks":   a.Racks,
+			"hosts":   a.Hosts,
+			"created": tsDate(a.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+// CreateAZ registers a new AZ. Returns the assigned UUID + a
+// `created` flag (false when the code already lived in the
+// registry — idempotent insert).
+func (c *Client) CreateAZ(ctx context.Context, code, name, region, statusValue string) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateAZ", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateAZ(cctx, &weftv1.CreateAZRequest{
+		Code: code, Name: name, Region: region, Status: statusValue,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetAz().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateAZ patches the mutable fields. Empty strings keep the
+// current value (partial PATCH ; matches the server's contract).
+func (c *Client) UpdateAZ(ctx context.Context, uuid, name, region, statusValue string) (retErr error) {
+	defer c.measured("UpdateAZ", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateAZ(cctx, &weftv1.UpdateAZRequest{
+		Uuid: uuid, Name: name, Region: region, Status: statusValue,
+	})
+	return err
+}
+
+// DeleteAZ removes an AZ. Returns the blocking counts on cascade
+// refusal so the caller can surface them verbatim.
+func (c *Client) DeleteAZ(ctx context.Context, uuid string) (blockedRacks, blockedHosts int32, retErr error) {
+	defer c.measured("DeleteAZ", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return 0, 0, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.DeleteAZ(cctx, &weftv1.DeleteAZRequest{Uuid: uuid})
+	if err != nil {
+		// The server still returns a partial response carrying the
+		// blocking counts on cascade refusal ; surface them
+		// alongside the error so the UI can render the right
+		// "drain X first" hint.
+		if resp != nil {
+			return resp.GetBlockedByRacks(), resp.GetBlockedByHosts(), err
+		}
+		return 0, 0, err
+	}
+	return 0, 0, nil
+}
+
+// ListRacks returns every rack ; azUUID == "" lists across every AZ.
+func (c *Client) ListRacks(ctx context.Context, azUUID string) (rows []map[string]any, retErr error) {
+	defer c.measured("ListRacks", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListRacks(cctx, &weftv1.ListRacksRequest{AzUuid: azUUID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetRacks()))
+	for _, r := range resp.GetRacks() {
+		out = append(out, map[string]any{
+			"uuid":     r.Uuid,
+			"az_uuid":  r.AzUuid,
+			"code":     r.Code,
+			"name":     r.Name,
+			"status":   r.Status,
+			"height_u": r.HeightU,
+			"hosts":    r.Hosts,
+			"created":  tsDate(r.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
+}
+
+// CreateRack registers a new rack under azUUID.
+func (c *Client) CreateRack(ctx context.Context, azUUID, code, name, statusValue string, heightU int32) (uuid string, created bool, retErr error) {
+	defer c.measured("CreateRack", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return "", false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateRack(cctx, &weftv1.CreateRackRequest{
+		AzUuid: azUUID, Code: code, Name: name, Status: statusValue, HeightU: heightU,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return resp.GetRack().GetUuid(), resp.GetCreated(), nil
+}
+
+// UpdateRack patches the mutable fields. heightU == -1 = "keep
+// current" (proto3 int32 sentinel ; matches the server's contract).
+func (c *Client) UpdateRack(ctx context.Context, uuid, name, statusValue string, heightU int32) (retErr error) {
+	defer c.measured("UpdateRack", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.UpdateRack(cctx, &weftv1.UpdateRackRequest{
+		Uuid: uuid, Name: name, Status: statusValue, HeightU: heightU,
+	})
+	return err
+}
+
+// DeleteRack removes a rack. Returns the blocking host count on
+// cascade refusal.
+func (c *Client) DeleteRack(ctx context.Context, uuid string) (blockedHosts int32, retErr error) {
+	defer c.measured("DeleteRack", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return 0, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.DeleteRack(cctx, &weftv1.DeleteRackRequest{Uuid: uuid})
+	if err != nil {
+		if resp != nil {
+			return resp.GetBlockedByHosts(), err
+		}
+		return 0, err
+	}
+	return 0, nil
+}
