@@ -172,6 +172,16 @@
             "maxLength": 64,
             "type": "string"
           },
+          "height_u": {
+            "description": "Chassis height in U (default 1)",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "maximum": 20,
+            "minimum": 0,
+            "type": "integer"
+          },
           "hypervisor": {
             "description": "Hypervisor backend",
             "enum": [
@@ -191,6 +201,16 @@
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
+          },
+          "position_u": {
+            "description": "Top-of-unit slot in the rack (1-based, 1 = top)",
+            "examples": [
+              5
+            ],
+            "format": "int64",
+            "maximum": 60,
+            "minimum": 0,
+            "type": "integer"
           },
           "rack": {
             "description": "Parent rack code within the AZ",
@@ -227,6 +247,8 @@
           "arch",
           "hypervisor",
           "gpu",
+          "position_u",
+          "height_u",
           "status"
         ],
         "type": "object"
@@ -261,6 +283,16 @@
             "minLength": 1,
             "type": "string"
           },
+          "height_u": {
+            "description": "Rack total height in U (default 42)",
+            "examples": [
+              42
+            ],
+            "format": "int64",
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
           "position": {
             "description": "Free-form physical position (row1-col1, ...)",
             "maxLength": 64,
@@ -289,6 +321,7 @@
           "code",
           "az",
           "position",
+          "height_u",
           "status"
         ],
         "type": "object"
@@ -1697,6 +1730,41 @@
         ],
         "type": "object"
       },
+      "CreateVolumeBackupInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateVolumeBackupInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "project": {
+            "description": "Override the session project",
+            "type": "string"
+          },
+          "snapshot_uuid": {
+            "description": "Source snapshot UUID (must already exist on a block-backend volume)",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "description": "Backup target URL (oci:// / s3:// / sftp:// / fs://)",
+            "maxLength": 1024,
+            "minLength": 6,
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_uuid",
+          "target"
+        ],
+        "type": "object"
+      },
       "CreateVolumeInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1756,6 +1824,30 @@
           "name",
           "project",
           "size_gib"
+        ],
+        "type": "object"
+      },
+      "CreateVolumeSnapshotInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateVolumeSnapshotInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Snapshot name (unique within the parent volume)",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -3474,6 +3566,126 @@
         ],
         "type": "object"
       },
+      "RestoreVolumeBackupInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RestoreVolumeBackupInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_volume_name": {
+            "description": "Name for the restored block volume",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "description": "Project the new volume lands in",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "Backup URL to restore",
+            "maxLength": 2048,
+            "minLength": 6,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "new_volume_name",
+          "project"
+        ],
+        "type": "object"
+      },
+      "RestoreVolumeBackupResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RestoreVolumeBackupResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_volume_name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "new_volume_name",
+          "project"
+        ],
+        "type": "object"
+      },
+      "RestoreVolumeSnapshotInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RestoreVolumeSnapshotInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_volume_name": {
+            "description": "Name for the restored volume",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "description": "Override the session project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_volume_name"
+        ],
+        "type": "object"
+      },
+      "RestoreVolumeSnapshotResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RestoreVolumeSnapshotResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_volume_name": {
+            "type": "string"
+          },
+          "snapshot_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_uuid",
+          "new_volume_name"
+        ],
+        "type": "object"
+      },
       "RoleResp": {
         "additionalProperties": false,
         "properties": {
@@ -4601,6 +4813,55 @@
         ],
         "type": "object"
       },
+      "VolumeBackupRow": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VolumeBackupRow.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot_uuid": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "volume_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "volume_uuid",
+          "snapshot_uuid",
+          "project",
+          "size_bytes",
+          "state",
+          "created"
+        ],
+        "type": "object"
+      },
       "VolumeMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -4685,6 +4946,48 @@
           "key",
           "value",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "VolumeSnapshotRow": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VolumeSnapshotRow.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "size_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "volume_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "volume_uuid",
+          "name",
+          "size_gib",
+          "project",
+          "created"
         ],
         "type": "object"
       }
@@ -4906,6 +5209,197 @@
         "summary": "Update an availability zone (cluster-admin)",
         "tags": [
           "inventory"
+        ]
+      }
+    },
+    "/api/backups": {
+      "delete": {
+        "description": "Idempotent — deleting a missing backup is a no-op. The URL is the same opaque addressing key returned by list-volume-backups ; the SPA passes it back verbatim.",
+        "operationId": "delete-volume-backup",
+        "parameters": [
+          {
+            "description": "Backup URL (as returned by list-volume-backups)",
+            "explode": false,
+            "in": "query",
+            "name": "url",
+            "schema": {
+              "description": "Backup URL (as returned by list-volume-backups)",
+              "maxLength": 2048,
+              "minLength": 6,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete one backup from its target store",
+        "tags": [
+          "backups"
+        ]
+      },
+      "get": {
+        "description": "Walks the target's metadata sidecars and returns one row per backup. Filtered server-side by project (via the caller's visible projects). Optional ?volume_uuid= further narrows to one origin volume.",
+        "operationId": "list-volume-backups",
+        "parameters": [
+          {
+            "description": "Backup target URL",
+            "explode": false,
+            "in": "query",
+            "name": "target",
+            "schema": {
+              "description": "Backup target URL",
+              "maxLength": 1024,
+              "minLength": 6,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Limit to one origin volume (UUID)",
+            "explode": false,
+            "in": "query",
+            "name": "volume_uuid",
+            "schema": {
+              "description": "Limit to one origin volume (UUID)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VolumeBackupRow"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List backups at a target store",
+        "tags": [
+          "backups"
+        ]
+      },
+      "post": {
+        "description": "Streams the snapshot's bytes to the target URL through weft-block. Encryption + incremental chains are honoured by the daemon when configured. Block-backend volumes only — file parents reject server-side with a clear error.",
+        "operationId": "create-volume-backup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVolumeBackupInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeBackupRow"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ship a snapshot to a backup target",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/backups/restore": {
+      "post": {
+        "description": "Creates a fresh block-backend volume in the requested project and populates it from the backup. Size is discovered from the backup's sidecar metadata — the operator doesn't have to specify it. The source backup is untouched.",
+        "operationId": "restore-volume-backup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreVolumeBackupInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreVolumeBackupResp"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Restore a backup into a new block volume",
+        "tags": [
+          "backups"
         ]
       }
     },
@@ -10636,6 +11130,139 @@
         ]
       }
     },
+    "/api/snapshots/{uuid}": {
+      "delete": {
+        "operationId": "delete-volume-snapshot",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a snapshot (does not touch the parent volume)",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{uuid}/restore": {
+      "post": {
+        "description": "Clones the snapshot's contents into a fresh volume. The new volume lands in the same project as the snapshot — there's no cross-project restore.",
+        "operationId": "restore-volume-snapshot",
+        "parameters": [
+          {
+            "description": "Source snapshot UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Source snapshot UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreVolumeSnapshotInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreVolumeSnapshotResp"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Restore a snapshot into a new volume",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
+    "/api/snapshots/{uuid}/revert": {
+      "post": {
+        "description": "Rolls the parent volume's contents back to the snapshot's state. Only supported on block-backend volumes (file parents reject with 502 — the agent surfaces a clear 'block-only' error message). The volume should be detached first ; the agent enforces this at the driver layer.",
+        "operationId": "revert-volume-snapshot",
+        "parameters": [
+          {
+            "description": "Resource UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Resource UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revert the parent volume to this snapshot (block-backend only)",
+        "tags": [
+          "snapshots"
+        ]
+      }
+    },
     "/api/ssh-keys": {
       "get": {
         "description": "Cluster-wide named SSH keys. Operators push their own keys here ; per-VM key assignments reference these by name.",
@@ -11790,6 +12417,134 @@
         "summary": "Detach a volume from its current VM (live-only)",
         "tags": [
           "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{uuid}/snapshots": {
+      "get": {
+        "description": "Returns every snapshot taken on the given parent volume, oldest-first by creation time. Empty list when the volume has none. Live-only ; 503 when no weft daemon is wired.",
+        "operationId": "list-volume-snapshots",
+        "parameters": [
+          {
+            "description": "Parent volume UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Parent volume UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VolumeSnapshotRow"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List snapshots of a volume",
+        "tags": [
+          "volumes",
+          "snapshots"
+        ]
+      },
+      "post": {
+        "description": "Freezes the volume's current state under the given name. File-backed parents do a reflink CoW clone ; block-backed parents create a controller-side snapshot through weft-block. The snapshot name must be unique within the parent volume.",
+        "operationId": "create-volume-snapshot",
+        "parameters": [
+          {
+            "description": "Parent volume UUID",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Parent volume UUID",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVolumeSnapshotInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeSnapshotRow"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Snapshot a volume",
+        "tags": [
+          "volumes",
+          "snapshots"
         ]
       }
     }

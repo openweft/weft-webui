@@ -726,6 +726,149 @@ export const detachVolume = async (uuid: string) => {
   if (error) throwErr(error);
 };
 
+// ---- Volume snapshots ---------------------------------------------
+//
+// Snapshots are project-scoped point-in-time copies of a volume. The
+// agent dispatches on the parent's backend : file-backed → reflink
+// CoW clone ; block-backed (weft-block) → controller snapshot. The UI
+// doesn't model the backend choice — at snapshot time the parent's
+// row already encodes it.
+//
+// Revert is block-only ; file parents reject server-side with a 502
+// bubbling the agent's "block-only" message. The drawer surfaces a
+// disabled revert button when the parent's backend isn't block.
+
+export type VolumeSnapshotRow = _genComponents['schemas']['VolumeSnapshotRow'];
+
+export const listVolumeSnapshots = async (
+  volumeUUID: string,
+  project?: string,
+): Promise<VolumeSnapshotRow[]> => {
+  const { data, error } = await client.GET('/api/volumes/{uuid}/snapshots', {
+    params: { path: { uuid: volumeUUID }, query: project ? { project } : {} },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const createVolumeSnapshot = async (
+  volumeUUID: string,
+  name: string,
+  project?: string,
+): Promise<VolumeSnapshotRow> => {
+  const { data, error } = await client.POST('/api/volumes/{uuid}/snapshots', {
+    params: { path: { uuid: volumeUUID }, query: project ? { project } : {} },
+    body: { name },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const restoreVolumeSnapshot = async (
+  snapshotUUID: string,
+  newVolumeName: string,
+  project?: string,
+): Promise<{ snapshot_uuid: string; new_volume_name: string }> => {
+  const { data, error } = await client.POST('/api/snapshots/{uuid}/restore', {
+    params: { path: { uuid: snapshotUUID } },
+    body: {
+      new_volume_name: newVolumeName,
+      ...(project ? { project } : {}),
+    },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+// revertVolumeSnapshot rolls the parent BLOCK volume back to the
+// snapshot's state. The volume should be detached first ; the agent
+// enforces this at the driver layer and surfaces a clear error if
+// not. File-backend parents reject — the UI gates the affordance
+// based on the parent volume's `backend` column.
+export const revertVolumeSnapshot = async (snapshotUUID: string): Promise<void> => {
+  const { error } = await client.POST('/api/snapshots/{uuid}/revert', {
+    params: { path: { uuid: snapshotUUID } },
+  });
+  if (error) throwErr(error);
+};
+
+export const deleteVolumeSnapshot = async (snapshotUUID: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/snapshots/{uuid}', {
+    params: { path: { uuid: snapshotUUID } },
+  });
+  if (error) throwErr(error);
+};
+
+// ---- Volume backups (block-only) ----------------------------------
+//
+// Backups are off-host : the agent ships the snapshot's bytes to a
+// target URL through weft-block. Targets the UI accepts :
+//
+//   oci://<registry>/<repo>:<tag>       — recommended (content-addressed)
+//   s3://<bucket>@<region>/<prefix>     — versitygw / CubeFS objectnode
+//   sftp://<user>@<host>:<port>/<path>  — sftpgo
+//   fs:///<absolute_path>               — dev / tests only
+//
+// Encryption + incremental chains live entirely inside weft-block ;
+// the UI never sees a passphrase. The operator sets
+// WEFT_BACKUP_PASSPHRASE on the daemon and forgets about it from the
+// dashboard's perspective.
+
+export type VolumeBackupRow = _genComponents['schemas']['VolumeBackupRow'];
+
+export const createVolumeBackup = async (
+  snapshotUUID: string,
+  target: string,
+  project?: string,
+): Promise<VolumeBackupRow> => {
+  const { data, error } = await client.POST('/api/backups', {
+    body: {
+      snapshot_uuid: snapshotUUID,
+      target,
+      ...(project ? { project } : {}),
+    },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export const listVolumeBackups = async (
+  target: string,
+  volumeUUID?: string,
+  project?: string,
+): Promise<VolumeBackupRow[]> => {
+  const { data, error } = await client.GET('/api/backups', {
+    params: {
+      query: {
+        target,
+        ...(volumeUUID ? { volume_uuid: volumeUUID } : {}),
+        ...(project ? { project } : {}),
+      },
+    },
+  });
+  if (error) throwErr(error);
+  return data ?? [];
+};
+
+export const deleteVolumeBackup = async (url: string): Promise<void> => {
+  const { error } = await client.DELETE('/api/backups', {
+    params: { query: { url } },
+  });
+  if (error) throwErr(error);
+};
+
+export const restoreVolumeBackup = async (
+  url: string,
+  newVolumeName: string,
+  project: string,
+): Promise<{ url: string; new_volume_name: string; project: string }> => {
+  const { data, error } = await client.POST('/api/backups/restore', {
+    body: { url, new_volume_name: newVolumeName, project },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
 // ---- Network controller (routers / LBs / DNS) ---------------------
 
 export interface CreateRouterBody {

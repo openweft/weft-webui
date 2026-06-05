@@ -276,9 +276,11 @@ func (c *Client) ListVolumes(ctx context.Context, project string, opts ListOpts)
 	out := make([]map[string]any, 0, len(resp.GetVolumes()))
 	for _, v := range resp.GetVolumes() {
 		out = append(out, map[string]any{
+			"uuid":        v.Uuid,
 			"name":        v.Name,
 			"size_gib":    v.SizeGib,
 			"format":      v.Format,
+			"backend":     v.Backend,
 			"attached_to": v.AttachedToUuid,
 			"project":     v.ProjectUuid,
 			"created":     tsDate(v.CreatedAtUnixNs),
@@ -1658,6 +1660,236 @@ func (c *Client) RemoveVMSSHKey(ctx context.Context, vmName, project, fingerprin
 	defer cancel()
 	_, err = rpc.RemoveVMSSHKey(cctx, &weftv1.RemoveVMSSHKeyRequest{
 		VmName: vmName, Project: project, Fingerprint: fingerprint,
+	})
+	return err
+}
+
+// ============================================================================
+// Volume snapshots + backups (5 + 4 RPCs)
+// ============================================================================
+//
+// Snapshot path covers both backends : file-backed parents do a reflink
+// clone server-side, block-backed parents (weft-block) dispatch through
+// the driver's CreateSnapshot. Revert is block-only — file parents get a
+// FailedPrecondition with a clear "only block volumes" error.
+//
+// Backup path is block-only (file backend has no off-host story yet) and
+// ships through one of four target URLs : oci:// (recommended), s3://
+// (versitygw / CubeFS objectnode), sftp:// (sftpgo), fs:// (dev/tests).
+// Encryption + incremental chain bookkeeping live in weft-block ; the
+// client only passes URLs around — passphrase is daemon-side env-only.
+
+// ---- Snapshots ------------------------------------------------------
+
+// VolumeSnapshotInfo is the projection the UI consumes for one row in
+// the snapshot table. Mirrors VolumeSnapshotInfo on the wire but keeps
+// Go-shaped field names + timestamp string.
+type VolumeSnapshotInfo struct {
+	UUID       string `json:"uuid"`
+	VolumeUUID string `json:"volume_uuid"`
+	Name       string `json:"name"`
+	SizeGiB    int64  `json:"size_gib"`
+	Project    string `json:"project"`
+	CreatedAt  string `json:"created_at"`
+}
+
+func (c *Client) ListVolumeSnapshots(ctx context.Context, volumeUUID, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListVolumeSnapshots", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_ = opts // server-side filter ignores Limit / PageToken today ; honoured when proto carries them
+	resp, err := rpc.ListVolumeSnapshots(cctx, &weftv1.ListVolumeSnapshotsRequest{
+		VolumeUuid: volumeUUID, Project: project,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetSnapshots()))
+	for _, s := range resp.GetSnapshots() {
+		out = append(out, map[string]any{
+			"uuid":        s.Uuid,
+			"volume_uuid": s.VolumeUuid,
+			"name":        s.Name,
+			"size_gib":    s.SizeGib,
+			"project":     s.Project,
+			"created":     tsDate(s.CreatedAtUnixNs),
+		})
+	}
+	return out, "", nil
+}
+
+func (c *Client) CreateVolumeSnapshot(ctx context.Context, volumeUUID, name, project string) (snap *VolumeSnapshotInfo, retErr error) {
+	defer c.measured("CreateVolumeSnapshot", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateVolumeSnapshot(cctx, &weftv1.CreateVolumeSnapshotRequest{
+		VolumeUuid: volumeUUID, Name: name, Project: project,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s := resp.GetSnapshot()
+	if s == nil {
+		return nil, nil
+	}
+	return &VolumeSnapshotInfo{
+		UUID:       s.Uuid,
+		VolumeUUID: s.VolumeUuid,
+		Name:       s.Name,
+		SizeGiB:    s.SizeGib,
+		Project:    s.Project,
+		CreatedAt:  tsDate(s.CreatedAtUnixNs),
+	}, nil
+}
+
+func (c *Client) RestoreVolumeSnapshot(ctx context.Context, snapshotUUID, newVolumeName, project string) (retErr error) {
+	defer c.measured("RestoreVolumeSnapshot", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RestoreVolumeSnapshot(cctx, &weftv1.RestoreVolumeSnapshotRequest{
+		SnapshotUuid: snapshotUUID, NewVolumeName: newVolumeName, Project: project,
+	})
+	return err
+}
+
+// RevertVolumeSnapshot rolls a block-backend parent volume back to the
+// snapshot's state. File-backend parents reject server-side with a
+// FailedPrecondition the caller surfaces verbatim.
+func (c *Client) RevertVolumeSnapshot(ctx context.Context, snapshotUUID string) (retErr error) {
+	defer c.measured("RevertVolumeSnapshot", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RevertVolumeSnapshot(cctx, &weftv1.RevertVolumeSnapshotRequest{Uuid: snapshotUUID})
+	return err
+}
+
+func (c *Client) DeleteVolumeSnapshot(ctx context.Context, snapshotUUID string) (retErr error) {
+	defer c.measured("DeleteVolumeSnapshot", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVolumeSnapshot(cctx, &weftv1.DeleteVolumeSnapshotRequest{Uuid: snapshotUUID})
+	return err
+}
+
+// ---- Backups (block-only) -------------------------------------------
+
+// VolumeBackupInfo is the projection the UI consumes for one row in
+// the backup table. URL is the addressing key (opaque to the UI ;
+// Delete + Restore take it back verbatim).
+type VolumeBackupInfo struct {
+	URL          string `json:"url"`
+	VolumeUUID   string `json:"volume_uuid"`
+	SnapshotUUID string `json:"snapshot_uuid"`
+	Project      string `json:"project"`
+	SizeBytes    int64  `json:"size_bytes"`
+	State        string `json:"state"`
+	Error        string `json:"error,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
+func (c *Client) CreateVolumeBackup(ctx context.Context, snapshotUUID, target, project string) (info *VolumeBackupInfo, retErr error) {
+	defer c.measured("CreateVolumeBackup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.CreateVolumeBackup(cctx, &weftv1.CreateVolumeBackupRequest{
+		SnapshotUuid: snapshotUUID, Target: target, Project: project,
+	})
+	if err != nil {
+		return nil, err
+	}
+	b := resp.GetBackup()
+	if b == nil {
+		return nil, nil
+	}
+	return &VolumeBackupInfo{
+		URL:          b.Url,
+		VolumeUUID:   b.VolumeUuid,
+		SnapshotUUID: b.SnapshotUuid,
+		Project:      b.Project,
+		SizeBytes:    b.SizeBytes,
+		State:        b.State,
+		Error:        b.Error,
+		CreatedAt:    tsDate(b.CreatedAtUnixNs),
+	}, nil
+}
+
+func (c *Client) ListVolumeBackups(ctx context.Context, target, volumeUUID, project string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
+	defer c.measured("ListVolumeBackups", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_ = opts
+	resp, err := rpc.ListVolumeBackups(cctx, &weftv1.ListVolumeBackupsRequest{
+		Target: target, VolumeUuid: volumeUUID, Project: project,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]map[string]any, 0, len(resp.GetBackups()))
+	for _, b := range resp.GetBackups() {
+		out = append(out, map[string]any{
+			"url":           b.Url,
+			"volume_uuid":   b.VolumeUuid,
+			"snapshot_uuid": b.SnapshotUuid,
+			"project":       b.Project,
+			"size_bytes":    b.SizeBytes,
+			"state":         b.State,
+			"error":         b.Error,
+			"created":       tsDate(b.CreatedAtUnixNs),
+		})
+	}
+	return out, "", nil
+}
+
+func (c *Client) DeleteVolumeBackup(ctx context.Context, url string) (retErr error) {
+	defer c.measured("DeleteVolumeBackup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.DeleteVolumeBackup(cctx, &weftv1.DeleteVolumeBackupRequest{Url: url})
+	return err
+}
+
+func (c *Client) RestoreVolumeBackup(ctx context.Context, url, newVolumeName, project string) (retErr error) {
+	defer c.measured("RestoreVolumeBackup", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RestoreVolumeBackup(cctx, &weftv1.RestoreVolumeBackupRequest{
+		Url: url, NewVolumeName: newVolumeName, Project: project,
 	})
 	return err
 }

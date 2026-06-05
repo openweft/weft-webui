@@ -32,7 +32,60 @@
   const AZ_HALF       = 180;
   const RACK_FOOT     = 40;
   const RACK_GAP      = 14;
-  const RACK_BAND_H   = 22;
+  // RACK_BAND_H is the screen-height of ONE U slot. The total rack
+  // height is `totalU * RACK_BAND_H` so a 42U rack towers over a 24U
+  // one (right-sized to actual capacity rather than fleet density).
+  const RACK_BAND_H   = 8;
+
+  // U-occupancy helpers — same shape as the 2D viz's helpers, kept
+  // local so the 3D view doesn't import from a sibling component.
+  function rackHeightU(rack: Row): number {
+    const v = Number(rack.height_u ?? 0);
+    return v >= 1 && v <= 100 ? v : 42;
+  }
+  function packHostsByU(
+    hostsIn: Row[],
+    totalU: number,
+  ): Array<Row & { _top: number; _size: number }> {
+    const explicit: Array<Row & { _top: number; _size: number }> = [];
+    const floating: Row[] = [];
+    for (const h of hostsIn) {
+      const pos = Number(h.position_u ?? 0);
+      const size = Math.max(1, Number(h.height_u ?? 1));
+      if (pos >= 1) {
+        explicit.push({ ...h, _top: pos, _size: size });
+      } else {
+        floating.push(h);
+      }
+    }
+    const taken = new Array<boolean>(totalU + 2).fill(false);
+    for (const h of explicit) {
+      for (let u = h._top; u < h._top + h._size && u <= totalU; u++) {
+        taken[u] = true;
+      }
+    }
+    const placed: Array<Row & { _top: number; _size: number }> = [...explicit];
+    for (const h of floating) {
+      const size = Math.max(1, Number(h.height_u ?? 1));
+      let start = 0;
+      let run = 0;
+      for (let u = 1; u <= totalU; u++) {
+        if (!taken[u]) {
+          if (run === 0) start = u;
+          run++;
+          if (run >= size) {
+            for (let k = start; k < start + size; k++) taken[k] = true;
+            placed.push({ ...h, _top: start, _size: size });
+            break;
+          }
+        } else {
+          run = 0;
+        }
+      }
+    }
+    placed.sort((a, b) => a._top - b._top);
+    return placed;
+  }
 
   // SVG canvas + default per-AZ screen anchor.
   const SVG_W = 1600;
@@ -238,7 +291,9 @@
           {#each azRacks as rack, rkIdx (rack.uuid ?? rkIdx)}
             {@const rg = rackGridPos(rkIdx, azRacks.length)}
             {@const hostsInRack = hostsByRack.get(String(az.code ?? '') + '|' + String(rack.code ?? '')) ?? []}
-            {@const rackH = Math.max(1, hostsInRack.length) * RACK_BAND_H}
+            {@const totalU = rackHeightU(rack)}
+            {@const packed = packHostsByU(hostsInRack, totalU)}
+            {@const rackH = totalU * RACK_BAND_H}
             {@const rackVMs = hostsInRack.flatMap((h) => vmsByHost.get(String(h.name ?? '')) ?? [])}
             {@const bot00 = iso(rg.gx,             rg.gy,             0)}
             {@const bot10 = iso(rg.gx + RACK_FOOT, rg.gy,             0)}
@@ -264,9 +319,13 @@
                 fill="oklch(96% 0.01 240)"
                 stroke="oklch(55% 0.05 240)" stroke-width="0.8"/>
 
-              {#each hostsInRack as host, hostIdx (host.uuid ?? host.name ?? hostIdx)}
-                {@const bandZ0 = hostIdx       * RACK_BAND_H}
-                {@const bandZ1 = (hostIdx + 1) * RACK_BAND_H}
+              {#each packed as host (host.uuid ?? host.name ?? host._top)}
+                <!-- Z is in absolute rack-screen-units. U1 sits at
+                     the top of the rack, so a host at top=U1 lives
+                     at (totalU - 1)..totalU. Top-of-unit reads
+                     correctly without inverting in the template. -->
+                {@const bandZ0 = (totalU - (host._top + host._size - 1)) * RACK_BAND_H}
+                {@const bandZ1 = (totalU - (host._top - 1)) * RACK_BAND_H}
                 {@const bL0 = iso(rg.gx, rg.gy + RACK_FOOT, bandZ0)}
                 {@const bL1 = iso(rg.gx, rg.gy + RACK_FOOT, bandZ1)}
                 {@const bR1 = iso(rg.gx, rg.gy,             bandZ1)}

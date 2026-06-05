@@ -7,7 +7,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/openweft/weft-client v0.2.2
 	github.com/openweft/weft-network-proto v0.1.0
-	github.com/openweft/weft-proto v0.5.0
+	github.com/openweft/weft-proto v0.6.0
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/time v0.15.0
@@ -40,3 +40,11 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+// Dev-loop : weft-proto v0.6.0 tag is committed locally but not yet
+// pushed at the time of writing (no SSH key in agent during the
+// release prep session). Workspace mode (../go.work) already routes
+// the import to the in-tree sibling, so this replace is belt-and-
+// suspenders for module-mode builds. Drop once the tag is published
+// and `go mod tidy` succeeds.
+replace github.com/openweft/weft-proto => ../weft-proto

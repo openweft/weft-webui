@@ -100,16 +100,19 @@ var registry = []Resource{
 		// `tenant:group1,group2 / tenant2:groupN` — the existing table
 		// layout stays compact, and a future detail drawer can show the
 		// structured form.
-		ID: "users", Label: "Users", Section: "Identity", Scope: ScopeAdmin,
-		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer",
-			"memberships", "Memberships", "last_seen", "Last seen"),
-	},
-	{
 		// Groups are tenant-scoped : the same name (`developers`) is a
 		// different group in different tenants. Surface the tenant.
+		// Listed BEFORE Users so the sidebar reads Tenants → Projects →
+		// Groups → Users (the natural read order : a group is a
+		// membership bucket the user lives inside).
 		ID: "groups", Label: "Groups", Section: "Identity", Scope: ScopeAdmin,
 		Columns: cols("name", "Name", "tenant", "Tenant",
 			"description", "Description", "members", "Members"),
+	},
+	{
+		ID: "users", Label: "Users", Section: "Identity", Scope: ScopeAdmin,
+		Columns: cols("name", "Name", "email", "Email", "issuer", "Issuer",
+			"memberships", "Memberships", "last_seen", "Last seen"),
 	},
 
 	// ---------- Compute ----------
@@ -227,11 +230,11 @@ var registry = []Resource{
 		// Mirrors VolumeInfo (name, size_gib, format, attached_to_uuid →
 		// attached_to, project_uuid → project, created).
 		ID: "volumes", Label: "Volumes", Section: "Storage",
-		Columns: cols("name", "Name", "size_gib", "Size (GiB)", "format", "Format", "attached_to", "Attached to", "project", "Project", "created", "Created"),
+		Columns: cols("name", "Name", "size_gib", "Size (GiB)", "format", "Format", "backend", "Backend", "attached_to", "Attached to", "project", "Project", "created", "Created"),
 		Rows: []map[string]any{
-			row("name", "pg-data", "size_gib", 200, "format", "raw", "attached_to", "db-1", "project", "team-alpha", "created", "2026-04-14"),
-			row("name", "cubefs-d0", "size_gib", 500, "format", "raw", "attached_to", "cubefs-data-0", "project", "team-beta", "created", "2026-04-02"),
-			row("name", "scratch-1", "size_gib", 50, "format", "qcow2", "attached_to", "", "project", "team-alpha", "created", "2026-05-01"),
+			row("name", "pg-data", "size_gib", 200, "format", "raw", "backend", "file", "attached_to", "db-1", "project", "team-alpha", "created", "2026-04-14"),
+			row("name", "cubefs-d0", "size_gib", 500, "format", "raw", "backend", "block", "attached_to", "cubefs-data-0", "project", "team-beta", "created", "2026-04-02"),
+			row("name", "scratch-1", "size_gib", 50, "format", "qcow2", "backend", "file", "attached_to", "", "project", "team-alpha", "created", "2026-05-01"),
 		},
 	},
 	{
@@ -588,19 +591,19 @@ var registry = []Resource{
 		// Hidden from the sidebar — tree-only surface.
 		ID: "racks", Label: "Racks", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("code", "Code", "az", "AZ", "position", "Position",
-			"hosts", "Hosts", "status", "Status"),
+			"height_u", "Height (U)", "hosts", "Hosts", "status", "Status"),
 		Rows: []map[string]any{
 			// DC-A : 3 racks
-			row("uuid", "rk00-aaaa-0000-0000-000000000001", "code", "R1", "az", "DC-A", "position", "row1-col1", "hosts", 2, "status", "active"),
-			row("uuid", "rk00-aaaa-0000-0000-000000000002", "code", "R2", "az", "DC-A", "position", "row1-col2", "hosts", 2, "status", "active"),
-			row("uuid", "rk00-aaaa-0000-0000-000000000003", "code", "R3", "az", "DC-A", "position", "row2-col1", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-aaaa-0000-0000-000000000001", "code", "R1", "az", "DC-A", "position", "row1-col1", "height_u", 42, "hosts", 2, "status", "active"),
+			row("uuid", "rk00-aaaa-0000-0000-000000000002", "code", "R2", "az", "DC-A", "position", "row1-col2", "height_u", 42, "hosts", 2, "status", "active"),
+			row("uuid", "rk00-aaaa-0000-0000-000000000003", "code", "R3", "az", "DC-A", "position", "row2-col1", "height_u", 42, "hosts", 2, "status", "active"),
 			// DC-B : 2 racks
-			row("uuid", "rk00-bbbb-0000-0000-000000000001", "code", "R1", "az", "DC-B", "position", "row1-col1", "hosts", 2, "status", "active"),
-			row("uuid", "rk00-bbbb-0000-0000-000000000002", "code", "R2", "az", "DC-B", "position", "row1-col2", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-bbbb-0000-0000-000000000001", "code", "R1", "az", "DC-B", "position", "row1-col1", "height_u", 42, "hosts", 2, "status", "active"),
+			row("uuid", "rk00-bbbb-0000-0000-000000000002", "code", "R2", "az", "DC-B", "position", "row1-col2", "height_u", 24, "hosts", 2, "status", "active"),
 			// DC-C : 3 racks
-			row("uuid", "rk00-cccc-0000-0000-000000000001", "code", "R1", "az", "DC-C", "position", "row1-col1", "hosts", 1, "status", "active"),
-			row("uuid", "rk00-cccc-0000-0000-000000000002", "code", "R2", "az", "DC-C", "position", "row1-col2", "hosts", 2, "status", "active"),
-			row("uuid", "rk00-cccc-0000-0000-000000000003", "code", "R3", "az", "DC-C", "position", "row2-col1", "hosts", 2, "status", "active"),
+			row("uuid", "rk00-cccc-0000-0000-000000000001", "code", "R1", "az", "DC-C", "position", "row1-col1", "height_u", 42, "hosts", 1, "status", "active"),
+			row("uuid", "rk00-cccc-0000-0000-000000000002", "code", "R2", "az", "DC-C", "position", "row1-col2", "height_u", 42, "hosts", 2, "status", "active"),
+			row("uuid", "rk00-cccc-0000-0000-000000000003", "code", "R3", "az", "DC-C", "position", "row2-col1", "height_u", 42, "hosts", 2, "status", "active"),
 		},
 	},
 	{
@@ -617,28 +620,37 @@ var registry = []Resource{
 		ID: "hosts", Label: "Hosts", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("name", "Name", "az", "AZ", "rack", "Rack",
 			"arch", "Arch", "hypervisor", "Hypervisor", "gpu", "GPU",
+			"position_u", "U", "height_u", "Size (U)",
 			"status", "Status", "last_seen", "Last seen"),
 		Rows: []map[string]any{
 			row("name", "dc-a-r1-h2", "az", "DC-A", "rack", "R1", "arch", "arm64", "hypervisor", "apple-vz",
 				"gpu", "",
+				"position_u", 1, "height_u", 1,
 				"status", "active", "last_seen", "2026-05-27"),
 			row("name", "dc-b-r1-h3", "az", "DC-B", "rack", "R1", "arch", "amd64", "hypervisor", "qemu-kvm",
 				"gpu", "",
+				"position_u", 3, "height_u", 1,
 				"status", "active", "last_seen", "2026-05-27"),
 			row("name", "dc-c-r2-h1", "az", "DC-C", "rack", "R2", "arch", "arm64", "hypervisor", "qemu-kvm",
 				"gpu", "2×A100-40G",
+				// A100 box is a 2U Supermicro-style chassis.
+				"position_u", 10, "height_u", 2,
 				"status", "draining", "last_seen", "2026-05-26"),
 			row("name", "dc-c-r3-h2", "az", "DC-C", "rack", "R3", "arch", "amd64", "hypervisor", "qemu-kvm",
 				"gpu", "4×H100-80G",
+				// H100 SXM box is a 4U DGX-class chassis.
+				"position_u", 5, "height_u", 4,
 				"status", "active", "last_seen", "2026-05-28"),
 			// Heterogeneous-arch fleet : riscv64 + loong64 hosts so
 			// the dashboard's per-arch chips/colors get exercised
 			// even on the seed. Both are valid weft-microvm targets.
 			row("name", "dc-b-r2-h1", "az", "DC-B", "rack", "R2", "arch", "riscv64", "hypervisor", "qemu-kvm",
 				"gpu", "",
+				"position_u", 1, "height_u", 1,
 				"status", "active", "last_seen", "2026-05-31"),
 			row("name", "dc-c-r1-h1", "az", "DC-C", "rack", "R1", "arch", "loong64", "hypervisor", "qemu-kvm",
 				"gpu", "",
+				"position_u", 20, "height_u", 1,
 				"status", "active", "last_seen", "2026-05-31"),
 		},
 	},

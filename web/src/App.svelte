@@ -18,6 +18,7 @@
   import PluginsPage from './lib/components/PluginsPage.svelte';
   import FederationPage from './lib/components/FederationPage.svelte';
   import InventoryMapPage from './lib/components/InventoryMapPage.svelte';
+  import GroupsTreePage from './lib/components/GroupsTreePage.svelte';
   import InventoryTreePage from './lib/components/InventoryTreePage.svelte';
   import AuditLogPage from './lib/components/AuditLogPage.svelte';
   import Overview from './lib/components/Overview.svelte';
@@ -132,6 +133,10 @@
       {:else if active === 'inventory-map'}
         {#key active}
           <InventoryMapPage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'groups'}
+        {#key active}
+          <GroupsTreePage meta={byId.get(active)!} />
         {/key}
       {:else if active === 'inventory-tree'}
         {#key active}

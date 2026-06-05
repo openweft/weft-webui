@@ -117,10 +117,85 @@
     }
   }
 
-  // Density indicator for the rack header : ratio of (hosts in rack)
-  // to a soft cap of 8 (we don't have rated capacity on the seed).
-  function rackFill(n: number): number {
-    return Math.min(1, n / 8);
+  // U-occupancy helpers — fed into the rack-elevation rendering :
+  //
+  //  rackHeightU(rack)    — declared total height (default 42).
+  //  hostPositionU(host)  — top-of-unit slot (1 = top). 0 = auto-pack
+  //                         at render time (legacy rows pre-U-tracking).
+  //  hostHeightU(host)    — chassis height (default 1).
+  //  packedHosts(...)     — return hosts sorted by effective position
+  //                         with explicit slots respected and 0-slots
+  //                         packed into the first remaining gap.
+  //  rackFillU(...)       — fraction of U occupied by all hosts ; drives
+  //                         the density bar in the rack header.
+  function rackHeightU(rack: Row): number {
+    const v = Number(rack.height_u ?? 0);
+    return v >= 1 && v <= 100 ? v : 42;
+  }
+  function hostPositionU(h: Row): number {
+    const v = Number(h.position_u ?? 0);
+    return v >= 1 ? v : 0;
+  }
+  function hostHeightU(h: Row): number {
+    const v = Number(h.height_u ?? 0);
+    return v >= 1 ? v : 1;
+  }
+
+  // packedHosts assigns each host an `effectiveU` start slot. Explicit
+  // position_u > 0 wins ; unset (auto-pack) rows fall into the first
+  // unoccupied gap top-to-bottom. Returns hosts in render order with
+  // `_top`/`_size` set so the template doesn't reimplement the layout
+  // math. Conflicts in input data (two explicit hosts overlapping) are
+  // preserved as-is — the seed/data-entry layer is supposed to prevent
+  // them ; rendering them honestly surfaces the bug.
+  function packedHosts(hostsIn: Row[], totalU: number): Array<Row & { _top: number; _size: number }> {
+    const explicit: Array<Row & { _top: number; _size: number }> = [];
+    const floating: Row[] = [];
+    for (const h of hostsIn) {
+      const pos = hostPositionU(h);
+      const size = hostHeightU(h);
+      if (pos > 0) {
+        explicit.push({ ...h, _top: pos, _size: size });
+      } else {
+        floating.push(h);
+      }
+    }
+    // Build an occupancy bitmap of U slots (1-based) taken by explicit
+    // hosts ; floating hosts are then dropped into the first contiguous
+    // free run that's wide enough.
+    const taken = new Array<boolean>(totalU + 2).fill(false);
+    for (const h of explicit) {
+      for (let u = h._top; u < h._top + h._size && u <= totalU; u++) {
+        taken[u] = true;
+      }
+    }
+    const placed: Array<Row & { _top: number; _size: number }> = [...explicit];
+    for (const h of floating) {
+      const size = hostHeightU(h);
+      let start = 0;
+      let run = 0;
+      for (let u = 1; u <= totalU; u++) {
+        if (!taken[u]) {
+          if (run === 0) start = u;
+          run++;
+          if (run >= size) {
+            for (let k = start; k < start + size; k++) taken[k] = true;
+            placed.push({ ...h, _top: start, _size: size });
+            break;
+          }
+        } else {
+          run = 0;
+        }
+      }
+    }
+    placed.sort((a, b) => a._top - b._top);
+    return placed;
+  }
+  function rackFillU(packed: Array<{ _size: number }>, totalU: number): number {
+    if (totalU <= 0) return 0;
+    let used = 0;
+    for (const p of packed) used += p._size;
+    return Math.min(1, used / totalU);
   }
 
   // Per-arch chip styling. amd64 / arm64 are the bulk of the fleet ;
@@ -193,37 +268,48 @@
         <div class="flex gap-4 overflow-x-auto p-4">
           {#each azRacks as rack, rkIdx (rack.uuid ?? rkIdx)}
             {@const hostsInRack = hostsByRack.get(String(az.code ?? '') + '|' + String(rack.code ?? '')) ?? []}
+            {@const totalU = rackHeightU(rack)}
+            {@const packed = packedHosts(hostsInRack, totalU)}
+            {@const usedU = packed.reduce((s, p) => s + p._size, 0)}
 
             <article class="flex w-44 shrink-0 flex-col rounded-md border border-base-300 bg-base-200/40">
               <!-- Rack header : code + density bar -->
               <header class="flex items-center justify-between border-b border-base-300 px-2 py-1">
                 <span class="font-mono text-xs font-semibold">{rack.code}</span>
-                <span class="text-[10px] text-base-content/50">{hostsInRack.length} / 8U</span>
+                <span class="text-[10px] text-base-content/50">{usedU} / {totalU}U</span>
               </header>
               <!-- Density indicator strip -->
               <div class="h-1 bg-base-300">
-                <div class="h-full bg-primary/70" style="width: {rackFill(hostsInRack.length) * 100}%"></div>
+                <div class="h-full bg-primary/70" style="width: {rackFillU(packed, totalU) * 100}%"></div>
               </div>
 
-              <!-- Host slots, stacked top-to-bottom like a rack
-                   elevation. Empty slots are visualised so the
-                   rack reads as having spare U capacity. -->
-              <div class="flex flex-col gap-1 p-2">
-                {#each hostsInRack as host (host.uuid ?? host.name)}
+              <!-- Rack elevation : a fixed-height column where every
+                   slot is one U high. Hosts are absolutely positioned
+                   at their declared `position_u` and span their
+                   `height_u`. Empty U-slots are drawn as a striped
+                   background so the rack reads as having spare U
+                   capacity. uPx = 14 below — see CSS. -->
+              <div class="relative" style="height: {totalU * 14 + 8}px;">
+                <!-- U-slot ruler grid : a faint horizontal line every
+                     U so the elevation reads at a glance. -->
+                <div class="absolute inset-x-2 top-1 bottom-1 rounded border border-base-300/40 bg-base-100/40"
+                     style="background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 13px, rgba(0,0,0,0.06) 13px, rgba(0,0,0,0.06) 14px);">
+                </div>
+                {#each packed as host (host.uuid ?? host.name)}
                   {@const hostVMs = vmsByHost.get(String(host.name ?? '')) ?? []}
                   <div
-                    class="rounded border px-2 py-1 {hostStatusClass(String(host.status ?? ''))}"
-                    title={`${host.name} · ${host.arch} · ${host.hypervisor} · ${hostVMs.length} VMs`}
+                    class="absolute inset-x-2 rounded border px-2 py-[2px] overflow-hidden {hostStatusClass(String(host.status ?? ''))}"
+                    style="top: {1 + (host._top - 1) * 14}px; height: {host._size * 14 - 2}px;"
+                    title={`${host.name} · U${host._top}${host._size > 1 ? `–U${host._top + host._size - 1}` : ''} (${host._size}U) · ${host.arch} · ${host.hypervisor} · ${hostVMs.length} VMs`}
                   >
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-1">
                       <span class="truncate font-mono text-[11px] font-medium">{host.name}</span>
+                      <span class="shrink-0 font-mono text-[9px] text-base-content/50 tabular-nums">U{host._top}{host._size > 1 ? `+${host._size - 1}` : ''}</span>
                       <span class="ml-1 inline-flex shrink-0 items-center rounded border px-1 py-[1px] font-mono text-[9px] {archClass(String(host.arch ?? ''))}">
                         {host.arch}
                       </span>
                     </div>
-                    <!-- VM dots packed into the host card. Show
-                         up to 24 ; overflow becomes "+N". -->
-                    {#if hostVMs.length > 0}
+                    {#if hostVMs.length > 0 && host._size >= 1}
                       <div class="mt-1 flex flex-wrap gap-0.5">
                         {#each hostVMs.slice(0, 24) as vm (vm.uuid ?? vm.name)}
                           <span
@@ -238,12 +324,6 @@
                       </div>
                     {/if}
                   </div>
-                {/each}
-
-                <!-- Empty U slots for the soft 8-U cap, so the rack
-                     visually reads "X of 8 used". -->
-                {#each Array(Math.max(0, 8 - hostsInRack.length)) as _, slotIdx (slotIdx)}
-                  <div class="h-5 rounded border border-dashed border-base-300/60 bg-base-100/40"></div>
                 {/each}
               </div>
             </article>

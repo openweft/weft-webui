@@ -12,6 +12,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -358,6 +359,87 @@ func hostNameExists(name string) bool {
 		}
 	}
 	return false
+}
+
+// rackHeightU returns the rack's declared height in U, defaulting to
+// 42 when unset or unknown. Used by the U-occupancy validator to bound
+// the host position range.
+func rackHeightU(az, code string) int {
+	inventoryMu.Lock()
+	defer inventoryMu.Unlock()
+	r, ok := resourceByID["racks"]
+	if !ok {
+		return 42
+	}
+	for _, row := range r.Rows {
+		if str(row["az"]) == az && str(row["code"]) == code {
+			if h := toInt(row["height_u"]); h > 0 {
+				return h
+			}
+			return 42
+		}
+	}
+	return 42
+}
+
+// validateHostUFitsInRack enforces that (positionU, heightU) is :
+//
+//   - fully inside the parent rack's 1..rackHeight range, AND
+//   - disjoint from every OTHER host's U range in the same rack.
+//
+// excludeUUID lets an update of an existing host ignore its own row
+// (otherwise rolling +0U updates would always self-overlap). Empty
+// excludeUUID means "all hosts count" — used at create time.
+//
+// Returns nil on success. Errors are user-facing (the create / update
+// handlers surface them as 400 BadRequest).
+func validateHostUFitsInRack(az, rack string, positionU, heightU int, excludeUUID string) error {
+	if positionU < 1 {
+		return fmt.Errorf("position_u must be ≥ 1 (1 = top of rack)")
+	}
+	if heightU < 1 {
+		heightU = 1
+	}
+	rackH := rackHeightU(az, rack)
+	if positionU+heightU-1 > rackH {
+		return fmt.Errorf("host occupies U%d–U%d but rack %s/%s is only %dU tall", positionU, positionU+heightU-1, az, rack, rackH)
+	}
+	inventoryMu.Lock()
+	defer inventoryMu.Unlock()
+	h, ok := resourceByID["hosts"]
+	if !ok {
+		return nil
+	}
+	newLo, newHi := positionU, positionU+heightU-1
+	for _, row := range h.Rows {
+		if str(row["uuid"]) == excludeUUID {
+			continue
+		}
+		if str(row["az"]) != az || str(row["rack"]) != rack {
+			continue
+		}
+		theirLo := toInt(row["position_u"])
+		if theirLo <= 0 {
+			// Auto-placed peer (no explicit slot) — doesn't reserve a
+			// U range, the renderer just packs it. Skip.
+			continue
+		}
+		theirHi := theirLo + max1(toInt(row["height_u"])) - 1
+		if newLo <= theirHi && theirLo <= newHi {
+			return fmt.Errorf("U%d–U%d conflicts with host %s (U%d–U%d)",
+				newLo, newHi, str(row["name"]), theirLo, theirHi)
+		}
+	}
+	return nil
+}
+
+// max1 returns v when ≥ 1, else 1. Tiny helper so the overlap check
+// treats heightU=0 (legacy rows pre-U-tracking) as the default 1U.
+func max1(v int) int {
+	if v < 1 {
+		return 1
+	}
+	return v
 }
 
 func appendHost(row map[string]any) {
