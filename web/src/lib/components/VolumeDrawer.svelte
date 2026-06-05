@@ -17,8 +17,13 @@
   import {
     getVolumeMetadata, setVolumeMetadata, renameVolumeByKey,
     listVolumeProperties, setVolumeProperty, deleteVolumeProperty,
+    listVolumeSnapshots, revertVolumeSnapshot, deleteVolumeSnapshot, restoreVolumeSnapshot,
+    listVolumeBackups, deleteVolumeBackup, restoreVolumeBackup,
     type VolumeMetadata, type VolumeProperty, type Row,
+    type VolumeSnapshotRow, type VolumeBackupRow,
   } from '../api';
+  import CreateSnapshotModal from './CreateSnapshotModal.svelte';
+  import CreateBackupModal from './CreateBackupModal.svelte';
 
   let {
     row,
@@ -36,8 +41,15 @@
   let attachedTo = $derived(typeof row.attached_to === 'string' ? row.attached_to : '');
   let project = $derived(typeof row.project === 'string' ? row.project : '—');
   let created = $derived(typeof row.created === 'string' ? row.created : '—');
+  // backend gates Revert + Backup affordances on the Snapshots tab.
+  // Empty string is treated as "file" (older agents that don't yet
+  // project the field). Block-backed volumes get the full action set ;
+  // file-backed volumes hide the disabled actions with a tooltip
+  // explaining why.
+  let backend = $derived(typeof row.backend === 'string' && row.backend !== '' ? row.backend : 'file');
+  let isBlock = $derived(backend === 'block');
 
-  type Tab = 'general' | 'mount' | 'properties';
+  type Tab = 'general' | 'mount' | 'properties' | 'snapshots' | 'backups';
   let tab = $state<Tab>('general');
 
   // ---- General tab : name + description ----
@@ -204,6 +216,189 @@
     if (!ts) return '—';
     return ts.slice(0, 19).replace('T', ' ');
   }
+
+  // ---- Snapshots tab : per-volume snapshot list + actions ----
+  //
+  // The dispatch on parent.Backend lives in the agent ; from the
+  // dashboard's perspective the affordances are uniform. Revert /
+  // restore-as-backup that don't apply to a file-backend parent
+  // surface the agent's "block-only" error in the inline alert
+  // when triggered, rather than being hidden a priori (the parent's
+  // backend field isn't yet projected into the row).
+  let volumeUUID = $derived(typeof row.uuid === 'string' ? row.uuid : key);
+  let projectKey = $derived(typeof row.project === 'string' && row.project !== '—' ? row.project : '');
+
+  let snapshots = $state<VolumeSnapshotRow[]>([]);
+  let snapsLoading = $state(false);
+  let snapsErr = $state('');
+  let snapBusyUUID = $state<string>('');
+  let createSnapshotOpen = $state(false);
+
+  async function refreshSnapshots() {
+    snapsLoading = true;
+    snapsErr = '';
+    try {
+      snapshots = await listVolumeSnapshots(volumeUUID, projectKey || undefined);
+    } catch (e) {
+      snapsErr = String(e);
+    } finally {
+      snapsLoading = false;
+    }
+  }
+
+  async function revertSnap(s: VolumeSnapshotRow) {
+    if (!s.uuid) return;
+    const ok = confirm(
+      `Revert ${key} to snapshot ${s.name ?? s.uuid} ?\n\n` +
+      `This rolls back the parent volume's contents in place.\n` +
+      `Only supported on block-backend volumes (file-backed ones reject).\n` +
+      `The volume should be detached first.`,
+    );
+    if (!ok) return;
+    snapBusyUUID = s.uuid;
+    snapsErr = '';
+    try {
+      await revertVolumeSnapshot(s.uuid);
+      onChanged();
+    } catch (e) {
+      snapsErr = String(e);
+    } finally {
+      snapBusyUUID = '';
+    }
+  }
+
+  async function restoreSnap(s: VolumeSnapshotRow) {
+    if (!s.uuid) return;
+    const newName = prompt(
+      `Restore snapshot ${s.name ?? s.uuid} into a new volume — name ?`,
+      `${s.name ?? 'restored'}-${Date.now().toString(36)}`,
+    );
+    if (!newName) return;
+    snapBusyUUID = s.uuid;
+    snapsErr = '';
+    try {
+      await restoreVolumeSnapshot(s.uuid, newName.trim(), projectKey || undefined);
+      onChanged();
+    } catch (e) {
+      snapsErr = String(e);
+    } finally {
+      snapBusyUUID = '';
+    }
+  }
+
+  async function deleteSnap(s: VolumeSnapshotRow) {
+    if (!s.uuid) return;
+    if (!confirm(`Delete snapshot ${s.name ?? s.uuid} ? This is permanent.`)) return;
+    snapBusyUUID = s.uuid;
+    snapsErr = '';
+    try {
+      await deleteVolumeSnapshot(s.uuid);
+      await refreshSnapshots();
+    } catch (e) {
+      snapsErr = String(e);
+    } finally {
+      snapBusyUUID = '';
+    }
+  }
+
+  // backupFromSnap opens the CreateBackupModal pre-filled with the
+  // chosen snapshot. The modal handles target URL entry + the create
+  // call ; on success we refresh the backup list if we're on the
+  // Backups tab.
+  let backupSnapshot = $state<VolumeSnapshotRow | null>(null);
+  let createBackupOpen = $state(false);
+
+  function openBackupModal(s: VolumeSnapshotRow) {
+    backupSnapshot = s;
+    createBackupOpen = true;
+  }
+
+  // ---- Backups tab : list by target + per-backup actions ----
+  //
+  // Backups are stored at an operator-chosen target URL ; the list
+  // can't be enumerated without one. The tab asks for the target,
+  // remembers the last one used during this drawer session, then
+  // lists the rows scoped to the current volume's UUID.
+  let backupTarget = $state('');
+  let backups = $state<VolumeBackupRow[]>([]);
+  let backupsLoading = $state(false);
+  let backupsErr = $state('');
+  let backupBusyURL = $state('');
+
+  async function refreshBackups() {
+    if (!backupTarget.trim()) {
+      backups = [];
+      return;
+    }
+    backupsLoading = true;
+    backupsErr = '';
+    try {
+      backups = await listVolumeBackups(backupTarget.trim(), volumeUUID, projectKey || undefined);
+    } catch (e) {
+      backupsErr = String(e);
+    } finally {
+      backupsLoading = false;
+    }
+  }
+
+  async function restoreBackup(b: VolumeBackupRow) {
+    if (!b.url) return;
+    const newName = prompt(
+      `Restore backup into a new volume — name ?`,
+      `restored-${Date.now().toString(36)}`,
+    );
+    if (!newName) return;
+    if (!projectKey) {
+      backupsErr = 'project is required to restore a backup ; select a project at the top of the page';
+      return;
+    }
+    backupBusyURL = b.url;
+    backupsErr = '';
+    try {
+      await restoreVolumeBackup(b.url, newName.trim(), projectKey);
+      onChanged();
+    } catch (e) {
+      backupsErr = String(e);
+    } finally {
+      backupBusyURL = '';
+    }
+  }
+
+  async function deleteBackup(b: VolumeBackupRow) {
+    if (!b.url) return;
+    if (!confirm(`Delete backup ${b.url} ?\n\nThis removes it from the target store.`)) return;
+    backupBusyURL = b.url;
+    backupsErr = '';
+    try {
+      await deleteVolumeBackup(b.url);
+      await refreshBackups();
+    } catch (e) {
+      backupsErr = String(e);
+    } finally {
+      backupBusyURL = '';
+    }
+  }
+
+  function bytesHuman(n: number): string {
+    if (!n) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i += 1;
+    }
+    return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + ' ' + units[i];
+  }
+
+  // Lazy-load snapshots / backups when the operator first lands on
+  // each tab — avoids unnecessary RPCs on volumes the operator only
+  // wanted to rename.
+  $effect(() => {
+    if (tab === 'snapshots' && snapshots.length === 0 && !snapsErr) {
+      refreshSnapshots();
+    }
+  });
 </script>
 
 <button class="fixed inset-0 z-40 bg-base-300/40" aria-label="Close drawer" onclick={onClose}></button>
@@ -213,7 +408,7 @@
     <div>
       <h2 class="text-lg font-bold">{key}</h2>
       <p class="text-xs text-base-content/60">
-        {sizeGiB} GiB · {format} · {attachedTo ? `attached to ${attachedTo}` : 'unattached'} · project {project}
+        {sizeGiB} GiB · {format} · {backend} · {attachedTo ? `attached to ${attachedTo}` : 'unattached'} · project {project}
       </p>
     </div>
     <button class="ml-auto btn btn-sm btn-ghost" aria-label="Close" onclick={onClose}>✕</button>
@@ -226,6 +421,10 @@
       onclick={() => (tab = 'mount')}>Mount</button>
     <button type="button" role="tab" class="tab" class:tab-active={tab === 'properties'}
       onclick={() => (tab = 'properties')}>Properties</button>
+    <button type="button" role="tab" class="tab" class:tab-active={tab === 'snapshots'}
+      onclick={() => (tab = 'snapshots')}>Snapshots</button>
+    <button type="button" role="tab" class="tab" class:tab-active={tab === 'backups'}
+      onclick={() => (tab = 'backups')}>Backups</button>
   </div>
 
   <div class="min-h-0 flex-1 overflow-y-auto p-5">
@@ -319,7 +518,7 @@
         </div>
       {/if}
 
-    {:else}
+    {:else if tab === 'properties'}
       <!-- Properties tab -->
       {#if propsErr}<div class="mb-3 alert alert-error py-2 text-sm">{propsErr}</div>{/if}
 
@@ -389,6 +588,200 @@
         see these directly ; they're read by weft-agent when
         scheduling / replicating / backing up.
       </p>
+    {:else if tab === 'snapshots'}
+      <div class="mb-3 flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Snapshots</h3>
+        <span class="text-xs text-base-content/50">{snapshots.length} on this volume</span>
+        <div class="ml-auto flex gap-2">
+          <button type="button" class="btn btn-xs btn-ghost"
+            onclick={refreshSnapshots} disabled={snapsLoading}>
+            {#if snapsLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+            Refresh
+          </button>
+          <button type="button" class="btn btn-xs btn-primary"
+            onclick={() => (createSnapshotOpen = true)}>
+            Snapshot now
+          </button>
+        </div>
+      </div>
+
+      {#if snapsErr}<div class="mb-3 alert alert-error py-2 text-sm">{snapsErr}</div>{/if}
+
+      {#if snapsLoading && snapshots.length === 0}
+        <div class="flex justify-center py-10"><span class="loading loading-spinner"></span></div>
+      {:else if snapshots.length === 0}
+        <p class="text-sm text-base-content/60">No snapshots yet. Click <em>Snapshot now</em> to freeze the current state.</p>
+      {:else}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="text-right">Size</th>
+              <th>Created</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each snapshots as s (s.uuid)}
+              <tr>
+                <td class="font-mono text-xs">
+                  {s.name || s.uuid}
+                  {#if s.name}
+                    <div class="text-xs text-base-content/40">{s.uuid}</div>
+                  {/if}
+                </td>
+                <td class="text-right tabular-nums">{s.size_gib} GiB</td>
+                <td class="text-xs">{fmtUpdated(s.created ?? '')}</td>
+                <td class="text-right">
+                  <div class="join">
+                    <button type="button" class="btn btn-xs join-item"
+                      title={isBlock
+                        ? "Revert this volume's contents to the snapshot (volume must be detached first)"
+                        : `Revert requires backend=block ; this volume is ${backend}`}
+                      onclick={() => revertSnap(s)}
+                      disabled={snapBusyUUID === s.uuid || !isBlock}>Revert</button>
+                    <button type="button" class="btn btn-xs join-item"
+                      title="Clone the snapshot into a fresh volume in the same project"
+                      onclick={() => restoreSnap(s)} disabled={snapBusyUUID === s.uuid}>Restore</button>
+                    <button type="button" class="btn btn-xs join-item"
+                      title={isBlock
+                        ? "Ship the snapshot to a backup target (oci/s3/sftp/fs)"
+                        : `Backup requires backend=block ; this volume is ${backend}`}
+                      onclick={() => openBackupModal(s)}
+                      disabled={snapBusyUUID === s.uuid || !isBlock}>Backup</button>
+                    <button type="button" class="btn btn-xs btn-error join-item"
+                      onclick={() => deleteSnap(s)} disabled={snapBusyUUID === s.uuid}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+
+      <p class="mt-3 text-xs text-base-content/50">
+        Snapshots dispatch on the parent volume's backend : file
+        parents do a reflink clone ; block parents take a controller
+        snapshot through weft-block. {#if isBlock}This volume is
+        <span class="font-mono">block</span>-backed, so Revert and
+        Backup are available.{:else}This volume is
+        <span class="font-mono">{backend}</span>-backed, so Revert
+        and Backup are disabled — they require <span class="font-mono"
+        >block</span>.{/if}
+      </p>
+
+    {:else if tab === 'backups'}
+      {#if !isBlock}
+        <div class="mb-3 alert alert-warning py-2 text-sm">
+          This volume is <span class="font-mono">{backend}</span>-backed.
+          Off-host backups require <span class="font-mono">block</span> ;
+          listing remote backups still works (handy when restoring
+          into a new block volume), but new backups can't be shipped
+          from this volume's snapshots.
+        </div>
+      {/if}
+      <div class="mb-3 flex flex-wrap items-end gap-2">
+        <label class="form-control flex-1 min-w-[18rem]">
+          <span class="label-text text-xs">Backup target URL</span>
+          <input class="input input-sm input-bordered font-mono"
+            placeholder="oci://ghcr.io/[org]/backups:vol-x"
+            bind:value={backupTarget} />
+        </label>
+        <button type="button" class="btn btn-sm btn-primary"
+          onclick={refreshBackups} disabled={backupsLoading || !backupTarget.trim()}>
+          {#if backupsLoading}<span class="loading loading-spinner loading-xs"></span>{/if}
+          List backups
+        </button>
+      </div>
+
+      {#if backupsErr}<div class="mb-3 alert alert-error py-2 text-sm">{backupsErr}</div>{/if}
+
+      {#if !backupTarget.trim()}
+        <p class="text-sm text-base-content/60">
+          Enter a target URL above to list backups. Supported schemes :
+          <code>oci://</code> (recommended), <code>s3://</code>
+          (versitygw / CubeFS objectnode), <code>sftp://</code> (sftpgo),
+          <code>fs:///</code> (dev only).
+        </p>
+      {:else if backupsLoading && backups.length === 0}
+        <div class="flex justify-center py-10"><span class="loading loading-spinner"></span></div>
+      {:else if backups.length === 0}
+        <p class="text-sm text-base-content/60">No backups for this volume at <code>{backupTarget}</code>.</p>
+      {:else}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>URL / Snapshot</th>
+              <th class="text-right">Size</th>
+              <th>State</th>
+              <th>Created</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each backups as b (b.url)}
+              <tr>
+                <td class="font-mono text-xs">
+                  <div class="break-all">{b.url}</div>
+                  <div class="text-xs text-base-content/40">snapshot {b.snapshot_uuid}</div>
+                </td>
+                <td class="text-right tabular-nums">{bytesHuman(b.size_bytes ?? 0)}</td>
+                <td>
+                  <span class="badge badge-xs"
+                    class:badge-success={b.state === 'complete'}
+                    class:badge-warning={b.state === 'in-progress'}
+                    class:badge-error={b.state === 'error'}>
+                    {b.state || '—'}
+                  </span>
+                  {#if b.error}
+                    <div class="text-xs text-error">{b.error}</div>
+                  {/if}
+                </td>
+                <td class="text-xs">{fmtUpdated(b.created ?? '')}</td>
+                <td class="text-right">
+                  <div class="join">
+                    <button type="button" class="btn btn-xs join-item"
+                      title="Restore the backup into a fresh block volume (size discovered from sidecar metadata)"
+                      onclick={() => restoreBackup(b)} disabled={backupBusyURL === b.url}>Restore</button>
+                    <button type="button" class="btn btn-xs btn-error join-item"
+                      onclick={() => deleteBackup(b)} disabled={backupBusyURL === b.url}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+
+      <p class="mt-3 text-xs text-base-content/50">
+        Backups are block-only. Encryption +
+        incremental chains are honoured by the daemon when
+        <code>WEFT_BACKUP_PASSPHRASE</code> is configured on the
+        agent. The dashboard never sees the passphrase.
+      </p>
     {/if}
   </div>
+
+  <CreateSnapshotModal
+    bind:open={createSnapshotOpen}
+    volume={row}
+    onCreated={() => {
+      createSnapshotOpen = false;
+      refreshSnapshots();
+      onChanged();
+    }}
+  />
+
+  {#if backupSnapshot}
+    <CreateBackupModal
+      bind:open={createBackupOpen}
+      snapshot={backupSnapshot}
+      project={projectKey || undefined}
+      onCreated={() => {
+        createBackupOpen = false;
+        backupSnapshot = null;
+        if (tab === 'backups') refreshBackups();
+      }}
+    />
+  {/if}
 </aside>

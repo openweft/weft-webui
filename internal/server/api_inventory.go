@@ -176,7 +176,11 @@ type APIRack struct {
 	Code     string `json:"code" doc:"Rack code within its AZ" example:"R1" minLength:"1" maxLength:"32"`
 	AZ       string `json:"az" doc:"Parent AZ code" example:"DC-A" minLength:"1" maxLength:"32"`
 	Position string `json:"position" doc:"Free-form physical position (row1-col1, ...)" maxLength:"64"`
-	Status   string `json:"status" doc:"Operational state" example:"active" enum:"active,draining,down,provisioning"`
+	// HeightU is the rack's total height in rack units. Standard
+	// values are 42 (open frame) ; 24, 12 or 9 for half-height or
+	// office racks. Zero / unset is treated as 42 by the dashboard.
+	HeightU int    `json:"height_u" doc:"Rack total height in U (default 42)" example:"42" minimum:"1" maximum:"60"`
+	Status  string `json:"status" doc:"Operational state" example:"active" enum:"active,draining,down,provisioning"`
 }
 type createRackInput struct{ Body APIRack }
 type updateRackInput struct {
@@ -210,11 +214,15 @@ func mountRackAPI(api huma.API) {
 		if row.Status == "" {
 			row.Status = "active"
 		}
+		if row.HeightU <= 0 {
+			row.HeightU = 42
+		}
 		appendRack(map[string]any{
 			"uuid":     row.UUID,
 			"code":     row.Code,
 			"az":       row.AZ,
 			"position": row.Position,
+			"height_u": row.HeightU,
 			"hosts":    0,
 			"status":   row.Status,
 		})
@@ -236,6 +244,9 @@ func mountRackAPI(api huma.API) {
 		ok := updateRackRow(in.UUID, func(row map[string]any) {
 			if patch.Position != "" {
 				row["position"] = patch.Position
+			}
+			if patch.HeightU > 0 {
+				row["height_u"] = patch.HeightU
 			}
 			if patch.Status != "" {
 				row["status"] = patch.Status
@@ -286,6 +297,7 @@ func rackFromRow(row map[string]any) APIRack {
 		Code:     str(row["code"]),
 		AZ:       str(row["az"]),
 		Position: str(row["position"]),
+		HeightU:  toInt(row["height_u"]),
 		Status:   str(row["status"]),
 	}
 }
@@ -300,7 +312,17 @@ type APIHost struct {
 	Arch       string `json:"arch" doc:"CPU architecture" example:"arm64" enum:"amd64,arm64,riscv64,loong64"`
 	Hypervisor string `json:"hypervisor" doc:"Hypervisor backend" example:"qemu-kvm" enum:"qemu-kvm,apple-vz"`
 	GPU        string `json:"gpu" doc:"GPU complement, Flavor.gpu notation, empty for none" example:"2×A100-40G" maxLength:"64"`
-	Status     string `json:"status" doc:"Operational state" example:"active" enum:"active,draining,down,provisioning"`
+	// PositionU is the top-of-unit slot the chassis occupies in the
+	// parent rack, 1-based, counted from the TOP (U1 is the top slot
+	// — same convention as count.racku.la and most data-center
+	// management tools). Zero / unset means "let the dashboard
+	// auto-pack at the first free slot when rendering".
+	PositionU int `json:"position_u" doc:"Top-of-unit slot in the rack (1-based, 1 = top)" example:"5" minimum:"0" maximum:"60"`
+	// HeightU is the chassis height in rack units (1 for a 1U pizza
+	// box, 2 for 2U, 4 for a quad-socket beast, ...). Defaults to 1
+	// when unset. The rack viz respects this for vertical stretching.
+	HeightU int    `json:"height_u" doc:"Chassis height in U (default 1)" example:"2" minimum:"0" maximum:"20"`
+	Status  string `json:"status" doc:"Operational state" example:"active" enum:"active,draining,down,provisioning"`
 }
 type createHostInput struct{ Body APIHost }
 type updateHostInput struct {
@@ -337,6 +359,17 @@ func mountHostAPI(api huma.API) {
 		if row.Status == "" {
 			row.Status = "active"
 		}
+		if row.HeightU <= 0 {
+			row.HeightU = 1
+		}
+		// Validate the U range fits inside the parent rack. We treat
+		// PositionU=0 as "unspecified — auto-pack at render time", so
+		// only enforce when both fields are set.
+		if row.PositionU > 0 {
+			if err := validateHostUFitsInRack(row.AZ, row.Rack, row.PositionU, row.HeightU, ""); err != nil {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+		}
 		appendHost(map[string]any{
 			"uuid":       row.UUID,
 			"name":       row.Name,
@@ -345,6 +378,8 @@ func mountHostAPI(api huma.API) {
 			"arch":       row.Arch,
 			"hypervisor": row.Hypervisor,
 			"gpu":        row.GPU,
+			"position_u": row.PositionU,
+			"height_u":   row.HeightU,
 			"status":     row.Status,
 			"last_seen":  time.Now().UTC().Format("2006-01-02"),
 		})
@@ -364,6 +399,36 @@ func mountHostAPI(api huma.API) {
 		Tags:        []string{"inventory"},
 	}, func(ctx context.Context, in *updateHostInput) (*hostOutput, error) {
 		patch := normaliseHost(in.Body)
+		// Validate U range before mutation — fail-fast keeps the row
+		// state consistent. Lookup the existing host so we can fall
+		// back to its current az/rack when the patch doesn't include
+		// them (PUT bodies in the dashboard usually only carry the
+		// fields the operator edited).
+		existing, _ := findHostByUUID(in.UUID)
+		az := patch.AZ
+		if az == "" {
+			az = str(existing["az"])
+		}
+		rack := patch.Rack
+		if rack == "" {
+			rack = str(existing["rack"])
+		}
+		posU := patch.PositionU
+		if posU == 0 {
+			posU = toInt(existing["position_u"])
+		}
+		htU := patch.HeightU
+		if htU == 0 {
+			htU = toInt(existing["height_u"])
+		}
+		if htU == 0 {
+			htU = 1
+		}
+		if posU > 0 {
+			if err := validateHostUFitsInRack(az, rack, posU, htU, in.UUID); err != nil {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+		}
 		ok := updateHostRow(in.UUID, func(row map[string]any) {
 			if patch.Arch != "" {
 				row["arch"] = patch.Arch
@@ -373,6 +438,12 @@ func mountHostAPI(api huma.API) {
 			}
 			// gpu may legitimately be set empty (host had a card pulled).
 			row["gpu"] = patch.GPU
+			if patch.PositionU > 0 {
+				row["position_u"] = patch.PositionU
+			}
+			if patch.HeightU > 0 {
+				row["height_u"] = patch.HeightU
+			}
 			if patch.Status != "" {
 				row["status"] = patch.Status
 			}
@@ -427,6 +498,8 @@ func hostFromRow(row map[string]any) APIHost {
 		Arch:       str(row["arch"]),
 		Hypervisor: str(row["hypervisor"]),
 		GPU:        str(row["gpu"]),
+		PositionU:  toInt(row["position_u"]),
+		HeightU:    toInt(row["height_u"]),
 		Status:     str(row["status"]),
 	}
 }

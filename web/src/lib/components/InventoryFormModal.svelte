@@ -48,6 +48,12 @@
   let f_hyper    = $state('qemu-kvm');
   let f_gpu      = $state('');
   let f_status   = $state('active');
+  // U-occupancy fields. Rack carries total height ; host carries
+  // top-of-unit position + chassis height. Defaults : 42U rack,
+  // 1U host placed at U1 (top). Zero means "auto-pack" for hosts.
+  let f_rack_height_u = $state(42);
+  let f_position_u    = $state(0);
+  let f_height_u      = $state(1);
 
   // Reset the form whenever the modal opens or switches target.
   $effect(() => {
@@ -65,6 +71,9 @@
     f_hyper    = String(r.hypervisor ?? 'qemu-kvm');
     f_gpu      = String(r.gpu ?? '');
     f_status   = String(r.status ?? 'active');
+    f_rack_height_u = Number(r.height_u ?? 42) || 42;
+    f_position_u    = Number(r.position_u ?? 0) || 0;
+    f_height_u      = Number(r.height_u ?? 1) || 1;
   });
 
   // Racks limited to the currently-selected AZ (only used for host
@@ -95,6 +104,7 @@
         case 'rack': {
           const body: RackBody = {
             code: f_code, az: f_az, position: f_position,
+            height_u: f_rack_height_u,
             status: f_status as Status, uuid: '',
           };
           if (mode === 'create') await createRack(body);
@@ -105,7 +115,10 @@
           const body: HostBody = {
             name: f_name, az: f_az, rack: f_rack,
             arch: f_arch as Arch, hypervisor: f_hyper as Hyper,
-            gpu: f_gpu, status: f_status as Status, uuid: '',
+            gpu: f_gpu,
+            position_u: f_position_u,
+            height_u: f_height_u,
+            status: f_status as Status, uuid: '',
           };
           if (mode === 'create') await createHost(body);
           else await updateHost(String(initial?.uuid ?? ''), body);
@@ -163,11 +176,20 @@
               {/each}
             </select>
           </label>
-          <label class="form-control w-full">
-            <span class="label-text">Code</span>
-            <input class="input input-bordered input-sm" required
-              bind:value={f_code} disabled={mode === 'edit'} placeholder="R4"/>
-          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control w-full">
+              <span class="label-text">Code</span>
+              <input class="input input-bordered input-sm" required
+                bind:value={f_code} disabled={mode === 'edit'} placeholder="R4"/>
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text">Height (U)</span>
+              <input class="input input-bordered input-sm tabular-nums" type="number"
+                min="1" max="60"
+                bind:value={f_rack_height_u}/>
+              <span class="label-text-alt text-base-content/40">42 = open frame · 24 = half height</span>
+            </label>
+          </div>
           <label class="form-control w-full">
             <span class="label-text">Position</span>
             <input class="input input-bordered input-sm" bind:value={f_position}
@@ -222,6 +244,22 @@
             <input class="input input-bordered input-sm" bind:value={f_gpu}
               placeholder="2×H200-141G or empty"/>
           </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control w-full">
+              <span class="label-text">Top U slot</span>
+              <input class="input input-bordered input-sm tabular-nums" type="number"
+                min="0" max="60"
+                bind:value={f_position_u}/>
+              <span class="label-text-alt text-base-content/40">1 = top · 0 = auto-pack</span>
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text">Chassis size (U)</span>
+              <input class="input input-bordered input-sm tabular-nums" type="number"
+                min="1" max="20"
+                bind:value={f_height_u}/>
+              <span class="label-text-alt text-base-content/40">1U / 2U / 4U DGX-class …</span>
+            </label>
+          </div>
         {/if}
 
         <label class="form-control w-full">

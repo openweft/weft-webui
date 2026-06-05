@@ -272,6 +272,23 @@
     'floating-ips', 'routers', 'loadbalancers', 'dns-zones', 'dns-records',
   ];
   let canCreate = $derived(creatable.includes(meta.id));
+
+  // deleteBlockedReason : per-resource preconditions that gate the
+  // header Delete button BEFORE the server gets the request. Today
+  // only volumes need it (attached → detach first). Empty string means
+  // delete is allowed ; non-empty surfaces as the button's title tooltip.
+  // Server-side enforcement stays in place ; this is a UX guard.
+  let deleteBlockedReason = $derived.by<string>(() => {
+    if (!selectedRow) return '';
+    if (meta.id === 'volumes') {
+      const attached = typeof selectedRow.attached_to === 'string' ? selectedRow.attached_to : '';
+      if (attached) {
+        return `Volume is attached to "${attached}". Detach it first (Attach/Detach action) before deleting.`;
+      }
+    }
+    return '';
+  });
+
   let createLabel = $derived(
     meta.label
       .replace(/s$/, '')
@@ -330,9 +347,11 @@
       </button>
     {/if}
     <button class="btn btn-sm btn-error gap-1"
-      disabled={!selectedRow || !canCreate || actionBusy}
+      disabled={!selectedRow || !canCreate || actionBusy || !!deleteBlockedReason}
       onclick={startDelete}
-      title={selectedRow ? `Delete "${selectedRow.name}"` : 'Select a row to delete'}>
+      title={deleteBlockedReason
+        ? deleteBlockedReason
+        : selectedRow ? `Delete "${selectedRow.name}"` : 'Select a row to delete'}>
       {#if actionBusy}<span class="loading loading-spinner loading-xs"></span>{/if}
       Delete
     </button>

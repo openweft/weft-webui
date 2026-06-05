@@ -62,6 +62,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backups at a target store
+         * @description Walks the target's metadata sidecars and returns one row per backup. Filtered server-side by project (via the caller's visible projects). Optional ?volume_uuid= further narrows to one origin volume.
+         */
+        get: operations["list-volume-backups"];
+        put?: never;
+        /**
+         * Ship a snapshot to a backup target
+         * @description Streams the snapshot's bytes to the target URL through weft-block. Encryption + incremental chains are honoured by the daemon when configured. Block-backend volumes only — file parents reject server-side with a clear error.
+         */
+        post: operations["create-volume-backup"];
+        /**
+         * Delete one backup from its target store
+         * @description Idempotent — deleting a missing backup is a no-op. The URL is the same opaque addressing key returned by list-volume-backups ; the SPA passes it back verbatim.
+         */
+        delete: operations["delete-volume-backup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/backups/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a backup into a new block volume
+         * @description Creates a fresh block-backend volume in the requested project and populates it from the backup. Size is discovered from the backup's sidecar metadata — the operator doesn't have to specify it. The source backup is untouched.
+         */
+        post: operations["restore-volume-backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buckets": {
         parameters: {
             query?: never;
@@ -1674,6 +1722,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/snapshots/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a snapshot (does not touch the parent volume) */
+        delete: operations["delete-volume-snapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{uuid}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a snapshot into a new volume
+         * @description Clones the snapshot's contents into a fresh volume. The new volume lands in the same project as the snapshot — there's no cross-project restore.
+         */
+        post: operations["restore-volume-snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{uuid}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert the parent volume to this snapshot (block-backend only)
+         * @description Rolls the parent volume's contents back to the snapshot's state. Only supported on block-backend volumes (file parents reject with 502 — the agent surfaces a clear 'block-only' error message). The volume should be detached first ; the agent enforces this at the driver layer.
+         */
+        post: operations["revert-volume-snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ssh-keys": {
         parameters: {
             query?: never;
@@ -2038,6 +2143,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/volumes/{uuid}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List snapshots of a volume
+         * @description Returns every snapshot taken on the given parent volume, oldest-first by creation time. Empty list when the volume has none. Live-only ; 503 when no weft daemon is wired.
+         */
+        get: operations["list-volume-snapshots"];
+        put?: never;
+        /**
+         * Snapshot a volume
+         * @description Freezes the volume's current state under the given name. File-backed parents do a reflink CoW clone ; block-backed parents create a controller-side snapshot through weft-block. The snapshot name must be unique within the parent volume.
+         */
+        post: operations["create-volume-snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2132,6 +2261,12 @@ export interface components {
              */
             gpu: string;
             /**
+             * Format: int64
+             * @description Chassis height in U (default 1)
+             * @example 2
+             */
+            height_u: number;
+            /**
              * @description Hypervisor backend
              * @example qemu-kvm
              * @enum {string}
@@ -2142,6 +2277,12 @@ export interface components {
              * @example dc-a-r1-h2
              */
             name: string;
+            /**
+             * Format: int64
+             * @description Top-of-unit slot in the rack (1-based, 1 = top)
+             * @example 5
+             */
+            position_u: number;
             /**
              * @description Parent rack code within the AZ
              * @example R1
@@ -2173,6 +2314,12 @@ export interface components {
              * @example R1
              */
             code: string;
+            /**
+             * Format: int64
+             * @description Rack total height in U (default 42)
+             * @example 42
+             */
+            height_u: number;
             /** @description Free-form physical position (row1-col1, ...) */
             position: string;
             /**
@@ -2744,6 +2891,20 @@ export interface components {
             /** @description Best-effort post-create steps that didn't complete cleanly. The VM itself is created ; these are follow-ups the operator can retry. */
             warnings?: string[] | null;
         };
+        CreateVolumeBackupInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVolumeBackupInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Override the session project */
+            project?: string;
+            /** @description Source snapshot UUID (must already exist on a block-backend volume) */
+            snapshot_uuid: string;
+            /** @description Backup target URL (oci:// / s3:// / sftp:// / fs://) */
+            target: string;
+        };
         CreateVolumeInputBody: {
             /**
              * Format: uri
@@ -2767,6 +2928,16 @@ export interface components {
             project: string;
             /** Format: int64 */
             size_gib: number;
+        };
+        CreateVolumeSnapshotInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVolumeSnapshotInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Snapshot name (unique within the parent volume) */
+            name: string;
         };
         DeleteOutputBody: {
             /**
@@ -3437,6 +3608,53 @@ export interface components {
             label: string;
             section: string;
         };
+        RestoreVolumeBackupInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreVolumeBackupInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Name for the restored block volume */
+            new_volume_name: string;
+            /** @description Project the new volume lands in */
+            project: string;
+            /** @description Backup URL to restore */
+            url: string;
+        };
+        RestoreVolumeBackupResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreVolumeBackupResp.json
+             */
+            readonly $schema?: string;
+            new_volume_name: string;
+            project: string;
+            url: string;
+        };
+        RestoreVolumeSnapshotInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreVolumeSnapshotInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Name for the restored volume */
+            new_volume_name: string;
+            /** @description Override the session project */
+            project?: string;
+        };
+        RestoreVolumeSnapshotResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreVolumeSnapshotResp.json
+             */
+            readonly $schema?: string;
+            new_volume_name: string;
+            snapshot_uuid: string;
+        };
         RoleResp: {
             /**
              * Format: uri
@@ -3850,6 +4068,23 @@ export interface components {
             name: string;
             state: string;
         };
+        VolumeBackupRow: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VolumeBackupRow.json
+             */
+            readonly $schema?: string;
+            created: string;
+            error?: string;
+            project: string;
+            /** Format: int64 */
+            size_bytes: number;
+            snapshot_uuid: string;
+            state: string;
+            url: string;
+            volume_uuid: string;
+        };
         VolumeMetadata: {
             /**
              * Format: uri
@@ -3884,6 +4119,21 @@ export interface components {
             readonly updated_at: string;
             /** @description Annotation value (opaque to this layer) */
             value: string;
+        };
+        VolumeSnapshotRow: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VolumeSnapshotRow.json
+             */
+            readonly $schema?: string;
+            created: string;
+            name: string;
+            project: string;
+            /** Format: int64 */
+            size_gib: number;
+            uuid: string;
+            volume_uuid: string;
         };
     };
     responses: never;
@@ -4018,6 +4268,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-volume-backups": {
+        parameters: {
+            query?: {
+                /** @description Backup target URL */
+                target?: string;
+                /** @description Limit to one origin volume (UUID) */
+                volume_uuid?: string;
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeBackupRow"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-volume-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVolumeBackupInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeBackupRow"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-volume-backup": {
+        parameters: {
+            query?: {
+                /** @description Backup URL (as returned by list-volume-backups) */
+                url?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restore-volume-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreVolumeBackupInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreVolumeBackupResp"];
                 };
             };
             /** @description Error */
@@ -7844,6 +8226,102 @@ export interface operations {
             };
         };
     };
+    "delete-volume-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource UUID */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restore-volume-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Source snapshot UUID */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreVolumeSnapshotInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreVolumeSnapshotResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "revert-volume-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource UUID */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-ssh-keys": {
         parameters: {
             query?: never;
@@ -8629,6 +9107,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-volume-snapshots": {
+        parameters: {
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parent volume UUID */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeSnapshotRow"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-volume-snapshot": {
+        parameters: {
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parent volume UUID */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVolumeSnapshotInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolumeSnapshotRow"];
+                };
             };
             /** @description Error */
             default: {
