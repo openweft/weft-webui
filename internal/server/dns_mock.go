@@ -256,3 +256,28 @@ func updateDNSRecordRow(uuid string, patch func(map[string]any)) bool {
 	}
 	return false
 }
+
+// appendDNSZoneRow inserts a new zone row + flushes the on-disk
+// snapshot when persistence is wired up. Used by the live-first
+// path in api_networking.go's create-dns-zone handler to mirror a
+// successful daemon write into the dashboard's cached view.
+func appendDNSZoneRow(row map[string]any) {
+	dnsMockMu.Lock()
+	defer dnsMockMu.Unlock()
+	if z, ok := resourceByID["dns-zones"]; ok {
+		z.Rows = append(z.Rows, row)
+	}
+	flushDNSLocked()
+}
+
+// appendDNSRecordRow inserts a new record row + flushes the on-disk
+// snapshot when persistence is wired up. Used by the live-first
+// path in api_networking.go's create-dns-record handler.
+func appendDNSRecordRow(row map[string]any) {
+	dnsMockMu.Lock()
+	defer dnsMockMu.Unlock()
+	if r, ok := resourceByID["dns-records"]; ok {
+		r.Rows = append(r.Rows, row)
+	}
+	flushDNSLocked()
+}

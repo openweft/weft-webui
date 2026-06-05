@@ -506,18 +506,52 @@ func mountLoadBalancersAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/loadbalancers",
 		Summary:       "Create a load balancer",
+		Description:   "Live-first against weft-agent's CreateLoadBalancer (proto v0.8.0) ; the local catalogue row gets mirrored on success so the dashboard tree + map see the new LB without a re-list. On Unimplemented (or no live wiring) the existing weft-network controller path takes over.",
 		Tags:          []string{"loadbalancers"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createLBInput) (*createNameUUIDOutput, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
-		}
-		project, err := resolveVMProjectCtx(ctx, in.Project)
-		if err != nil {
-			return nil, err
-		}
 		if in.Body.Name == "" || in.Body.Port == 0 {
 			return nil, huma.Error400BadRequest("name and port are required")
+		}
+		project, perr := resolveVMProjectCtx(ctx, in.Project)
+		if perr != nil {
+			return nil, perr
+		}
+		listenAddr := ""
+		if in.Body.Port > 0 {
+			listenAddr = ":" + strconv.FormatUint(uint64(in.Body.Port), 10)
+		}
+		protocol := strings.ToLower(strings.TrimSpace(in.Body.Mode))
+		backends := make([]map[string]any, 0, len(in.Body.Backends))
+		for _, addr := range in.Body.Backends {
+			backends = append(backends, map[string]any{"address": addr, "weight": int32(1)})
+		}
+		if live != nil {
+			uuid, _, err := live.CreateLoadBalancer(ctx, project, in.Body.Name, listenAddr, protocol, backends)
+			if err == nil {
+				appendLoadBalancerRow(map[string]any{
+					"uuid":       uuid,
+					"name":       in.Body.Name,
+					"mode":       in.Body.Mode,
+					"port":       in.Body.Port,
+					"backends":   strings.Join(in.Body.Backends, ", "),
+					"az":         in.Body.AZ,
+					"controller": "weft-agent",
+					"project":    project,
+					"status":     "active",
+					"created":    time.Now().UTC().Format("2006-01-02"),
+				})
+				Audit(ctx, auditLogger, "lb.create", "lb", uuid, "", nil,
+					map[string]string{"name": in.Body.Name, "project": project})
+				userActionCtx(ctx, "lb.create")
+				return &createNameUUIDOutput{Body: CreateNameUUID{Name: in.Body.Name, UUID: uuid}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if err := requireLiveNetCtx(); err != nil {
+			return nil, err
 		}
 		uuid, cerr := liveNet.CreateLoadBalancer(ctx, wclient.CreateLoadBalancerOpts{
 			Project: project, Name: in.Body.Name, Mode: in.Body.Mode,
@@ -531,19 +565,93 @@ func mountLoadBalancersAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "update-loadbalancer",
+		Method:        "PUT",
+		Path:          "/api/loadbalancers/{uuid}",
+		Summary:       "Update a load balancer's mutable listener fields (live-first)",
+		Description:   "Patches name / mode / port — empty strings keep the current value. Live-first against weft-agent's UpdateLoadBalancer (proto v0.8.0). Mock store mirrored on success ; on Unimplemented falls back to mutating the local row directly.",
+		Tags:          []string{"loadbalancers"},
+		DefaultStatus: 200,
+	}, func(ctx context.Context, in *updateLBInput) (*updateLBOutput, error) {
+		listenAddr := ""
+		if in.Body.Port > 0 {
+			listenAddr = ":" + strconv.FormatUint(uint64(in.Body.Port), 10)
+		}
+		protocol := strings.ToLower(strings.TrimSpace(in.Body.Mode))
+		mirror := func(row map[string]any) {
+			if in.Body.Name != "" {
+				row["name"] = in.Body.Name
+			}
+			if in.Body.Mode != "" {
+				row["mode"] = in.Body.Mode
+			}
+			if in.Body.Port > 0 {
+				row["port"] = in.Body.Port
+			}
+		}
+		if live != nil {
+			err := live.UpdateLoadBalancer(ctx, in.UUID, in.Body.Name, listenAddr, protocol)
+			if err == nil {
+				_ = updateLoadBalancerRow(in.UUID, mirror)
+				Audit(ctx, auditLogger, "lb.update", "lb", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "lb.update")
+				return &updateLBOutput{Body: UpdateLBResp{UUID: in.UUID, Name: in.Body.Name}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if !updateLoadBalancerRow(in.UUID, mirror) {
+			return nil, huma.Error404NotFound("load balancer not found")
+		}
+		Audit(ctx, auditLogger, "lb.update", "lb", in.UUID, "", nil, nil)
+		userActionCtx(ctx, "lb.update")
+		row, _ := findLoadBalancerRow(in.UUID)
+		name := in.Body.Name
+		if name == "" && row != nil {
+			name = str(row["name"])
+		}
+		return &updateLBOutput{Body: UpdateLBResp{UUID: in.UUID, Name: name}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "delete-loadbalancer",
 		Method:        "DELETE",
 		Path:          "/api/loadbalancers/{uuid}",
 		Summary:       "Delete a load balancer",
+		Description:   "Live-first against weft-agent's DeleteLoadBalancer (proto v0.8.0). Cascade refusal (FloatingIPs mapped to the LB) surfaces as 409 Conflict carrying the blocking-fips count. On Unimplemented falls back to the weft-network controller path then the local catalogue.",
 		Tags:          []string{"loadbalancers"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
+		if live != nil {
+			blockedFips, err := live.DeleteLoadBalancer(ctx, in.UUID)
+			if err == nil {
+				deleteLoadBalancerRow(in.UUID)
+				Audit(ctx, auditLogger, "lb.delete", "lb", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "lb.delete")
+				return nil, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				if blockedFips > 0 {
+					Audit(ctx, auditLogger, "lb.delete", "lb", in.UUID, "blocked", nil,
+						map[string]string{"blocked_by_fips": strconv.Itoa(int(blockedFips))})
+					return nil, huma.NewError(409, fmt.Sprintf("lb delete blocked by %d floating IP(s) ; unmap them first", blockedFips))
+				}
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if liveNet == nil {
+			if !deleteLoadBalancerRow(in.UUID) {
+				return nil, huma.Error404NotFound("load balancer not found")
+			}
+			Audit(ctx, auditLogger, "lb.delete", "lb", in.UUID, "", nil, nil)
+			userActionCtx(ctx, "lb.delete")
+			return nil, nil
 		}
 		if err := liveNet.DeleteLoadBalancer(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
+		deleteLoadBalancerRow(in.UUID)
 		userActionCtx(ctx, "lb.delete")
 		return nil, nil
 	})
@@ -566,6 +674,23 @@ func mountLoadBalancersAPI(api huma.API) {
 	})
 }
 
+type updateLBInput struct {
+	UUID string `path:"uuid" doc:"Load-balancer uuid" minLength:"1" maxLength:"64"`
+	Body struct {
+		Name string `json:"name,omitempty" doc:"New name. Empty = keep current." maxLength:"128"`
+		Mode string `json:"mode,omitempty" doc:"L4 / L7. Empty = keep current." maxLength:"16"`
+		Port uint32 `json:"port,omitempty" doc:"New listener port (>0 to change)" minimum:"0" maximum:"65535"`
+	}
+}
+
+// UpdateLBResp echoes uuid + post-write name.
+type UpdateLBResp struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
+}
+
+type updateLBOutput struct{ Body UpdateLBResp }
+
 // ---- DNS ---------------------------------------------------------
 
 func mountDNSAPI(api huma.API) {
@@ -574,15 +699,38 @@ func mountDNSAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/dns-zones",
 		Summary:       "Create a DNS zone",
+		Description:   "Live-first against weft-agent's CreateDNSZone (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createDNSZoneInput) (*createNameUUIDOutput, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
-		}
-		project := resolveProjectOrPlatform(ctx, in.Project)
 		if in.Body.Name == "" {
 			return nil, huma.Error400BadRequest("name is required")
+		}
+		project := resolveProjectOrPlatform(ctx, in.Project)
+		if live != nil {
+			uuid, _, err := live.CreateDNSZone(ctx, project, in.Body.Name, "", in.Body.TTLDefault)
+			if err == nil {
+				appendDNSZoneRow(map[string]any{
+					"uuid":        uuid,
+					"name":        in.Body.Name,
+					"role":        in.Body.Role,
+					"ttl_default": int(in.Body.TTLDefault),
+					"push_target": in.Body.PushTarget,
+					"project":     project,
+					"enabled":     true,
+					"created":     time.Now().UTC().Format("2006-01-02"),
+				})
+				Audit(ctx, auditLogger, "dns-zone.create", "dns-zone", uuid, "", nil,
+					map[string]string{"name": in.Body.Name, "project": project})
+				userActionCtx(ctx, "dns-zone.create")
+				return &createNameUUIDOutput{Body: CreateNameUUID{Name: in.Body.Name, UUID: uuid}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if err := requireLiveNetCtx(); err != nil {
+			return nil, err
 		}
 		uuid, err := liveNet.CreateDNSZone(ctx, wclient.CreateDNSZoneOpts{
 			Project: project, Name: in.Body.Name, Role: in.Body.Role,
@@ -600,20 +748,41 @@ func mountDNSAPI(api huma.API) {
 		Method:        "DELETE",
 		Path:          "/api/dns-zones/{uuid}",
 		Summary:       "Delete a DNS zone",
+		Description:   "Live-first against weft-agent's DeleteDNSZone (proto v0.8.0). Cascade refusal (records remain) surfaces as 409 Conflict carrying the blocking-records count so the SPA can render a 'drain X records first' hint.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
+		if live != nil {
+			blockedRecs, err := live.DeleteDNSZone(ctx, in.UUID)
+			if err == nil {
+				deleteDNSZoneRow(in.UUID)
+				Audit(ctx, auditLogger, "dns-zone.delete", "dns-zone", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "dns-zone.delete")
+				return nil, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				if blockedRecs > 0 {
+					Audit(ctx, auditLogger, "dns-zone.delete", "dns-zone", in.UUID, "blocked", nil,
+						map[string]string{"blocked_by_records": strconv.Itoa(int(blockedRecs))})
+					return nil, huma.NewError(409, fmt.Sprintf("zone delete blocked by %d record(s) ; drain them first", blockedRecs))
+				}
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		if liveNet == nil {
 			// Mock fallback : drop the row from the seed + flush
 			// the on-disk snapshot when persistence is wired up.
 			if !deleteDNSZoneRow(in.UUID) {
 				return nil, huma.Error404NotFound("zone not found")
 			}
+			Audit(ctx, auditLogger, "dns-zone.delete", "dns-zone", in.UUID, "", nil, nil)
 			return nil, nil
 		}
 		if err := liveNet.DeleteDNSZone(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
+		deleteDNSZoneRow(in.UUID)
+		Audit(ctx, auditLogger, "dns-zone.delete", "dns-zone", in.UUID, "", nil, nil)
 		userActionCtx(ctx, "dns-zone.delete")
 		return nil, nil
 	})
@@ -622,12 +791,12 @@ func mountDNSAPI(api huma.API) {
 		OperationID:   "update-dns-zone",
 		Method:        "PUT",
 		Path:          "/api/dns-zones/{uuid}",
-		Summary:       "Update a DNS zone (mock-friendly ; live wiring TBD)",
-		Description:   "Editable fields : name, role (primary/secondary/forward), ttl_default, backend, push_target.",
+		Summary:       "Update a DNS zone (live-first ; mock fallback)",
+		Description:   "Live-first against weft-agent's UpdateDNSZone (proto v0.8.0 — patches soa_email + ttl). The mock-layer fields (role / backend / push_target / enabled) keep flowing through the local store so the dashboard's editor remains rich while staged rollouts catch up.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 200,
-	}, func(_ context.Context, in *updateDNSZoneInput) (*updateDNSZoneOutput, error) {
-		ok := updateDNSZoneRow(in.UUID, func(row map[string]any) {
+	}, func(ctx context.Context, in *updateDNSZoneInput) (*updateDNSZoneOutput, error) {
+		mirror := func(row map[string]any) {
 			if in.Body.Name != "" {
 				row["name"] = in.Body.Name
 			}
@@ -645,10 +814,41 @@ func mountDNSAPI(api huma.API) {
 			if in.Body.Enabled != nil {
 				row["enabled"] = *in.Body.Enabled
 			}
-		})
-		if !ok {
+		}
+		if live != nil {
+			// Proto carries soa_email + ttl ; pass -1 to "keep current"
+			// when the dashboard hasn't supplied a new TTL.
+			ttl := int32(-1)
+			if in.Body.TTLDefault > 0 {
+				ttl = int32(in.Body.TTLDefault)
+			}
+			err := live.UpdateDNSZone(ctx, in.UUID, "", ttl)
+			if err == nil {
+				_ = updateDNSZoneRow(in.UUID, mirror)
+				Audit(ctx, auditLogger, "dns-zone.update", "dns-zone", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "dns-zone.update")
+				row, _, _ := findDNSZoneByUUID(in.UUID)
+				if row == nil {
+					row = map[string]any{}
+				}
+				return &updateDNSZoneOutput{Body: UpdateDNSZoneResp{
+					UUID:       in.UUID,
+					Name:       str(row["name"]),
+					Role:       str(row["role"]),
+					TTLDefault: toInt(row["ttl_default"]),
+					Backend:    str(row["backend"]),
+					PushTarget: str(row["push_target"]),
+					Enabled:    boolField(row["enabled"]),
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if !updateDNSZoneRow(in.UUID, mirror) {
 			return nil, huma.Error404NotFound("zone not found")
 		}
+		Audit(ctx, auditLogger, "dns-zone.update", "dns-zone", in.UUID, "", nil, nil)
 		row, _, _ := findDNSZoneByUUID(in.UUID)
 		return &updateDNSZoneOutput{Body: UpdateDNSZoneResp{
 			UUID:       in.UUID,
@@ -666,14 +866,44 @@ func mountDNSAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/dns-records",
 		Summary:       "Create a DNS record",
+		Description:   "Live-first against weft-agent's CreateDNSRecord (proto v0.8.0) ; the local catalogue row is mirrored on success. On Unimplemented falls back to the weft-network controller path.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createDNSRecordInput) (*createDNSRecordOutput, error) {
-		if err := requireLiveNetCtx(); err != nil {
-			return nil, err
-		}
 		if in.Body.ZoneUUID == "" || in.Body.Type == "" || in.Body.Value == "" {
 			return nil, huma.Error400BadRequest("zone_uuid, type, value are required")
+		}
+		if live != nil {
+			uuid, _, err := live.CreateDNSRecord(ctx, in.Body.ZoneUUID, in.Body.Name, in.Body.Type, in.Body.Value, in.Body.TTL, 0)
+			if err == nil {
+				// Resolve the zone name for the mirror row so the
+				// records table groups correctly without an extra
+				// round-trip.
+				zoneName := ""
+				if zrow, _, ok := findDNSZoneByUUID(in.Body.ZoneUUID); ok {
+					zoneName = str(zrow["name"])
+				}
+				appendDNSRecordRow(map[string]any{
+					"uuid":      uuid,
+					"zone_uuid": in.Body.ZoneUUID,
+					"zone":      zoneName,
+					"name":      in.Body.Name,
+					"type":      in.Body.Type,
+					"value":     in.Body.Value,
+					"ttl":       int(in.Body.TTL),
+					"enabled":   true,
+				})
+				Audit(ctx, auditLogger, "dns-record.create", "dns-record", uuid, "", nil,
+					map[string]string{"zone_uuid": in.Body.ZoneUUID, "type": in.Body.Type, "name": in.Body.Name})
+				userActionCtx(ctx, "dns-record.create")
+				return &createDNSRecordOutput{Body: CreateDNSRecordResp{UUID: uuid, Name: in.Body.Name, Type: in.Body.Type}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if err := requireLiveNetCtx(); err != nil {
+			return nil, err
 		}
 		uuid, err := liveNet.CreateDNSRecord(ctx, wclient.CreateDNSRecordOpts{
 			ZoneUUID: in.Body.ZoneUUID, Name: in.Body.Name, Type: in.Body.Type,
@@ -691,18 +921,34 @@ func mountDNSAPI(api huma.API) {
 		Method:        "DELETE",
 		Path:          "/api/dns-records/{uuid}",
 		Summary:       "Delete a DNS record",
+		Description:   "Live-first against weft-agent's DeleteDNSRecord (proto v0.8.0). On Unimplemented falls back to weft-network controller, then the local catalogue.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 204,
 	}, func(ctx context.Context, in *uuidInput) (*struct{}, error) {
+		if live != nil {
+			err := live.DeleteDNSRecord(ctx, in.UUID)
+			if err == nil {
+				deleteDNSRecordRow(in.UUID)
+				Audit(ctx, auditLogger, "dns-record.delete", "dns-record", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "dns-record.delete")
+				return nil, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		if liveNet == nil {
 			if !deleteDNSRecordRow(in.UUID) {
 				return nil, huma.Error404NotFound("record not found")
 			}
+			Audit(ctx, auditLogger, "dns-record.delete", "dns-record", in.UUID, "", nil, nil)
 			return nil, nil
 		}
 		if err := liveNet.DeleteDNSRecord(ctx, in.UUID); err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
 		}
+		deleteDNSRecordRow(in.UUID)
+		Audit(ctx, auditLogger, "dns-record.delete", "dns-record", in.UUID, "", nil, nil)
 		userActionCtx(ctx, "dns-record.delete")
 		return nil, nil
 	})
@@ -711,12 +957,12 @@ func mountDNSAPI(api huma.API) {
 		OperationID:   "update-dns-record",
 		Method:        "PUT",
 		Path:          "/api/dns-records/{uuid}",
-		Summary:       "Update a DNS record (mock-friendly ; live wiring TBD)",
-		Description:   "Editable fields : name, type, value, ttl. Zone and source are immutable from this endpoint.",
+		Summary:       "Update a DNS record (live-first ; mock fallback)",
+		Description:   "Live-first against weft-agent's UpdateDNSRecord (proto v0.8.0 — patches value + ttl + priority ; name/type immutable). The mock-layer `enabled` flag keeps flowing through the local store so the dashboard toggle remains responsive.",
 		Tags:          []string{"dns"},
 		DefaultStatus: 200,
-	}, func(_ context.Context, in *updateDNSRecordInput) (*updateDNSRecordOutput, error) {
-		ok := updateDNSRecordRow(in.UUID, func(row map[string]any) {
+	}, func(ctx context.Context, in *updateDNSRecordInput) (*updateDNSRecordOutput, error) {
+		mirror := func(row map[string]any) {
 			if in.Body.Name != "" {
 				row["name"] = in.Body.Name
 			}
@@ -732,10 +978,39 @@ func mountDNSAPI(api huma.API) {
 			if in.Body.Enabled != nil {
 				row["enabled"] = *in.Body.Enabled
 			}
-		})
-		if !ok {
+		}
+		if live != nil {
+			ttl := int32(-1)
+			if in.Body.TTL > 0 {
+				ttl = int32(in.Body.TTL)
+			}
+			err := live.UpdateDNSRecord(ctx, in.UUID, in.Body.Name, in.Body.Type, in.Body.Value, ttl, -1)
+			if err == nil {
+				_ = updateDNSRecordRow(in.UUID, mirror)
+				Audit(ctx, auditLogger, "dns-record.update", "dns-record", in.UUID, "", nil, nil)
+				userActionCtx(ctx, "dns-record.update")
+				row, _ := findDNSRecordByUUID(in.UUID)
+				if row == nil {
+					row = map[string]any{}
+				}
+				return &updateDNSRecordOutput{Body: UpdateDNSRecordResp{
+					UUID:    in.UUID,
+					Name:    str(row["name"]),
+					Zone:    str(row["zone"]),
+					Type:    str(row["type"]),
+					Value:   str(row["value"]),
+					TTL:     toInt(row["ttl"]),
+					Enabled: boolField(row["enabled"]),
+				}}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if !updateDNSRecordRow(in.UUID, mirror) {
 			return nil, huma.Error404NotFound("record not found")
 		}
+		Audit(ctx, auditLogger, "dns-record.update", "dns-record", in.UUID, "", nil, nil)
 		row, _ := findDNSRecordByUUID(in.UUID)
 		return &updateDNSRecordOutput{Body: UpdateDNSRecordResp{
 			UUID:    in.UUID,
