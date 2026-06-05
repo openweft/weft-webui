@@ -395,8 +395,22 @@ export async function deleteEntry(kind: StorageKind, _container: string, key: st
 
 // ---- Buckets (lifecycle + policy) ---------------------------------
 
-export async function createBucket(name: string): Promise<void> {
-  const { error } = await client.POST('/api/buckets', { body: { name } });
+// CreateBucketBody surfaces the live-first wiring fields the
+// daemon's CreateBucket RPC needs (endpoint / region / access keys /
+// optional initial policy). Legacy mock-mode callers can still pass
+// `{ name }` only — the server falls back to the in-memory store
+// when the live agent is unwired or returns Unimplemented.
+export type CreateBucketBody = {
+  name: string;
+  endpoint?: string;
+  region?: string;
+  access_key_id?: string;
+  secret_access_key?: string;
+  policy?: string;
+};
+
+export async function createBucket(body: CreateBucketBody): Promise<void> {
+  const { error } = await client.POST('/api/buckets', { body });
   if (error) throwErr(error);
 }
 
