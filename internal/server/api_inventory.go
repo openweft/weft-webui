@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/openweft/weft-webui/internal/wclient"
 )
 
 func mountInventoryAPI(api huma.API, scope Scope) {
@@ -75,14 +76,40 @@ func mountAZAPI(api huma.API) {
 		if row.Code == "" {
 			return nil, huma.Error400BadRequest("code is required")
 		}
+		if row.Status == "" {
+			row.Status = "active"
+		}
+		// Live-first : forward to the registry when a daemon is wired
+		// up. Local store still gets mirrored so the tree / map / row
+		// listings (which read from resourceByID) keep matching the
+		// authoritative state without a re-list round-trip.
+		if live != nil {
+			uuid, _, err := live.CreateAZ(ctx, row.Code, row.Name, row.Region, row.Status)
+			if err == nil {
+				row.UUID = uuid
+				if !azCodeExists(row.Code) {
+					appendAZ(map[string]any{
+						"uuid":   row.UUID,
+						"code":   row.Code,
+						"name":   row.Name,
+						"region": row.Region,
+						"racks":  0,
+						"hosts":  0,
+						"status": row.Status,
+					})
+				}
+				Audit(ctx, auditLogger, "az.create", "az", row.UUID, "", nil, map[string]string{"code": row.Code})
+				return &azOutput{Body: row}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		if azCodeExists(row.Code) {
 			Audit(ctx, auditLogger, "az.create", "az", row.Code, "conflict", nil, nil)
 			return nil, huma.Error409Conflict("az code already registered: " + row.Code)
 		}
 		row.UUID = newUUID("az")
-		if row.Status == "" {
-			row.Status = "active"
-		}
 		appendAZ(map[string]any{
 			"uuid":   row.UUID,
 			"code":   row.Code,
@@ -104,7 +131,7 @@ func mountAZAPI(api huma.API) {
 		Tags:        []string{"inventory"},
 	}, func(ctx context.Context, in *updateAZInput) (*azOutput, error) {
 		patch := normaliseAZ(in.Body)
-		ok := updateAZRow(in.UUID, func(row map[string]any) {
+		mirror := func(row map[string]any) {
 			if patch.Name != "" {
 				row["name"] = patch.Name
 			}
@@ -117,7 +144,30 @@ func mountAZAPI(api huma.API) {
 			// code is the join key (racks + hosts reference it by string).
 			// Changing it would require a coordinated rewrite of those rows ;
 			// keep it immutable in the mock layer.
-		})
+		}
+		if live != nil {
+			err := live.UpdateAZ(ctx, in.UUID, patch.Name, patch.Region, patch.Status)
+			if err == nil {
+				// Best-effort mirror : keep the local store in sync so
+				// the dashboard's tree / map see the change without
+				// re-listing from the registry.
+				_ = updateAZRow(in.UUID, mirror)
+				row, _, _ := findAZByUUID(in.UUID)
+				out := azFromRow(row)
+				if out.UUID == "" {
+					// Mirror missed (e.g. the local store doesn't know
+					// the AZ yet). Surface the patch as the response.
+					out = patch
+					out.UUID = in.UUID
+				}
+				Audit(ctx, auditLogger, "az.update", "az", in.UUID, "", nil, map[string]string{"code": out.Code})
+				return &azOutput{Body: out}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		ok := updateAZRow(in.UUID, mirror)
 		if !ok {
 			return nil, huma.Error404NotFound("az not found")
 		}
@@ -135,6 +185,34 @@ func mountAZAPI(api huma.API) {
 		Description: "Cascade-deletes every rack and host whose `az` column matches the AZ code. Use with care.",
 		Tags:        []string{"inventory"},
 	}, func(ctx context.Context, in *uuidPathInput) (*deleteOutput, error) {
+		if live != nil {
+			blockedRacks, blockedHosts, err := live.DeleteAZ(ctx, in.UUID)
+			if err == nil {
+				// Mirror the delete locally so dashboard's cached
+				// views drop the row + cascade too.
+				_, rk, hs := deleteAZRow(in.UUID)
+				out := &deleteOutput{}
+				out.Body.Deleted = in.UUID
+				out.Body.Cascade.Racks = rk
+				out.Body.Cascade.Hosts = hs
+				Audit(ctx, auditLogger, "az.delete", "az", in.UUID, "", nil, nil)
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				// Cascade refusal : the registry surfaces the
+				// blocking-counts so the operator knows what to
+				// drain first.
+				if blockedRacks > 0 || blockedHosts > 0 {
+					out := &deleteOutput{}
+					out.Body.Deleted = ""
+					out.Body.Cascade.Racks = int(blockedRacks)
+					out.Body.Cascade.Hosts = int(blockedHosts)
+					Audit(ctx, auditLogger, "az.delete", "az", in.UUID, "blocked", nil, nil)
+					return nil, huma.Error409Conflict("az delete blocked by dependent rows ; drain racks/hosts first")
+				}
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		azDel, rk, hs := deleteAZRow(in.UUID)
 		if azDel == 0 {
 			return nil, huma.Error404NotFound("az not found")
@@ -167,6 +245,32 @@ func azFromRow(row map[string]any) APIAZ {
 		Region: str(row["region"]),
 		Status: str(row["status"]),
 	}
+}
+
+// azUUIDByCode walks the local AZ mirror and returns the UUID for the
+// row whose code matches. The webui surfaces AZs by their operator-
+// visible code (DC-A, …) while the live registry keys racks/hosts to
+// AZs by UUID ; this thin lookup bridges the two without bloating
+// inventory_mock.go.
+//
+// Returns "" when the code isn't known locally — the live call will
+// then reject the request with a NOT_FOUND, which the bad-gateway
+// surface forwards verbatim. The mock layer's own validation
+// (`azCodeExists`) already short-circuits this path for the
+// dev / mock case.
+func azUUIDByCode(code string) string {
+	inventoryMu.Lock()
+	defer inventoryMu.Unlock()
+	a, ok := resourceByID["azs"]
+	if !ok {
+		return ""
+	}
+	for _, row := range a.Rows {
+		if str(row["code"]) == code {
+			return str(row["uuid"])
+		}
+	}
+	return ""
 }
 
 // -------------------- Racks -------------------------------------
@@ -206,17 +310,46 @@ func mountRackAPI(api huma.API) {
 		if !azCodeExists(row.AZ) {
 			return nil, huma.Error400BadRequest("parent az not registered: " + row.AZ)
 		}
-		if rackCodeExistsInAZ(row.AZ, row.Code) {
-			Audit(ctx, auditLogger, "rack.create", "rack", row.Code, "conflict", nil, map[string]string{"az": row.AZ})
-			return nil, huma.Error409Conflict("rack code already registered in az: " + row.AZ + "/" + row.Code)
-		}
-		row.UUID = newUUID("rack")
 		if row.Status == "" {
 			row.Status = "active"
 		}
 		if row.HeightU <= 0 {
 			row.HeightU = 42
 		}
+		if live != nil {
+			// The wire protocol keys rack→AZ by UUID ; the dashboard
+			// keeps the operator-visible code string. Resolve here
+			// against the local mirror so payloads stay code-shaped.
+			azUUID := azUUIDByCode(row.AZ)
+			uuid, _, err := live.CreateRack(ctx, azUUID, row.Code, row.Code, row.Status, int32(row.HeightU))
+			if err == nil {
+				row.UUID = uuid
+				if !rackCodeExistsInAZ(row.AZ, row.Code) {
+					appendRack(map[string]any{
+						"uuid":     row.UUID,
+						"code":     row.Code,
+						"az":       row.AZ,
+						"position": row.Position,
+						"height_u": row.HeightU,
+						"hosts":    0,
+						"status":   row.Status,
+					})
+				}
+				Audit(ctx, auditLogger, "rack.create", "rack", row.UUID, "", nil, map[string]string{
+					"az":   row.AZ,
+					"code": row.Code,
+				})
+				return &rackOutput{Body: row}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		if rackCodeExistsInAZ(row.AZ, row.Code) {
+			Audit(ctx, auditLogger, "rack.create", "rack", row.Code, "conflict", nil, map[string]string{"az": row.AZ})
+			return nil, huma.Error409Conflict("rack code already registered in az: " + row.AZ + "/" + row.Code)
+		}
+		row.UUID = newUUID("rack")
 		appendRack(map[string]any{
 			"uuid":     row.UUID,
 			"code":     row.Code,
@@ -241,7 +374,7 @@ func mountRackAPI(api huma.API) {
 		Tags:        []string{"inventory"},
 	}, func(ctx context.Context, in *updateRackInput) (*rackOutput, error) {
 		patch := normaliseRack(in.Body)
-		ok := updateRackRow(in.UUID, func(row map[string]any) {
+		mirror := func(row map[string]any) {
 			if patch.Position != "" {
 				row["position"] = patch.Position
 			}
@@ -251,7 +384,31 @@ func mountRackAPI(api huma.API) {
 			if patch.Status != "" {
 				row["status"] = patch.Status
 			}
-		})
+		}
+		if live != nil {
+			// The proto's heightU is an int32 ; the wclient uses -1 as
+			// "keep current" but the webui's payload uses 0/unset.
+			heightU := int32(-1)
+			if patch.HeightU > 0 {
+				heightU = int32(patch.HeightU)
+			}
+			err := live.UpdateRack(ctx, in.UUID, patch.Code, patch.Status, heightU)
+			if err == nil {
+				_ = updateRackRow(in.UUID, mirror)
+				row, _ := findRackByUUID(in.UUID)
+				out := rackFromRow(row)
+				if out.UUID == "" {
+					out = patch
+					out.UUID = in.UUID
+				}
+				Audit(ctx, auditLogger, "rack.update", "rack", in.UUID, "", nil, nil)
+				return &rackOutput{Body: out}, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
+		ok := updateRackRow(in.UUID, mirror)
 		if !ok {
 			return nil, huma.Error404NotFound("rack not found")
 		}
@@ -268,6 +425,27 @@ func mountRackAPI(api huma.API) {
 		Summary:     "Delete a rack + cascade its hosts (cluster-admin)",
 		Tags:        []string{"inventory"},
 	}, func(ctx context.Context, in *uuidPathInput) (*deleteOutput, error) {
+		if live != nil {
+			blockedHosts, err := live.DeleteRack(ctx, in.UUID)
+			if err == nil {
+				_, hs := deleteRackRow(in.UUID)
+				out := &deleteOutput{}
+				out.Body.Deleted = in.UUID
+				out.Body.Cascade.Hosts = hs
+				Audit(ctx, auditLogger, "rack.delete", "rack", in.UUID, "", nil, nil)
+				return out, nil
+			}
+			if !wclient.IsUnimplemented(err) {
+				if blockedHosts > 0 {
+					out := &deleteOutput{}
+					out.Body.Deleted = ""
+					out.Body.Cascade.Hosts = int(blockedHosts)
+					Audit(ctx, auditLogger, "rack.delete", "rack", in.UUID, "blocked", nil, nil)
+					return nil, huma.Error409Conflict("rack delete blocked by dependent hosts ; drain hosts first")
+				}
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+		}
 		rkDel, hs := deleteRackRow(in.UUID)
 		if rkDel == 0 {
 			return nil, huma.Error404NotFound("rack not found")
