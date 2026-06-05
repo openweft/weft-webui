@@ -9495,7 +9495,7 @@
         ]
       },
       "post": {
-        "description": "Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored.",
+        "description": "Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored. Live-first via weft-agent's SetRegistryRemote (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. Insecure flag derived from URL scheme (http:// = insecure) ; the proto's CredentialSecretRef stays empty until the secret-store ref lands in the SPA form.",
         "operationId": "set-registry-remote",
         "requestBody": {
           "content": {
@@ -9537,6 +9537,7 @@
     },
     "/api/registries/remotes/{name}": {
       "delete": {
+        "description": "Live-first via weft-agent's DeleteRegistryRemote (proto v0.9.0) ; the call resolves Name → UUID via ListRegistryRemotes when the live remote exists. Mock store mirrored on success and is the source of truth on Unimplemented.",
         "operationId": "delete-registry-remote",
         "parameters": [
           {
@@ -12297,7 +12298,7 @@
         ]
       },
       "post": {
-        "description": "Inserts or updates by Key. The orchestration layer reads these to make placement / lifecycle decisions.",
+        "description": "Inserts or updates by Key. Live-first via weft-agent's SetVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. The `key` path segment doubles as the volume UUID when live wiring is on (the mock stores by name ; live keys by UUID — the dashboard already moved to UUID-shaped keys for new volumes).",
         "operationId": "set-volume-property",
         "parameters": [
           {
@@ -12353,6 +12354,7 @@
     },
     "/api/volumes/{key}/properties/{prop_key}": {
       "delete": {
+        "description": "Live-first via weft-agent's DeleteVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented.",
         "operationId": "delete-volume-property",
         "parameters": [
           {

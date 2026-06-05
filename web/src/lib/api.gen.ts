@@ -1292,7 +1292,7 @@ export interface paths {
         put?: never;
         /**
          * Create or update a remote registry (cluster-admin)
-         * @description Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored.
+         * @description Insert-or-update by Name. The LastSync field is owned by the sync engine — caller-supplied values are ignored. Live-first via weft-agent's SetRegistryRemote (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. Insecure flag derived from URL scheme (http:// = insecure) ; the proto's CredentialSecretRef stays empty until the secret-store ref lands in the SPA form.
          */
         post: operations["set-registry-remote"];
         delete?: never;
@@ -1312,7 +1312,10 @@ export interface paths {
         get: operations["get-registry-remote"];
         put?: never;
         post?: never;
-        /** Delete a remote registry (cluster-admin) — idempotent */
+        /**
+         * Delete a remote registry (cluster-admin) — idempotent
+         * @description Live-first via weft-agent's DeleteRegistryRemote (proto v0.9.0) ; the call resolves Name → UUID via ListRegistryRemotes when the live remote exists. Mock store mirrored on success and is the source of truth on Unimplemented.
+         */
         delete: operations["delete-registry-remote"];
         options?: never;
         head?: never;
@@ -2085,7 +2088,7 @@ export interface paths {
         put?: never;
         /**
          * Upsert a property on a volume (admin)
-         * @description Inserts or updates by Key. The orchestration layer reads these to make placement / lifecycle decisions.
+         * @description Inserts or updates by Key. Live-first via weft-agent's SetVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented. The `key` path segment doubles as the volume UUID when live wiring is on (the mock stores by name ; live keys by UUID — the dashboard already moved to UUID-shaped keys for new volumes).
          */
         post: operations["set-volume-property"];
         delete?: never;
@@ -2104,7 +2107,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete one property on a volume (admin) — idempotent */
+        /**
+         * Delete one property on a volume (admin) — idempotent
+         * @description Live-first via weft-agent's DeleteVolumeProperty (proto v0.9.0) ; mock store mirrored on success and is the source of truth on Unimplemented.
+         */
         delete: operations["delete-volume-property"];
         options?: never;
         head?: never;
