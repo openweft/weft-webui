@@ -75,6 +75,31 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Changed
 
+- **api : SchedulingRule mutations now prefer `live`
+  (weft-agent) over `liveNet` (weft-network) per the openweft
+  pull-model**. `POST /api/scheduling-rules`,
+  `PATCH /api/scheduling-rules/{name}` and
+  `DELETE /api/scheduling-rules/{name}` route through
+  `live.CreateSchedulingRule` / `UpdateSchedulingRule` /
+  `DeleteSchedulingRule` first — weft-agent owns the rule
+  catalogue state and weft-network observes changes through its
+  reconcile loop. On `Unimplemented` the create/delete paths fall
+  back to `liveNet.*SchedulingRule` (for staged rollouts where
+  only weft-network has the RPC), then to the in-memory mock.
+  `PATCH` falls straight from `live` to the mock since liveNet
+  has no Update RPC of its own. The mock store is mirrored on
+  every successful live write so `/api/resources/scheduling-rules`
+  stays in sync. Name → uuid resolution goes through
+  `schedulingDB.ruleUUID` (added in commit `a489222`). The compact
+  AZ/Rack/Host axes are joined into the proto's `anti_affinity`
+  wire field via a new `composeAntiAffinity` helper. Reads
+  (`GET /api/scheduling-rules` and the resource-row projection)
+  keep using `liveNet` for the enriched compliance view ; a
+  follow-up will merge `live.ListSchedulingRules` with the
+  `scheduling-rule.compliant` SSE events from `/api/events` so
+  the table can drop liveNet without losing the observed-count
+  column.
+
 - **api : live-first migration for Bucket / Share / SSH-key
   catalogue handlers (v0.9.0 Tier 4-6, follow-up to commit
   `a7276c4`)**. Now that the mock rows carry a stable opaque `uuid`

@@ -1486,7 +1486,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a scheduling rule (live-first ; mem fallback on Unimplemented) */
+        /**
+         * Create a scheduling rule (live-first via weft-agent ; liveNet/mem fallback on Unimplemented)
+         * @description Routes through `live.CreateSchedulingRule` (weft-agent owns the state per the pull-model) ; on Unimplemented falls back to `liveNet.CreateSchedulingRule` (weft-network) then to the in-memory mock so the affordance works during staged rollouts. Mock store is mirrored on success so /api/resources/scheduling-rules sees the new rule immediately.
+         */
         post: operations["create-scheduling-rule"];
         delete?: never;
         options?: never;
@@ -1559,13 +1562,16 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a scheduling rule (mem store) */
+        /**
+         * Delete a scheduling rule (live-first via weft-agent ; liveNet/mem fallback)
+         * @description Resolves name → uuid via the mock catalogue, then routes through `live.DeleteSchedulingRule` (weft-agent). On Unimplemented falls back to `liveNet.DeleteSchedulingRule` (weft-network) then to the in-memory mock so the affordance keeps working during staged rollouts.
+         */
         delete: operations["delete-scheduling-rule"];
         options?: never;
         head?: never;
         /**
-         * Update placement / count / selector of a scheduling rule
-         * @description Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. The live weft-network has no Update RPC yet, so this targets the in-memory store ; the SPA can mutate immediately and the operator sees the refresh.
+         * Update placement / count / selector of a scheduling rule (live-first via weft-agent)
+         * @description Partial-update : every field is optional. Empty-string on AZ/Rack/Host clears the axis. Live-first against `live.UpdateSchedulingRule` (weft-agent owns the state) ; the mock store is mirrored on success so the row projection stays in sync. On Unimplemented falls back to the mock store directly.
          */
         patch: operations["update-scheduling-rule"];
         trace?: never;
