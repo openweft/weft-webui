@@ -38,6 +38,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
 	"errors"
 	"flag"
@@ -47,6 +48,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -206,6 +208,48 @@ func run() error {
 	})
 	defer rl.Stop()
 
+	// Dev keypair fallback : opt-in via --keypair-allowlist. When the
+	// flag is empty the verifier stays nil and the handler isn't
+	// mounted ; a missing or unparseable file is a hard error so a
+	// fat-fingered config can't accidentally leave the endpoint half-
+	// up. We compute the audience from cfg.PublicURL (the same value
+	// the OIDC redirect uses) so the verifier can reject a captured
+	// assertion replayed against a sibling endpoint.
+	var keypairAllow *auth.KeypairAllowlist
+	keypairAudience := ""
+	if cfg.KeypairAllowlistPath != "" {
+		a, err := auth.LoadKeypairAllowlist(cfg.KeypairAllowlistPath)
+		if err != nil {
+			return err
+		}
+		keypairAllow = a
+		base := strings.TrimRight(cfg.PublicURL, "/")
+		if base == "" {
+			base = "http://" + firstNonEmpty(cfg.UserAddr, ":8080")
+		}
+		keypairAudience = base + "/api/auth/keypair"
+		logger.Warn("keypair fallback enabled — DEV ONLY",
+			"entries", a.Size(),
+			"endpoint", "/api/auth/keypair",
+			"audience", keypairAudience)
+	}
+
+	// Reuse the OIDC session store for the keypair handler so the
+	// mint-and-cookie path is identical to the OIDC one (one signing
+	// key, one cookie format). In dev mode (AuthMode=none) there's no
+	// real store, so we synthesise a throwaway one — the keypair
+	// fallback owns its own short-lived bearer in that case.
+	var keypairSessions *auth.SessionStore
+	if keypairAllow != nil {
+		if cfg.AuthMode == "oidc" && len(cfg.SessionKey) > 0 {
+			keypairSessions = auth.NewSessionStore(cfg.SessionKey, cfg.CookieName, cfg.CookieDomain, cfg.CookieSecure, cfg.SessionMaxAge)
+		} else {
+			// Dev mode : mint a per-process random key so the
+			// keypair-cookie still signs something stable for the run.
+			keypairSessions = auth.NewSessionStore(devKeypairKey(), cfg.CookieName, cfg.CookieDomain, false, cfg.SessionMaxAge)
+		}
+	}
+
 	deps := server.Deps{
 		Logger:       logger,
 		Static:       static,
@@ -220,6 +264,10 @@ func run() error {
 		AllowedOrigins:      cfg.AllowedOrigins,
 		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
 		PolicyStrict: cfg.PolicyStrict,
+		KeypairAllowlist:        keypairAllow,
+		KeypairAudience:         keypairAudience,
+		SessionStoreForKeypair:  keypairSessions,
+		SessionMaxAgeForKeypair: time.Duration(cfg.SessionMaxAge) * time.Second,
 	}
 
 	// Fold the legacy --admin-addr into --tenant-addr (deprecation
@@ -374,6 +422,35 @@ func labelOr(s, dflt string) string {
 		return dflt
 	}
 	return s
+}
+
+// firstNonEmpty returns the first non-empty string ; tiny helper used
+// when synthesising a keypair-fallback audience without a configured
+// PublicURL.
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// devKeypairKey returns a per-process random 32-byte HMAC key used to
+// sign the keypair fallback's "id_token" when the webui is running in
+// dev mode (no real session key). The same key powers the Set-Cookie
+// header on the response so the in-browser flow stays consistent for
+// the lifetime of the binary. Restarting the binary invalidates every
+// previously-issued bearer — fine for dev.
+func devKeypairKey() []byte {
+	var k [32]byte
+	if _, err := rand.Read(k[:]); err != nil {
+		// rand.Read can't fail outside catastrophic environments ; a
+		// zero key would still work but with no entropy. Surface as a
+		// panic so the operator notices the boot anomaly.
+		panic("devKeypairKey: rand.Read failed : " + err.Error())
+	}
+	return k[:]
 }
 
 // buildAuth instantiates the session store, the OIDC provider (prod)

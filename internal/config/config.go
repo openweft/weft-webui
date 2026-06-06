@@ -164,6 +164,15 @@ type Config struct {
 	// current file is renamed to <path>.<RFC3339> and a fresh one is
 	// opened when the next write would exceed this limit. Default 100MB.
 	AuditRotateBytes int64
+
+	// KeypairAllowlistPath enables the dev ed25519 keypair fallback
+	// endpoint at POST /api/auth/keypair on the user-portal listener.
+	// Empty = the endpoint is NOT registered (404 like any unknown
+	// route). When set, the file must be a JSON document of the shape
+	// {"entries":[{"pubkey":"<base64>","role":"superadmin",
+	// "label":"alice-laptop"}, ...]}. Off by default — production
+	// deployments should leave this unset.
+	KeypairAllowlistPath string
 }
 
 // StrictTLSConfig returns the *tls.Config the HTTP server applies
@@ -240,6 +249,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		DNSPath:         os.Getenv("WEBUI_DNS_PATH"),
 		SecurityPath:    os.Getenv("WEBUI_SECURITY_PATH"),
 		ScriptsPath:     os.Getenv("WEBUI_SCRIPTS_PATH"),
+		KeypairAllowlistPath: os.Getenv("WEBUI_KEYPAIR_ALLOWLIST"),
 		// 100 MiB default ; flag/env can lower (or raise) it. Loaded
 		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
 		AuditRotateBytes: 100 << 20,
@@ -369,6 +379,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		return nil
 	})
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
+	flagSet.StringVar(&cfg.KeypairAllowlistPath, "keypair-allowlist", cfg.KeypairAllowlistPath, "JSON file enabling the dev ed25519 keypair fallback (POST /api/auth/keypair on the user portal) ; empty = endpoint NOT registered. NEVER use in production.")
 	return cfg, nil
 }
 
