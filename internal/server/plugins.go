@@ -126,6 +126,15 @@ func seedPlugins() map[string]*Plugin {
 			InstallStatus: "available",
 			Enabled:       false,
 		},
+		"irods-data-management": {
+			ID: "irods-data-management", Name: "iRODS Data Management",
+			Vendor: "iRODS Consortium", Version: "4.3.3",
+			Description: "iRODS (BSD-3) — federated data-management platform : zone-qualified hierarchical collections, policy-driven replication across storage resources, metadata catalog (iCAT) in PostgreSQL. Backs the iRODS Collections panel. The weft-ha-irods agent runs the iCAT + a per-host resource server, coordinated through etcd DCS (same pattern as weft-ha-forgejo / weft-ha-postgresql).",
+			Section:   "Storage",
+			Resources: []string{"irods-collections"},
+			InstallStatus: "available",
+			Enabled:       false,
+		},
 
 		// ---- Registry backends — gate registries ----
 		"zot-registry": {

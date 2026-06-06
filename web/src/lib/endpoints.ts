@@ -43,6 +43,11 @@ interface InjectedConfig {
   endpoints?: WeftEndpoint[];
   /** Hold-down before a recovered DC may be re-selected (anti-flap). */
   quarantineMs?: number;
+  /** Initial active DC name. In single-gateway mode (one loopback origin,
+   *  the shell does failover behind it) endpoints[] only carries the
+   *  loopback ; this field lets the shell push the real active DC name
+   *  for the persistent Topbar chip. Updated by __weftFailoverNotice. */
+  currentDC?: string;
 }
 
 declare global {
@@ -94,6 +99,15 @@ export const failover: Writable<FailoverState> = writable({
 export function dismissFailover() {
   failover.update((s) => ({ ...s, switched: false }));
 }
+
+// ---- persistent DC indicator -----------------------------------
+// Reactive store the Topbar subscribes to so the chip can render the
+// currently-active DC at all times — independent of the failover
+// banner, which is transient. Initialized from injected currentDC or
+// the first endpoint's name ; updated by __weftFailoverNotice.
+export const currentDC: Writable<string> = writable(
+  cfg.currentDC ?? (endpoints[0]?.name ?? ''),
+);
 
 // ---- selection ---------------------------------------------------
 
@@ -162,6 +176,9 @@ if (typeof window !== 'undefined') {
   // The shell re-pointed a single stable origin at a different DC.
   window.__weftFailoverNotice = (from: string, to: string) => {
     failover.set({ switched: true, fromName: from, toName: to, allDown: false });
+    // The persistent Topbar chip tracks `to` separately from the
+    // transient banner so it stays accurate after the user dismisses.
+    currentDC.set(to);
   };
   // The shell wants to swap the endpoint list (e.g. after re-resolving
   // DNS). Reset selection to the new highest priority.
@@ -170,6 +187,8 @@ if (typeof window !== 'undefined') {
     endpointsEnabled = endpoints.length > 0;
     activeIdx = 0;
     quarantineUntil.clear();
+    if (next.currentDC) currentDC.set(next.currentDC);
+    else if (endpoints.length > 0) currentDC.set(endpoints[0].name);
   };
 }
 

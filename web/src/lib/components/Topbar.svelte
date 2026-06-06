@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getMe, setScope, logout, onAdminUI, type Me, type ScopeEntry } from '../api';
+  import { currentDC } from '../endpoints';
   import HelpModal from './HelpModal.svelte';
 
   let helpOpen = $state(false);
@@ -95,6 +96,17 @@
   {/if}
   {#if me?.dev}
     <span class="badge badge-info badge-sm">dev</span>
+  {/if}
+
+  <!-- Persistent active-DC chip. Hidden in plain-browser mode (no DC
+       injected) ; shown when a native shell pushes window.__WEFT_ENDPOINTS__
+       or updates window.__weftFailoverNotice. -->
+  {#if $currentDC}
+    <span class="badge badge-success badge-sm gap-1.5"
+      title="Connected datacenter (updates on failover)">
+      <span class="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-90"></span>
+      {$currentDC}
+    </span>
   {/if}
 
   <div class="ml-auto flex items-center gap-2">

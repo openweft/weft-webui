@@ -253,6 +253,18 @@ var registry = []Resource{
 		Rows:    nil,
 	},
 	{
+		// iRODS collections — hierarchical data-management surface
+		// contributed by the irods-data-management plugin (see
+		// project_catalogue_irods_forgejo). Each row = one collection :
+		// zone-qualified path, owner, resource (storage backend), object
+		// count + total size. Empty until the plugin is installed and
+		// at least one collection is created.
+		ID: "irods-collections", Label: "iRODS Collections", Section: "Storage",
+		Columns: cols("path", "Path", "owner", "Owner", "zone", "Zone",
+			"resource", "Resource", "objects", "Objects", "size", "Size", "created", "Created"),
+		Rows: nil,
+	},
+	{
 		// OCI registries. Rows come from the artifact store (registry.go)
 		// so uploads round-trip ; the dashboard renders a custom view
 		// with two tabs (artifacts + remotes for proxy / replication).
