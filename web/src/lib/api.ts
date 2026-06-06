@@ -23,7 +23,7 @@ import {
   type APIFlavor, type APIScript, type APISSHKey,
   type MeBody, type APIQuota, type APIScopeEntry,
   type APITopoNetwork, type APITopoNode, type APITopologyBody,
-  type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult,
+  type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult, type APIMetricsSnapshot,
   type APISecurityRule, type APIImportResult,
   type APITenantDetail, type APITenantMember, type APITenantProjectEntry,
   type APITenantGroup, type APITenantQuotaView, type APIProjectQuotaView,
@@ -1183,6 +1183,23 @@ export const getVMTimings = async (name: string): Promise<VMTimingEvent[]> => {
 export const getVMLogs = async (name: string, tail = 65536): Promise<VMLogs> => {
   const { data, error } = await client.GET('/api/microvms/{name}/logs', {
     params: { path: { name }, query: { tail } },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+// ---- VM metrics (poll-driven time series) -------------------------
+
+// MetricsSnapshot mirrors the server's huma type. Until weft-proto
+// gains a GetMicroVMMetrics RPC, the server returns a synthetic
+// sample with `mock: true` ; the SPA renders a badge so operators
+// don't mistake the curves for real data. See
+// internal/server/api_metrics.go.
+export type MetricsSnapshot = APIMetricsSnapshot;
+
+export const getMicroVMMetrics = async (name: string): Promise<MetricsSnapshot> => {
+  const { data, error } = await client.GET('/api/microvms/{name}/metrics', {
+    params: { path: { name } },
   });
   if (error) throwErr(error);
   return data;

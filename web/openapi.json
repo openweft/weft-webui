@@ -2624,6 +2624,91 @@
         ],
         "type": "object"
       },
+      "MetricsSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MetricsSnapshot.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cpu_percent": {
+            "description": "Aggregate vCPU usage normalised to 0..100.",
+            "format": "double",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          },
+          "disk_read_bps": {
+            "description": "Disk read bytes per second.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_write_bps": {
+            "description": "Disk write bytes per second.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mem_total_mib": {
+            "description": "Configured memory ceiling in MiB.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mem_used_mib": {
+            "description": "Resident memory in MiB.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mock": {
+            "description": "True when the snapshot is synthetic (no live metrics RPC available yet).",
+            "type": "boolean"
+          },
+          "net_rx_bps": {
+            "description": "Inbound bytes per second.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "net_tx_bps": {
+            "description": "Outbound bytes per second.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sampled_at_unix": {
+            "description": "Server wall clock when the sample was taken (unix seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "uptime_seconds": {
+            "description": "Seconds since the last successful boot.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sampled_at_unix",
+          "cpu_percent",
+          "mem_used_mib",
+          "mem_total_mib",
+          "net_rx_bps",
+          "net_tx_bps",
+          "disk_read_bps",
+          "disk_write_bps",
+          "uptime_seconds",
+          "mock"
+        ],
+        "type": "object"
+      },
       "NetworkMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -7717,6 +7802,63 @@
         "tags": [
           "microvms",
           "inspect"
+        ]
+      }
+    },
+    "/api/microvms/{name}/metrics": {
+      "get": {
+        "description": "Single-shot metrology snapshot (CPU%, memory, net rx/tx, disk r/w, uptime). The SPA polls this every ~5 s ; the response is stateless. Returns synthetic data with mock=true while a real GetMicroVMMetrics RPC is not yet wired in weft-proto.",
+        "operationId": "vm-metrics",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsSnapshot"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a microVM's live metrology snapshot",
+        "tags": [
+          "microvms",
+          "metrics"
         ]
       }
     },

@@ -9,6 +9,41 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **MicroVM Metrics tab in `MicroVMDrawer`** — new "Metrics" tab next
+  to Summary, surfacing live time-series for CPU%, memory%, network
+  rx/tx, and disk read/write, plus uptime + current memory usage. A
+  per-VM 90-sample ring buffer (`web/src/lib/microvmMetrics.ts`)
+  polls `GET /api/microvms/{name}/metrics` every 5 s ; the panel
+  (`MicroVMMetricsPanel.svelte`) renders four stacked
+  `TimeSeriesChart.svelte` instances. The chart component is a
+  zero-dependency canvas-2D line plot tuned for ≤ 90 points + 1-3
+  series (smaller than uPlot + tree-shake-friendly). The panel
+  surfaces a "mock data" badge while the server returns synthetic
+  curves.
+
+  Server endpoint : `GET /api/microvms/{name}/metrics?project=…` →
+  `MetricsSnapshot { sampled_at_unix, cpu_percent, mem_used_mib,
+  mem_total_mib, net_rx_bps, net_tx_bps, disk_read_bps,
+  disk_write_bps, uptime_seconds, mock }`. Until a real
+  `GetMicroVMMetrics` RPC lands on weft-proto, the handler synthesises
+  a deterministic curve (FNV-32 of the VM name as phase offset, sine
+  modulation per channel) and stamps `mock: true`. `wclient.GetMicroVMMetrics`
+  returns `codes.Unimplemented` ; `tryLiveMetrics` calls it through
+  `IsUnimplemented(err)` so the live → synth swap is one line the
+  day the RPC lands.
+
+  Notes / follow-up :
+  - **proto bump** : `weft.proto` needs `GetMicroVMMetrics(name,
+    project) → MicroVMMetricsResponse` with the same field set as
+    `MetricsSnapshot`. Wire in `wclient.GetMicroVMMetrics`, remove
+    the synth call in `tryLiveMetrics`.
+  - **weft-agent /metrics scrape** : the per-VM gauge can be read
+    from the agent's existing Prometheus surface (`weft_agent_vm_*`
+    families) rather than a new RPC — call site is then a small
+    Prom client + label match keyed by VM uuid. Decision deferred to
+    the proto-bump PR.
+  - Pure-Svelte chart : 60 lines of canvas-2D, no npm dep added.
+
 - **Bucket form : `endpoint` / `region` / `access_key_id` /
   `secret_access_key` / `policy` fields surfaced** in the SPA's
   Object Storage create-bucket modal. Required by `live.CreateBucket`
