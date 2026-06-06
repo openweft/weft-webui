@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
@@ -98,6 +99,25 @@ type Deps struct {
 	// helper collapses to audit.NopLogger). Wire a FileLogger via
 	// audit.NewFileLogger to persist admin-classified actions.
 	Audit audit.Logger
+
+	// KeypairAllowlist enables the dev ed25519 keypair fallback
+	// endpoint at POST /api/auth/keypair on the user-portal listener.
+	// Nil or zero-entry list = endpoint NOT registered (404 like any
+	// unknown route). When non-empty, requires KeypairAudience to be
+	// set as well so the verifier can reject replays against a
+	// different cluster origin.
+	KeypairAllowlist *auth.KeypairAllowlist
+	// KeypairAudience is the absolute URL the verifier requires the
+	// assertion's `aud` claim to match. Typically
+	// "<public_url>/api/auth/keypair".
+	KeypairAudience string
+	// SessionMaxAgeForKeypair is how long the synthesised keypair
+	// session stays valid. Defaults to 12h when zero.
+	SessionMaxAgeForKeypair time.Duration
+	// SessionStoreForKeypair is the session encoder the handler uses
+	// to mint the id_token + cookie. Same store the OIDC path uses ;
+	// when nil the keypair endpoint stays disabled.
+	SessionStoreForKeypair *auth.SessionStore
 
 	// RateLimit is optional ; when non-nil its Middleware wraps the
 	// /api/* mux (after auth so we have a session identity to key
@@ -214,6 +234,22 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		// Dev mode : provide stubs so the frontend's logout button still works.
 		mux.HandleFunc("GET /api/auth/login", devLogin)
 		mux.HandleFunc("POST /api/auth/logout", devLogout)
+	}
+
+	// Dev keypair fallback : registered ONLY on the user portal and
+	// ONLY when --keypair-allowlist was supplied (and non-empty). When
+	// the allowlist is nil, registerKeypairAuth no-ops and the route
+	// stays unknown — `disabled` knob = 404 for any probe. Restricted
+	// to the public user listener so a leaked assertion can't ride to
+	// the tenant or infra portal even if the SPA there is mistakenly
+	// configured.
+	if persona == "user" || persona == "legacy" {
+		registerKeypairAuth(mux, keypairHandlerDeps{
+			Allowlist:     d.KeypairAllowlist,
+			Sessions:      d.SessionStoreForKeypair,
+			Audience:      d.KeypairAudience,
+			SessionMaxAge: d.SessionMaxAgeForKeypair,
+		})
 	}
 
 	// --- Auth-protected routes ---
