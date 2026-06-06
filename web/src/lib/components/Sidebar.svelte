@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ResourceMeta } from '../api';
   import { sectionIcon } from '../icons';
+  import WeftLogo from './WeftLogo.svelte';
 
   let { grouped, active }: { grouped: { section: string; items: ResourceMeta[] }[]; active: string } =
     $props();
@@ -39,7 +40,7 @@
 
 <aside class="flex h-full w-64 shrink-0 flex-col border-r border-base-300 bg-base-100">
   <a href="#/" class="flex items-center gap-2 px-4 h-16 border-b border-base-300">
-    <img src="/weft-wordmark.svg" alt="Weft" class="h-7 w-auto"/>
+    <WeftLogo class="h-7 w-auto text-base-content" />
     <span class="badge badge-sm badge-ghost ml-auto">dashboard</span>
   </a>
 
