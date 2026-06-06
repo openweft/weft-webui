@@ -22,7 +22,7 @@ import (
 )
 
 func mountInventoryAPI(api huma.API, scope Scope) {
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

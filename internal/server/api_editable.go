@@ -69,7 +69,7 @@ func mountOneEditable(api huma.API, scope Scope, resID string, store *metadataSt
 		return &editableMetadataOutput{Body: store.get(in.Key)}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

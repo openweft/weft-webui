@@ -29,7 +29,7 @@ import (
 )
 
 func mountVolumeMetadataAPI(api huma.API, scope Scope) {
-	if scope == ScopeAdmin {
+	if scope.Has(ScopeAdmin) {
 		huma.Register(api, huma.Operation{
 			OperationID:   "rename-volume",
 			Method:        "PUT",
@@ -86,7 +86,7 @@ func mountVolumeMetadataAPI(api huma.API, scope Scope) {
 		return &listVolumePropertiesOutput{Body: listVolumeProperties(in.Key)}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

@@ -69,7 +69,11 @@ type auditTailOutput struct {
 }
 
 func mountAuditAPI(api huma.API, scope Scope) {
-	if scope != ScopeAdmin {
+	// Tenant + Infra portals both expose /api/audit-log : the tenant
+	// portal narrows the view to tenant-scoped entries via per-row
+	// filtering inside the handler ; the infra portal sees the
+	// cluster-wide stream. The user portal never sees this surface.
+	if !scope.Has(ScopeTenant) && !scope.Has(ScopeAdmin) {
 		return
 	}
 	huma.Register(api, huma.Operation{

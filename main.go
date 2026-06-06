@@ -2,20 +2,33 @@
 // UI for the platform's object types (tenants, projects, users,
 // networks, security groups, volumes, shares, hosts, …). One Go
 // binary serves the JSON API and the embedded SvelteJS single-page
-// app from two listeners :
+// app from up to three listeners (the three-portal split) :
 //
-//   - user-UI  (WEBUI_USER_ADDR,  default :8080) — public, OIDC,
-//                                                  project-scoped views
-//   - admin-UI (WEBUI_ADMIN_ADDR, default empty) — bind to a WireGuard
-//                                                  interface ; surfaces
-//                                                  cluster-wide resources
-//                                                  (Hosts, Users, Tenants)
-//                                                  and /metrics
+//   - user-portal   (--addr,        default :8080) — public Internet,
+//                                                    own-scope only
+//   - tenant-portal (--tenant-addr, default empty) — tenant VLAN ;
+//                                                    tenant-admin +
+//                                                    regular users
+//   - infra-portal  (--infra-addr,  default empty) — WireGuard mesh
+//                                                    only ; cluster-
+//                                                    wide ops, plugins,
+//                                                    federation,
+//                                                    /metrics
 //
-// Setting WEBUI_ADMIN_ADDR to "" disables the admin port. Bind it on a
-// loopback or WireGuard address — never 0.0.0.0 in prod.
+// Each listener exposes a DIFFERENT set of registered endpoints (see
+// internal/server/portals.go). A user who hits :8080 cannot reach
+// /api/hosts even by crafting a URL — the handler isn't registered on
+// that mux.
 //
-// Two modes :
+// Backward compatibility : when neither --tenant-addr nor --infra-addr
+// is set, the binary boots in legacy single-listener mode — UserAddr
+// serves the full surface (everything the infra portal would expose).
+// This keeps `task run` / `go run .` working as before.
+//
+// Legacy --admin-addr is an alias for --tenant-addr ; a deprecation
+// notice fires when only the legacy name is set.
+//
+// Two operating modes :
 //
 //   - prod (default)            OIDC auth, signed-cookie sessions,
 //                               --weft-socket required
@@ -209,18 +222,29 @@ func run() error {
 		PolicyStrict: cfg.PolicyStrict,
 	}
 
+	// Fold the legacy --admin-addr into --tenant-addr (deprecation
+	// path) so the rest of the boot logic only sees the new flag set.
+	if cfg.ResolveAdminAlias() {
+		logger.Warn("--admin-addr / WEBUI_ADMIN_ADDR is deprecated — use --tenant-addr / WEBUI_TENANT_ADDR",
+			"admin_addr", cfg.AdminAddr, "tenant_addr", cfg.TenantAddr)
+	}
+
 	// Boot announcement before opening the listeners so the journal is
 	// readable even if a bind fails immediately.
 	logger.Info("weft-webui starting",
-		"version", version, "user", cfg.UserAddr,
-		"admin", labelOr(cfg.AdminAddr, "disabled"),
+		"version", version,
+		"user", cfg.UserAddr,
+		"tenant", labelOr(cfg.TenantAddr, "disabled"),
+		"infra", labelOr(cfg.InfraAddr, "disabled"),
 		"weft", labelOr(cfg.WeftSocket, "mock"),
 		"dev", cfg.DevMode, "auth", cfg.AuthMode,
+		"legacy_single_listener", cfg.LegacySingleListener(),
 	)
 	os.Stderr.WriteString(cfg.Banner() + "\n")
 
-	// Run both listeners with shared shutdown. A failure on one tears
-	// down the other so an operator never has a half-up daemon.
+	// Run every configured listener with shared shutdown. A failure on
+	// one tears down the others so an operator never has a half-up
+	// daemon.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -233,28 +257,59 @@ func run() error {
 	serverCtx, cancelServer := context.WithCancel(context.Background())
 	defer cancelServer()
 
-	var wg sync.WaitGroup
-	errs := make(chan error, 2)
-
-	userSrv := newHTTPServer(cfg.UserAddr, server.New(deps), serverCtx)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := listenAndServe(userSrv, cfg); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errs <- err
+	// Build the set of (addr, handler, label) tuples to spin up. The
+	// legacy single-listener mode wires the full surface on UserAddr ;
+	// the three-portal mode wires each portal independently.
+	type portalSpec struct {
+		label string
+		addr  string
+		h     http.Handler
+	}
+	var portals []portalSpec
+	if cfg.LegacySingleListener() {
+		portals = append(portals, portalSpec{
+			label: "legacy",
+			addr:  cfg.UserAddr,
+			h:     server.NewPortal(deps, server.PortalLegacy),
+		})
+	} else {
+		portals = append(portals, portalSpec{
+			label: "user",
+			addr:  cfg.UserAddr,
+			h:     server.NewPortal(deps, server.PortalUser),
+		})
+		if cfg.TenantAddr != "" {
+			portals = append(portals, portalSpec{
+				label: "tenant",
+				addr:  cfg.TenantAddr,
+				h:     server.NewPortal(deps, server.PortalTenant),
+			})
 		}
-	}()
+		if cfg.InfraAddr != "" {
+			portals = append(portals, portalSpec{
+				label: "infra",
+				addr:  cfg.InfraAddr,
+				h:     server.NewPortal(deps, server.PortalInfra),
+			})
+		}
+	}
 
-	var adminSrv *http.Server
-	if cfg.AdminAddr != "" {
-		adminSrv = newHTTPServer(cfg.AdminAddr, server.NewAdmin(deps), serverCtx)
+	var wg sync.WaitGroup
+	errs := make(chan error, len(portals))
+	servers := make([]*http.Server, 0, len(portals))
+	for _, p := range portals {
+		srv := newHTTPServer(p.addr, p.h, serverCtx)
+		servers = append(servers, srv)
+		label := p.label
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := listenAndServe(adminSrv, cfg); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := listenAndServe(srv, cfg); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errs <- err
 			}
+			logger.Info("portal listener stopped", "portal", label, "addr", srv.Addr)
 		}()
+		logger.Info("portal listener up", "portal", label, "addr", p.addr)
 	}
 
 	select {
@@ -269,7 +324,7 @@ func run() error {
 	//      because their handler ctx is derived from it.
 	//   2) http.Server.Shutdown — stops accepting + waits for the
 	//      remaining synchronous /api/* handlers under a single deadline
-	//      so an unresponsive conn on one port can't drag the other
+	//      so an unresponsive conn on one port can't drag the others
 	//      past the timeout.
 	cancelServer()
 	timeout := cfg.ShutdownTimeout
@@ -278,12 +333,9 @@ func run() error {
 	}
 	shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if err := userSrv.Shutdown(shutCtx); err != nil {
-		logger.Warn("user shutdown", "err", err)
-	}
-	if adminSrv != nil {
-		if err := adminSrv.Shutdown(shutCtx); err != nil {
-			logger.Warn("admin shutdown", "err", err)
+	for i, srv := range servers {
+		if err := srv.Shutdown(shutCtx); err != nil {
+			logger.Warn("portal shutdown", "portal", portals[i].label, "err", err)
 		}
 	}
 	wg.Wait()

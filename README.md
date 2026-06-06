@@ -16,7 +16,7 @@ filesystem assets at startup.
 - [Build and run](#build-and-run)
 - [API surface](#api-surface)
 - [Live-first / mock fallback](#live-first--mock-fallback)
-- [Two-port split (user / admin)](#two-port-split-user--admin)
+- [Three-portal split (user / tenant / infra)](#three-portal-split-user--tenant--infra)
 - [Configuration](#configuration)
 - [Telemetry](#telemetry)
 - [Audit log](#audit-log)
@@ -28,8 +28,9 @@ filesystem assets at startup.
 
 - **Backend** — Go (`net/http` + [huma v2](https://huma.rocks) for the
   typed REST surface), embeds the SPA via `//go:embed all:web/dist`.
-  Two listeners (`user`, `admin`) share the same handler tree but
-  expose different operation scopes.
+  Up to **three** listeners (`user`, `tenant`, `infra`) each get their
+  own huma router with a different set of registered operations and
+  their own SPA bundle (see [Three-portal split](#three-portal-split-user--tenant--infra)).
 - **Frontend** — Svelte 5 + Vite, Tailwind CSS v4, daisyUI v5.
   Generated TS client (`openapi-typescript` + `openapi-fetch`) lives
   at [`web/src/lib/api.gen.ts`](web/src/lib/api.gen.ts) and is regenerated
@@ -85,16 +86,19 @@ task check:drift    # fail when web/openapi.json or api.gen.ts is stale
 Running a dev instance against a local mock store :
 
 ```sh
-# user-UI only on :8080 (admin port disabled)
+# legacy single-listener — :8080 serves the full surface
 task run
 
-# both UIs at once — user :8080 + admin 127.0.0.1:8088
-# (sets WEBUI_DEV_MODE=true ; no OIDC, no signed cookies)
+# user :8080 + tenant 127.0.0.1:8088 (sets WEBUI_DEV_MODE=true)
 task run:dual
+
+# all three portals — user :8080, tenant :8088, infra :8089
+task run:trio
 
 # API-only iteration (skips the SPA build, useful with `task dev:web` in another shell)
 task dev:api
 task dev:api:dual
+task dev:api:trio
 task dev:web        # Vite dev server on :5173, proxies /api -> :8080
 ```
 
@@ -194,19 +198,47 @@ Wired live RPC families (selected) :
 Refer to [`CHANGELOG.md`](CHANGELOG.md) for the full per-tier wiring
 journal (proto v0.7.0 → v0.9.0).
 
-## Two-port split (user / admin)
+## Three-portal split (user / tenant / infra)
 
-`weft-webui` binds two HTTP listeners, scoped at the huma operation
-registration layer ([`internal/server/api.go`](internal/server/api.go)) :
+`weft-webui` binds up to **three** HTTP listeners, each scoped at the
+huma operation registration layer
+([`internal/server/api.go`](internal/server/api.go) +
+[`internal/server/portals.go`](internal/server/portals.go)). Each
+listener also serves its own **separate SPA bundle**
+(`web/dist/{user,tenant,infra}/index.html`) built from three
+disjoint Svelte shells — the tree-shaker strips the cluster-admin
+pages from the user bundle outright.
 
-| Listener | Default | Exposes | Visibility |
+| Portal | Default | Exposes | Visibility |
 | --- | --- | --- | --- |
-| user | `:8080` (`WEBUI_USER_ADDR`) | project-scoped resources, OIDC login | public-facing |
-| admin | empty (`WEBUI_ADMIN_ADDR`) | everything the user sees + Hosts/Tenants/Users/Groups + Audit log + `/metrics` | bind on a WireGuard endpoint, never `0.0.0.0` |
+| user   | `:8080` (`--addr`)        | own-scope reads + writes only (`/api/me`, `/api/projects`, `/api/volumes`, `/api/shares`, `/api/buckets`, `/api/microvms`, `/api/instances`, `/api/ssh-keys`, `/api/sessions/*`, `/api/{readyz,livez}`)         | public Internet (behind a proxy) |
+| tenant | empty (`--tenant-addr`)   | user surface + tenant-wide views + tenant-admin mutations (`/api/quotas`, `/api/audit-log` tenant-scoped, `/api/tenants/{name}/{projects,members,...}`)                                                       | tenant VLAN ; tenant-admin + regular users in their tenant |
+| infra  | empty (`--infra-addr`)    | tenant surface + cluster-wide ops (`/api/azs`, `/api/racks`, `/api/hosts`, `/api/plugins`, `/api/federation/*`, `/api/registries`, `/api/audit-log` cluster-scoped, `/api/dns-zones`, `/api/security-rules`, `/api/scheduling-rules`, `/api/network-topology`, `/metrics`) | WireGuard mesh only ; never `0.0.0.0` |
 
-Admin-only operations are simply **not registered** on the user mux —
-unauthenticated probes get a plain `404` with no "you're not allowed"
-signal.
+**Hard isolation** : a user who hits `:8080` cannot reach
+`/api/hosts` or `/api/plugins` or `/api/federation/peers` even by
+crafting a URL — the corresponding huma operation is genuinely not
+registered on that mux. Probes see a plain `404` with no
+"you're not allowed" signal.
+
+**Backward compatibility** : when only `--addr` is set (neither
+`--tenant-addr` nor `--infra-addr`), the binary boots in legacy
+single-listener mode — `UserAddr` serves the full surface
+(everything the infra portal would expose). This keeps `task run` /
+`go run .` working on a one-host dev box.
+
+`--admin-addr` (and `WEBUI_ADMIN_ADDR`) is a deprecated alias for
+`--tenant-addr` and fires a one-line deprecation log at boot.
+
+Three-portal invocation :
+
+```sh
+weft-webui \
+  --addr :8080 \
+  --tenant-addr :8088 \
+  --infra-addr :8089 \
+  --weft-socket /tmp/weft.sock
+```
 
 ## Configuration
 
@@ -215,8 +247,10 @@ variables are flagged below ; defaults fire when omitted.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `WEBUI_USER_ADDR` | `:8080` | public listener ; flag `--addr` ; legacy `WEBUI_LISTEN_ADDR` honoured |
-| `WEBUI_ADMIN_ADDR` | empty | admin listener ; flag `--admin-addr` ; bind on a trusted interface |
+| `WEBUI_USER_ADDR` | `:8080` | user-portal listener (public) ; flag `--addr` ; legacy `WEBUI_LISTEN_ADDR` honoured |
+| `WEBUI_TENANT_ADDR` | empty | tenant-portal listener ; flag `--tenant-addr` ; bind on the tenant VLAN |
+| `WEBUI_INFRA_ADDR` | empty | infra-portal listener ; flag `--infra-addr` ; bind on the WireGuard mesh, never `0.0.0.0` |
+| `WEBUI_ADMIN_ADDR` | empty | **DEPRECATED** alias for `WEBUI_TENANT_ADDR` ; flag `--admin-addr` ; fires a deprecation warning |
 | `WEBUI_WEFT_SOCKET` | empty | unix path or `ssh://…` ; flag `--weft-socket` ; required in prod |
 | `WEBUI_WEFT_NETWORK_SOCKET` | empty | weft-network controller ; flag `--weft-network-socket` |
 | `WEBUI_TLS_CERT` / `_KEY` | empty | set both or neither ; TLS 1.2 minimum (`WEBUI_TLS_MIN_VERSION=1.3` to harden) |

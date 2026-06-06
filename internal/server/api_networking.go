@@ -48,7 +48,7 @@ func mountNetworkingAPI(api huma.API, scope Scope) {
 	mountLoadBalancersAPI(api)
 	mountDNSAPI(api)
 	mountSchedulingRulesAPI(api)
-	if scope == ScopeAdmin {
+	if scope.Has(ScopeAdmin) {
 		mountNetworkTopologyAPI(api)
 	}
 }

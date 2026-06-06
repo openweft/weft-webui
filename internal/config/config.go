@@ -35,11 +35,26 @@ import (
 // here ; downstream packages should treat the zero value as "feature
 // off" (e.g. SSHSocket="" means no SSH transport).
 type Config struct {
-	// HTTP — two listeners by design : a public user-UI port and an
-	// admin port that should only be exposed on a trusted interface
-	// (typically a WireGuard endpoint). Set AdminAddr to "" to disable
-	// the admin listener entirely.
-	UserAddr  string
+	// HTTP — up to three listeners by design :
+	//
+	//   UserAddr   public end-user portal (default :8080)
+	//   TenantAddr tenant-VLAN portal     (empty = disabled)
+	//   InfraAddr  WireGuard-mesh-only superadmin portal (empty = disabled)
+	//
+	// AdminAddr is the legacy alias for TenantAddr — kept for backward
+	// compatibility with existing WEBUI_ADMIN_ADDR / --admin-addr
+	// invocations ; a deprecation log fires when it's the only one
+	// set. Each listener gets its own huma router with a DIFFERENT
+	// set of registered endpoints (see internal/server/portals.go).
+	//
+	// When TenantAddr + InfraAddr are both empty the binary falls
+	// back to the legacy single-listener mode : UserAddr serves the
+	// full surface (everything an infra portal would expose). This
+	// keeps `task run` / `go run .` working for a one-host dev box.
+	UserAddr   string
+	TenantAddr string
+	InfraAddr  string
+	// AdminAddr is the legacy alias for TenantAddr ; see Resolve().
 	AdminAddr string
 	TLSCert   string
 	TLSKey    string
@@ -202,8 +217,10 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		// WEBUI_LISTEN_ADDR is the legacy single-listener variable ; it
 		// still works as the user-port default so existing deployments
 		// don't break. New variable is WEBUI_USER_ADDR.
-		UserAddr:  firstNonEmpty(os.Getenv("WEBUI_USER_ADDR"), os.Getenv("WEBUI_LISTEN_ADDR"), defaultUserAddr),
-		AdminAddr: os.Getenv("WEBUI_ADMIN_ADDR"),
+		UserAddr:   firstNonEmpty(os.Getenv("WEBUI_USER_ADDR"), os.Getenv("WEBUI_LISTEN_ADDR"), defaultUserAddr),
+		TenantAddr: os.Getenv("WEBUI_TENANT_ADDR"),
+		InfraAddr:  os.Getenv("WEBUI_INFRA_ADDR"),
+		AdminAddr:  os.Getenv("WEBUI_ADMIN_ADDR"),
 		TLSCert:   os.Getenv("WEBUI_TLS_CERT"),
 		TLSKey:    os.Getenv("WEBUI_TLS_KEY"),
 		WeftSocket:        os.Getenv("WEBUI_WEFT_SOCKET"),
@@ -320,8 +337,10 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 
 	// Flags override env. Defaults track whatever env produced so that
 	// passing --addr alone (without env) still gives the expected value.
-	flagSet.StringVar(&cfg.UserAddr, "addr", cfg.UserAddr, "user-UI listen address (public)")
-	flagSet.StringVar(&cfg.AdminAddr, "admin-addr", cfg.AdminAddr, "admin-UI listen address (bind to a WireGuard interface ; empty disables the admin port)")
+	flagSet.StringVar(&cfg.UserAddr, "addr", cfg.UserAddr, "user-portal listen address (public end-user surface)")
+	flagSet.StringVar(&cfg.TenantAddr, "tenant-addr", cfg.TenantAddr, "tenant-portal listen address (tenant VLAN ; tenant-admin + regular users in their tenant ; empty disables)")
+	flagSet.StringVar(&cfg.InfraAddr, "infra-addr", cfg.InfraAddr, "infra-portal listen address (WireGuard mesh only ; cluster-wide ops ; empty disables)")
+	flagSet.StringVar(&cfg.AdminAddr, "admin-addr", cfg.AdminAddr, "DEPRECATED — alias for --tenant-addr ; kept for backward compatibility")
 	flagSet.StringVar(&cfg.WeftSocket, "weft-socket", cfg.WeftSocket, "weft daemon socket (unix path or ssh://) ; empty = mock mode (dev only)")
 	flagSet.StringVar(&cfg.WeftNetworkSocket, "weft-network-socket", cfg.WeftNetworkSocket, "weft-network controller socket ; empty = mock data for routers/LBs/DNS/scheduling-rules")
 	flagSet.BoolVar(&cfg.DevMode, "dev", cfg.DevMode, "dev mode : disables auth, allows mock fallback")
@@ -407,6 +426,28 @@ func (c *Config) resolveRedirectURL() string {
 	return strings.TrimRight(c.PublicURL, "/") + "/api/auth/callback"
 }
 
+// ResolveAdminAlias folds the legacy --admin-addr flag into
+// TenantAddr when TenantAddr is empty. Returns true when the alias
+// was applied so the caller can log a deprecation notice. When both
+// are set, --tenant-addr wins and AdminAddr is ignored (warned).
+func (c *Config) ResolveAdminAlias() (deprecated bool) {
+	if c.AdminAddr == "" {
+		return false
+	}
+	if c.TenantAddr == "" {
+		c.TenantAddr = c.AdminAddr
+		return true
+	}
+	return true
+}
+
+// LegacySingleListener reports whether the binary should boot in
+// pre-split mode : a single listener on UserAddr exposing the full
+// surface. True iff neither TenantAddr nor InfraAddr is set.
+func (c *Config) LegacySingleListener() bool {
+	return c.TenantAddr == "" && c.InfraAddr == ""
+}
+
 // Banner returns a short multi-line description suitable for the
 // startup log. Useful so the operator sees at a glance which mode is
 // active.
@@ -414,10 +455,18 @@ func (c *Config) Banner() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "weft-webui mode=%s auth=%s user=%s",
 		modeLabel(c.DevMode), c.AuthMode, c.UserAddr)
-	if c.AdminAddr != "" {
-		fmt.Fprintf(&b, " admin=%s", c.AdminAddr)
+	if c.TenantAddr != "" {
+		fmt.Fprintf(&b, " tenant=%s", c.TenantAddr)
 	} else {
-		b.WriteString(" admin=disabled")
+		b.WriteString(" tenant=disabled")
+	}
+	if c.InfraAddr != "" {
+		fmt.Fprintf(&b, " infra=%s", c.InfraAddr)
+	} else {
+		b.WriteString(" infra=disabled")
+	}
+	if c.LegacySingleListener() {
+		b.WriteString(" mode=legacy-single-listener")
 	}
 	if c.WeftSocket == "" {
 		b.WriteString(" weft=mock")

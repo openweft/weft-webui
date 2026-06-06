@@ -27,7 +27,7 @@ func mountSubnetsAPI(api huma.API, scope Scope) {
 		return &subnetsListOutput{Body: listSubnets(in.Key)}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

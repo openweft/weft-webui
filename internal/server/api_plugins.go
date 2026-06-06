@@ -42,6 +42,14 @@ import (
 func errBadRequest(msg string) error { return errors.New(msg) }
 
 func mountPluginsAPI(api huma.API, scope Scope) {
+	// Plugins surface is hidden from the user portal entirely — a
+	// regular user has no business seeing the catalogue, and we want
+	// the user listener to 404 on /api/plugins/* (not 200 with an
+	// empty list). Tenant + Infra portals get the read endpoints ;
+	// the mutation surface stays Infra-only.
+	if !scope.Has(ScopeTenant) && !scope.Has(ScopeAdmin) {
+		return
+	}
 	huma.Register(api, huma.Operation{
 		OperationID: "list-plugins",
 		Method:      "GET",
@@ -85,7 +93,7 @@ func mountPluginsAPI(api huma.API, scope Scope) {
 		return out, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

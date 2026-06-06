@@ -9,6 +9,78 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **Three-portal split (user / tenant / infra) on isolated listeners
+  + bundles** — `weft-webui` now runs up to three HTTP listeners in
+  a single process, each with its own huma router and its own SPA
+  bundle. Hard isolation : the corresponding endpoint is **not
+  registered** on a listener that shouldn't serve it, so a probe to
+  `:8080/api/hosts` or `:8080/api/plugins` returns a plain `404` —
+  no "you're not allowed" signal, no half-handled request.
+
+  - `PortalUser` (`--addr`, default `:8080`) : own-scope reads +
+    writes only. No `/api/quotas`, `/api/audit-log`, `/api/hosts`,
+    `/api/plugins`, `/api/federation/*`, `/api/registries/*`
+    mutations, `/api/network-topology`, `/api/azs`, `/api/racks`.
+  - `PortalTenant` (`--tenant-addr`, empty) : user surface plus
+    tenant-wide views (`/api/tenants/{name}/projects|members`,
+    `/api/quotas`, `/api/audit-log` tenant-scoped, plugins
+    read-only).
+  - `PortalInfra` (`--infra-addr`, empty) : superset — every
+    cluster-wide op + `/metrics`. WireGuard-mesh-only ; never
+    `0.0.0.0`.
+
+  Each portal's SPA shell statically imports only the pages it
+  serves : the user bundle is 2.35 kB (gzip 1.16 kB), the tenant
+  bundle is 3.03 kB (gzip 1.30 kB), the infra bundle is 81.77 kB
+  (gzip 23.64 kB) — the infra bundle pulls in Plugins / Federation /
+  Inventory / NetworkTopology that the smaller portals don't ship.
+  Tree-shaking verified at build time via `du -h
+  web/dist/{user,tenant,infra}/`.
+
+  - **Backward compatibility** : when only `--addr` is set (no
+    `--tenant-addr` / `--infra-addr`), the binary boots in legacy
+    single-listener mode — `UserAddr` serves the full surface
+    (everything `PortalInfra` would expose). Keeps `task run` /
+    `go run .` working on a one-host dev box without learning the
+    new flags.
+  - **Deprecation** : `--admin-addr` (`WEBUI_ADMIN_ADDR`) is an
+    alias for `--tenant-addr` (`WEBUI_TENANT_ADDR`) ; a one-line
+    deprecation log fires at boot when the old name is used.
+
+  Frontend changes :
+  - `web/{user,tenant,infra}/index.html` — three HTML entry points,
+    Vite multi-page build emits `dist/{user,tenant,infra}/index.html`
+    + a shared `dist/assets/` chunk pool.
+  - `web/src/portals/{UserApp,TenantApp,InfraApp}.svelte` — three
+    shell components ; the user + tenant shells statically import
+    only the pages relevant to their portal so the bundle stays
+    small.
+  - `web/src/portals/{user,tenant,infra}.ts` — entry-point mounts.
+
+  Backend changes :
+  - `internal/server/portals.go` — `Portal` enum, `Portal.Scope()`,
+    `Portal.AssetSubdir()`, `newPortalRouter(deps, p)`,
+    `assetsForPortal()` (two-FS view : per-portal index.html + shared
+    `/assets/*` pool).
+  - `Scope` bitmask gains a `ScopeTenant` bit so the tenant portal
+    can register tenant-admin endpoints without pulling in the
+    cluster-admin surface ; `ScopeBoth` now covers all three bits.
+  - `internal/server/spa.go` — two-FS handler ; serves
+    per-portal `index.html` from `Static`, hashed assets from
+    `SharedAssets` so the absolute `/assets/<hash>.js` references
+    resolve to the dedupped pool.
+  - `main.go` runs one goroutine per non-empty listen address ; a
+    failure on any listener tears the others down.
+  - `internal/config/config.go` adds `TenantAddr` + `InfraAddr` +
+    `ResolveAdminAlias()` + `LegacySingleListener()`.
+
+  Example invocation :
+
+  ```sh
+  weft-webui --addr :8080 --tenant-addr :8088 --infra-addr :8089 \
+    --weft-socket /tmp/weft.sock
+  ```
+
 - **MicroVM Metrics tab in `MicroVMDrawer`** — new "Metrics" tab next
   to Summary, surfacing live time-series for CPU%, memory%, network
   rx/tx, and disk read/write, plus uptime + current memory usage. A
