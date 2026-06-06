@@ -23,7 +23,11 @@ ARG NODE_VERSION=20
 ARG GO_VERSION=1.26
 
 # ---- stage 1 : SPA build ------------------------------------------
-FROM node:${NODE_VERSION}-alpine AS web
+# --platform=$BUILDPLATFORM : node alpine doesn't ship riscv64/loong64,
+# but the SPA build is host-arch-agnostic (npm + vite output JS) — pin
+# to the runner's native arch so buildx doesn't try to pull non-existent
+# manifests. Same idea applies to the Go build stage below.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -35,7 +39,12 @@ COPY web/ ./
 RUN npm run build
 
 # ---- stage 2 : Go build -------------------------------------------
-FROM golang:${GO_VERSION}-alpine AS build
+# --platform=$BUILDPLATFORM : run the Go compiler on the runner's native
+# arch and let GOOS/GOARCH cross-compile to the target. golang:alpine
+# doesn't ship riscv64/loong64 manifests so without this pin buildx
+# fails at pull. Bonus : single Go install pulled once vs once-per-arch.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /src
 
 # webui's go.mod has NO replace directives (commit f5ff668 dropped
@@ -51,7 +60,7 @@ COPY --from=web /src/web/dist ./web/dist
 
 ARG VERSION=dev
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
       -trimpath \
       -ldflags "-s -w -X main.version=${VERSION}" \
       -o /out/weft-webui \
