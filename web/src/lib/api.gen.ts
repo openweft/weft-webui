@@ -748,6 +748,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/microvms/{name}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a microVM's live metrology snapshot
+         * @description Single-shot metrology snapshot (CPU%, memory, net rx/tx, disk r/w, uptime). The SPA polls this every ~5 s ; the response is stateless. Returns synthetic data with mock=true while a real GetMicroVMMetrics RPC is not yet wired in weft-proto.
+         */
+        get: operations["vm-metrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/microvms/{name}/properties": {
         parameters: {
             query?: never;
@@ -3311,6 +3331,61 @@ export interface components {
             readonly $schema?: string;
             email: string;
             groups: string[] | null;
+        };
+        MetricsSnapshot: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MetricsSnapshot.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: double
+             * @description Aggregate vCPU usage normalised to 0..100.
+             */
+            cpu_percent: number;
+            /**
+             * Format: int64
+             * @description Disk read bytes per second.
+             */
+            disk_read_bps: number;
+            /**
+             * Format: int64
+             * @description Disk write bytes per second.
+             */
+            disk_write_bps: number;
+            /**
+             * Format: int64
+             * @description Configured memory ceiling in MiB.
+             */
+            mem_total_mib: number;
+            /**
+             * Format: int64
+             * @description Resident memory in MiB.
+             */
+            mem_used_mib: number;
+            /** @description True when the snapshot is synthetic (no live metrics RPC available yet). */
+            mock: boolean;
+            /**
+             * Format: int64
+             * @description Inbound bytes per second.
+             */
+            net_rx_bps: number;
+            /**
+             * Format: int64
+             * @description Outbound bytes per second.
+             */
+            net_tx_bps: number;
+            /**
+             * Format: int64
+             * @description Server wall clock when the sample was taken (unix seconds).
+             */
+            sampled_at_unix: number;
+            /**
+             * Format: int64
+             * @description Seconds since the last successful boot.
+             */
+            uptime_seconds: number;
         };
         NetworkMetadata: {
             /**
@@ -5980,6 +6055,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VMLogsResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "vm-metrics": {
+        parameters: {
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path: {
+                /** @description VM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsSnapshot"];
                 };
             };
             /** @description Error */

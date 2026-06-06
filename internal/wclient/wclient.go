@@ -1287,6 +1287,45 @@ func (c *Client) UnmapFloatingIP(ctx context.Context, uuid string) (retErr error
 // List* / Set* methods on this client : []map[string]any for table-
 // shaped rows, typed value structs for single-object reads.
 
+// ---- Metrics --------------------------------------------------------
+//
+// Per-VM metrology snapshot. There is no GetMicroVMMetrics RPC on
+// weft-proto today ; this client method always returns
+// codes.Unimplemented so callers can fall back to the webui's
+// synthetic-data path via IsUnimplemented(err). Wiring is a one-liner
+// the day weft-proto grows the RPC (see CHANGELOG follow-up note in
+// the Metrics tab landing commit).
+
+// MicroVMMetrics is the typed shape the metrics endpoint returns.
+// Fields mirror server.MetricsSnapshot's JSON tags so we can populate
+// it 1:1 once a real RPC arrives.
+type MicroVMMetrics struct {
+	SampledAtUnix int64
+	CPUPercent    float64
+	MemUsedMiB    uint64
+	MemTotalMiB   uint64
+	NetRxBps      uint64
+	NetTxBps      uint64
+	DiskReadBps   uint64
+	DiskWriteBps  uint64
+	UptimeSeconds uint64
+}
+
+// GetMicroVMMetrics returns the latest sample for one VM. Until
+// weft-proto ships the RPC this always reports Unimplemented ; the
+// caller's IsUnimplemented check then triggers the synthetic fallback
+// in the webui.
+func (c *Client) GetMicroVMMetrics(ctx context.Context, name, project string) (m *MicroVMMetrics, retErr error) {
+	defer c.measured("GetMicroVMMetrics", &retErr)()
+	// We deliberately don't dial here ; the call has no underlying
+	// RPC yet. Returning Unimplemented immediately keeps the synth
+	// path zero-cost and signals "future work" cleanly.
+	_ = ctx
+	_ = name
+	_ = project
+	return nil, status.Error(codes.Unimplemented, "GetMicroVMMetrics : weft-proto RPC not yet defined")
+}
+
 // ---- Flavors --------------------------------------------------------
 
 func (c *Client) ListFlavors(ctx context.Context, opts ListOpts) (rows []map[string]any, next string, retErr error) {

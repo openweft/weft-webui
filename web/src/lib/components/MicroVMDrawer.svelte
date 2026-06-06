@@ -26,6 +26,7 @@
   } from '../api';
   import Combobox from './Combobox.svelte';
   import FirewallStatusBadge from './FirewallStatusBadge.svelte';
+  import MicroVMMetricsPanel from './MicroVMMetricsPanel.svelte';
   import { openScopedEvents } from '../events';
 
   let {
@@ -43,7 +44,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'volumes' | 'keys' | 'authz' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'metrics' | 'volumes' | 'keys' | 'authz' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -469,6 +470,7 @@
   <!-- Tabs -->
   <div role="tablist" class="tabs tabs-border shrink-0 px-5">
     <button role="tab" class="tab" class:tab-active={tab === 'summary'} onclick={() => (tab = 'summary')}>Summary</button>
+    <button role="tab" class="tab" class:tab-active={tab === 'metrics'} onclick={() => (tab = 'metrics')}>Metrics</button>
     <button role="tab" class="tab" class:tab-active={tab === 'volumes'} onclick={() => (tab = 'volumes')}>
       Volumes
       {#if attached.length > 0}<span class="ml-1 badge badge-xs">{attached.length}</span>{/if}
@@ -532,6 +534,12 @@
       {:else}
         <div class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
       {/if}
+
+    {:else if tab === 'metrics'}
+      <!-- Polling-driven ring buffer + canvas charts. The panel
+           manages its own lifecycle (start on mount, stop on
+           destroy) so toggling tabs doesn't leak intervals. -->
+      <MicroVMMetricsPanel {name} />
 
     {:else if tab === 'volumes'}
       <div class="flex items-center gap-2">
