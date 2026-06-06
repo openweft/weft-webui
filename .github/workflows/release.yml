@@ -78,7 +78,7 @@ jobs:
 
       - name: Build + push (multi-arch)
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         env:
           SOURCE_DATE_EPOCH: ${{ steps.stamps.outputs.epoch }}
         with:
@@ -93,8 +93,10 @@ jobs:
           build-args: |
             VERSION=${{ steps.stamps.outputs.version }}
             SOURCE_DATE_EPOCH=${{ steps.stamps.outputs.epoch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # GHA cache disabled : a stale layer from the pre-multi-page
+          # Vite refactor was poisoning subsequent builds with a
+          # corrupted web/dist tree (web bundle without portal index
+          # files). Cold-build trades ~3 min for reliability.
 
       - uses: sigstore/cosign-installer@v3
 
