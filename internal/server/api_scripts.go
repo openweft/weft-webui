@@ -82,7 +82,7 @@ func mountScriptsAPI(api huma.API, scope Scope) {
 		return &getScriptOutput{Body: toAPIScript(s)}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

@@ -40,14 +40,19 @@ func MountAPIForCodegen(mux *http.ServeMux, scope Scope) huma.API {
 	return mountAPI(mux, scope)
 }
 
-// mountAPI wires the typed REST surface onto mux. The persona +
-// scope drive operation visibility :
+// mountAPI wires the typed REST surface onto mux. The scope is a
+// bitmask threaded down to every mountXxxAPI helper. The three
+// portals map to disjoint bit sets :
 //
-//   - scope == ScopeAdmin : full surface, including cluster-admin
-//     operations the user listener must never even acknowledge.
-//   - scope == ScopeUser  : the public surface ; admin-only ops
-//     are simply not registered, so unauthenticated probes see a
-//     plain 404 (no "you're not allowed" signal).
+//   - PortalUser   : scope == ScopeUser            — own-scope only
+//   - PortalTenant : scope == ScopeUser|ScopeTenant — + tenant-admin
+//   - PortalInfra  : scope == ScopeUser|ScopeTenant|ScopeAdmin — full
+//
+// Mount helpers test the bits with scope.Has(ScopeAdmin) /
+// scope.Has(ScopeTenant) so an endpoint only ever appears on the
+// listeners that should serve it. A user listener returning 404 on
+// an admin endpoint means the route is genuinely not registered —
+// not a "you're not allowed" signal.
 //
 // Returns the huma.API instance for completeness (tests can
 // introspect the spec via api.OpenAPI()).
@@ -74,7 +79,11 @@ func mountAPI(mux *http.ServeMux, scope Scope) huma.API {
 	mountEditableMetadataAPI(api, scope)
 	mountRegistriesAPI(api, scope)
 	mountPluginsAPI(api, scope)
-	mountFederationAPI(api, scope)
+	// Federation is an infra-only surface (cluster-wide peer admin) —
+	// the user + tenant portals never see /api/federation/*.
+	if scope.Has(ScopeAdmin) {
+		mountFederationAPI(api, scope)
+	}
 	mountInventoryAPI(api, scope)
 	mountMiscAPI(api, scope)
 

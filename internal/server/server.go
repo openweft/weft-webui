@@ -64,8 +64,18 @@ var (
 // Deps carries everything the HTTP layer needs at construction time.
 // Treat it as immutable post-New / NewAdmin ; concurrent reads only.
 type Deps struct {
-	Logger  *slog.Logger
-	Static  fs.FS
+	Logger *slog.Logger
+	// Static is the per-portal SPA bundle FS — owns the index.html.
+	// For the user portal it's dist/user/, for the tenant portal
+	// dist/tenant/, for the infra (or legacy) portal dist/infra/.
+	Static fs.FS
+	// SharedAssets is the dist root FS that backs the per-portal
+	// index.html's absolute /assets/<hash>.js references. Vite emits
+	// every entry's hashed JS / CSS into the shared dist/assets/
+	// pool ; the per-portal subdir owns only the index.html. spa.go
+	// falls back to SharedAssets when a request misses the
+	// per-portal FS. Nil collapses to Static (legacy flat layout).
+	SharedAssets fs.FS
 	Live    *wclient.Client
 	// LiveNet is the optional sibling controller client (Routers /
 	// LBs / DNS / Scheduling Rules). nil = fall back to mock stores
@@ -128,17 +138,27 @@ var policyStrict bool
 // New returns the user-facing http.Handler — the public listener.
 // Admin-only resources (hosts, users, tenants, groups) and /metrics
 // are hidden ; the SPA is served from the same origin so the dashboard
-// renders normally for a regular user.
+// renders normally for a regular user. Kept for source-compatibility ;
+// new call sites should use NewPortal(d, PortalUser).
 func New(d Deps) http.Handler {
-	return buildHandler(d, ScopeUser, personaUser, false)
+	return NewPortal(d, PortalUser)
 }
 
 // NewAdmin returns the admin-facing handler — must only be bound on a
 // trusted interface (e.g. a WireGuard endpoint). Mounts /metrics and
 // surfaces the cluster-wide resources (Hosts, Users, Tenants, Groups)
-// in addition to everything a user sees.
+// in addition to everything a user sees. Kept for source-compatibility ;
+// new call sites should use NewPortal(d, PortalInfra).
 func NewAdmin(d Deps) http.Handler {
-	return buildHandler(d, ScopeAdmin, personaAdmin, true)
+	return NewPortal(d, PortalInfra)
+}
+
+// NewPortal is the canonical entry point for the three-portal split.
+// Returns a fully-wired http.Handler whose huma surface, SPA bundle,
+// and persona label are all determined by the Portal argument. See
+// internal/server/portals.go for the full design.
+func NewPortal(d Deps, p Portal) http.Handler {
+	return newPortalRouter(d, p)
 }
 
 // buildHandler is the common assembly. persona drives metrics labels
@@ -234,10 +254,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// for every node so it's admin-only ; the user listener returns
 	// 404 so a stale SPA build never accidentally reveals which host
 	// runs a VM.
-	if scope != ScopeAdmin {
-		// User listener returns 404 on /api/network-topology so a stale
-		// SPA build never accidentally reveals host placement. The
-		// admin listener gets the typed huma op in api_networking.go.
+	if !scope.Has(ScopeAdmin) {
+		// User + Tenant listeners return 404 on /api/network-topology so
+		// a stale SPA build never accidentally reveals host placement.
+		// The infra listener gets the typed huma op in api_networking.go.
 		mux.HandleFunc("GET /api/network-topology", notFound)
 	}
 	// (/api/quotas moved to huma — see api_tenants.go.)
@@ -251,8 +271,10 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		mux.Handle("GET /metrics", d.Metrics.Handler())
 	}
 
-	// SPA (everything else)
-	mux.Handle("/", spaHandler(d.Static))
+	// SPA (everything else) — two-layer FS so the per-portal
+	// index.html under d.Static can reference the shared /assets/
+	// pool under d.SharedAssets.
+	mux.Handle("/", spaHandler(d.Static, d.SharedAssets))
 
 	// Middleware chain : panic → log → metrics → request-id → http-req
 	// → security-headers → json-defaults → auth → rate-limit → mux.

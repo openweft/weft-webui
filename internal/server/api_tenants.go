@@ -23,12 +23,19 @@ import (
 )
 
 func mountTenantsAPI(api huma.API, scope Scope) {
-	if scope == ScopeAdmin {
+	// Cluster-admin only : CreateTenant / AddTenantAdmin (the
+	// "promote an OIDC subject to tenant-admin" RPCs).
+	if scope.Has(ScopeAdmin) {
 		mountTenantsAdminAPI(api)
 	}
-	mountTenantsDelegatedAPI(api)
+	// Tenant-admin delegated mutations (add projects, members, grant
+	// roles, set per-project quotas) : exposed on the Tenant + Infra
+	// portals. The user portal never sees these endpoints.
+	if scope.Has(ScopeTenant) || scope.Has(ScopeAdmin) {
+		mountTenantsDelegatedAPI(api)
+		mountQuotasAPI(api)
+	}
 	mountTenantsReadAPI(api)
-	mountQuotasAPI(api)
 	mountMeAPI(api)
 }
 

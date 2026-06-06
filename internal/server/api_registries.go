@@ -74,7 +74,7 @@ func mountRegistriesRemotesAPI(api huma.API, scope Scope) {
 		return &getRegistryRemoteOutput{Body: r}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 

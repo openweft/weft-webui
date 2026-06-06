@@ -18,13 +18,17 @@ type Column struct {
 type Scope uint8
 
 const (
-	ScopeUser  Scope = 1 << iota // visible on the user UI (project-scoped)
-	ScopeAdmin                   // visible on the admin UI (cluster-wide)
+	ScopeUser   Scope = 1 << iota // visible on the user portal (project-scoped)
+	ScopeAdmin                    // visible on the infra portal (cluster-wide)
+	ScopeTenant                   // visible on the tenant portal (tenant-admin)
 )
 
 // ScopeBoth is the default for project-scoped resources : the user
-// sees their own, the admin sees a global view (weft-agent applies the filter).
-const ScopeBoth = ScopeUser | ScopeAdmin
+// sees their own, the tenant + infra portals see a tenant- /
+// cluster-wide view (weft-agent applies the filter). Renamed
+// semantically to "all portals" with the three-portal split but kept
+// as ScopeBoth for source-compatibility.
+const ScopeBoth = ScopeUser | ScopeTenant | ScopeAdmin
 
 // Has reports whether s grants p.
 func (s Scope) Has(p Scope) bool { return s&p != 0 }

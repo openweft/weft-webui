@@ -75,7 +75,7 @@ func mountVMAuthzAPI(api huma.API, scope Scope) {
 		return &effectiveKeysOutput{Body: out}, nil
 	})
 
-	if scope != ScopeAdmin {
+	if !scope.Has(ScopeAdmin) {
 		return
 	}
 
