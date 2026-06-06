@@ -58,10 +58,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       .
 
 # ---- stage 3 : runtime --------------------------------------------
-# Need a CA bundle so the binary can dial the OIDC issuer + GHCR over
-# HTTPS. distroless/static-debian12 gives us /etc/ssl/certs without
-# any other surface ; the image is still tiny (~3 MB base + binary).
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+# distroless/static-debian12 doesn't ship riscv64 / loong64 manifests,
+# so buildkit fails the manifest list assembly on those archs. scratch
+# works on every arch buildkit can produce ; we bring CA certs +
+# zoneinfo + /etc/passwd over from the alpine builder explicitly so
+# OIDC dials + log timestamps stay correct.
+FROM scratch AS runtime
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=build /etc/passwd /etc/passwd
 COPY --from=build /out/weft-webui /weft-webui
 
 # Public listener on 8080 (user UI) ; admin listener on 8088 binds
@@ -69,5 +74,5 @@ COPY --from=build /out/weft-webui /weft-webui
 # operator typically picks 0.0.0.0:8088 + a firewall, not exposed
 # from the container.
 EXPOSE 8080 8088
-USER nonroot:nonroot
+# scratch has no users ; rely on the orchestrator's USER= override.
 ENTRYPOINT ["/weft-webui"]
