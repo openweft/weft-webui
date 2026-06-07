@@ -43,7 +43,7 @@ RUN npm run build
 # arch and let GOOS/GOARCH cross-compile to the target. golang:alpine
 # doesn't ship riscv64/loong64 manifests so without this pin buildx
 # fails at pull. Bonus : single Go install pulled once vs once-per-arch.
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 
