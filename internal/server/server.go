@@ -23,6 +23,7 @@ import (
 
 	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/diagnoses"
 	"github.com/openweft/weft-webui/internal/ratelimit"
 	"github.com/openweft/weft-webui/internal/telemetry"
 	"github.com/openweft/weft-webui/internal/wclient"
@@ -41,6 +42,11 @@ var live *wclient.Client
 // Independent socket / process from weft-agent ; nil when the
 // operator hasn't set --weft-network-socket.
 var liveNet *wclient.NetworkClient
+
+// diagCache mirrors Deps.DiagnosesCache so the api_diagnoses.go +
+// diagnoses_sse.go handlers can reach the live cache without
+// threading the full Deps through every signature.
+var diagCache *diagnoses.Cache
 
 // metrics mirrors the Recorder from Deps so the mutation handlers
 // (lifecycle.go) can record per-user action counters without having
@@ -148,7 +154,18 @@ type Deps struct {
 	// without threading the flag down every call. See cmd/Deps wiring
 	// in New() / NewAdmin().
 	PolicyStrict bool
+
+	// DiagnosesCache is the live in-memory store fed by the
+	// weft-doctor pipeline over NATS. Nil = panel offline (the
+	// endpoint still registers on the Infra portal, returns []) ;
+	// non-nil enables /api/diagnoses + the SSE stream.
+	DiagnosesCache *diagnoses.Cache
 }
+
+// Diagnoses implements the diagnosesProvider interface api_diagnoses.go
+// declares. Lets the handler reach the cache without taking a hard
+// dep on the Deps type.
+func (d Deps) Diagnoses() *diagnoses.Cache { return d.DiagnosesCache }
 
 // policyStrict is the process-wide read of Deps.PolicyStrict. Set
 // once in New()/NewAdmin() so handlers don't need a closure dance.
@@ -187,6 +204,7 @@ func NewPortal(d Deps, p Portal) http.Handler {
 func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.Handler {
 	live = d.Live
 	liveNet = d.LiveNet
+	diagCache = d.DiagnosesCache
 	metrics = d.Metrics
 	if d.Audit != nil {
 		auditLogger = d.Audit
@@ -260,6 +278,12 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	// auto-reconnects on disconnect. (Stays on stdlib — huma's
 	// streaming story is heavier than what this needs.)
 	mux.HandleFunc("GET /api/events", handleEvents)
+	// Diagnoses SSE stream — admin-only, served only on the Infra
+	// portal. The huma endpoint at /api/diagnoses serves the
+	// initial snapshot ; this stream pushes incremental updates.
+	if scope.Has(ScopeAdmin) {
+		mux.HandleFunc("GET /api/diagnoses/stream", handleDiagnosesStream(d.DiagnosesCache))
+	}
 	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
 	// (/api/resources, /api/resources/{id}, /api/summary,
