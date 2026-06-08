@@ -57,6 +57,7 @@ import (
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/config"
 	"github.com/openweft/weft-webui/internal/diagnoses"
+	"github.com/openweft/weft-webui/internal/etcdsource"
 	"github.com/openweft/weft-webui/internal/ratelimit"
 	"github.com/openweft/weft-webui/internal/server"
 	"github.com/openweft/weft-webui/internal/telemetry"
@@ -271,6 +272,33 @@ func run() error {
 		}
 	} else {
 		logger.Info("diagnoses cache offline — WEFT_NATS_URL unset")
+	}
+
+	// Monitors panel source : dial etcd if endpoints were configured.
+	// Failure is non-fatal — the /api/monitors endpoint degrades to
+	// "monitors offline" so the rest of the dashboard stays usable
+	// even when the etcd quorum is mid-roll. The expected_count
+	// override applies regardless of whether the dial succeeded, so
+	// an operator can pin a baseline even in detached preview mode.
+	if len(cfg.EtcdEndpoints) > 0 {
+		src, err := etcdsource.Open(etcdsource.Options{
+			Endpoints:   cfg.EtcdEndpoints,
+			Prefix:      cfg.EtcdMonitorsPrefix,
+			DialTimeout: 5 * time.Second,
+		})
+		if err != nil {
+			logger.Warn("monitors source offline — etcd dial failed", "err", err, "endpoints", cfg.EtcdEndpoints)
+		} else {
+			server.SetMonitorsSource(src)
+			defer src.Close()
+			logger.Info("monitors source ready", "endpoints", cfg.EtcdEndpoints)
+		}
+	} else {
+		logger.Info("monitors source offline — WEFT_ETCD_ENDPOINTS unset")
+	}
+	if cfg.ExpectedMonitors > 0 {
+		server.SetExpectedMonitorsOverride(cfg.ExpectedMonitors)
+		logger.Info("monitors expected count pinned", "expected", cfg.ExpectedMonitors)
 	}
 
 	deps := server.Deps{

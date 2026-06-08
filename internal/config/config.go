@@ -165,6 +165,30 @@ type Config struct {
 	// opened when the next write would exceed this limit. Default 100MB.
 	AuditRotateBytes int64
 
+	// EtcdEndpoints lists the etcd v3 cluster members the webui dials
+	// for the cross-host respawn HA topology read
+	// (/weft/coord/hosts/<host_uuid>, see weft v0.4.1). Empty = no
+	// dial, /api/monitors returns an empty list + expected_count=0.
+	// Format : comma-separated "host:port" (or "scheme://host:port"
+	// when TLS is in play). Source : env WEFT_ETCD_ENDPOINTS or
+	// --etcd-endpoints.
+	EtcdEndpoints []string
+
+	// EtcdMonitorsPrefix overrides the etcd key prefix the monitors
+	// source reads. Empty = default "/weft/coord/hosts/" (matches
+	// weft v0.4.1's HostLiveness publisher). Useful for staging
+	// clusters that namespace the prefix.
+	EtcdMonitorsPrefix string
+
+	// ExpectedMonitors pins the expected_count returned by
+	// /api/monitors. 0 = fall back to the etcd member count. Set this
+	// for clusters where the static topology should drive the badge
+	// regardless of etcd roster churn (e.g. 5-member etcd quorum
+	// serving 3 weft-agents : pin 3 so the badge stays accurate).
+	// Source : env WEFT_WEBUI_EXPECTED_MONITORS or
+	// --expected-monitors.
+	ExpectedMonitors int
+
 	// KeypairAllowlistPath enables the dev ed25519 keypair fallback
 	// endpoint at POST /api/auth/keypair on the user-portal listener.
 	// Empty = the endpoint is NOT registered (404 like any unknown
@@ -264,6 +288,20 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 
 	cfg.OIDCScopes = splitCSV(envOr("WEBUI_OIDC_SCOPES", "openid,email,profile,groups"))
 	cfg.AllowedOrigins = splitCSV(os.Getenv("WEBUI_ALLOWED_ORIGINS"))
+
+	// Monitors panel : etcd endpoints + expected count override.
+	// WEFT_ETCD_ENDPOINTS is the canonical name (mirrors the weft +
+	// weft-agent env convention) ; WEBUI_ETCD_ENDPOINTS is honoured
+	// as a webui-namespaced alternative.
+	cfg.EtcdEndpoints = splitCSV(firstNonEmpty(os.Getenv("WEFT_ETCD_ENDPOINTS"), os.Getenv("WEBUI_ETCD_ENDPOINTS")))
+	cfg.EtcdMonitorsPrefix = os.Getenv("WEBUI_ETCD_MONITORS_PREFIX")
+	if v := firstNonEmpty(os.Getenv("WEFT_WEBUI_EXPECTED_MONITORS"), os.Getenv("WEBUI_EXPECTED_MONITORS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("WEFT_WEBUI_EXPECTED_MONITORS: invalid integer %q", v)
+		}
+		cfg.ExpectedMonitors = n
+	}
 
 	if v := os.Getenv("WEBUI_STATE_HISTORY_KEEP"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -380,6 +418,12 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	})
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
 	flagSet.StringVar(&cfg.KeypairAllowlistPath, "keypair-allowlist", cfg.KeypairAllowlistPath, "JSON file enabling the dev ed25519 keypair fallback (POST /api/auth/keypair on the user portal) ; empty = endpoint NOT registered. NEVER use in production.")
+	flagSet.Func("etcd-endpoints", "comma-separated etcd v3 endpoints powering the /api/monitors cross-host respawn HA panel (e.g. \"dc1.weft:2379,dc2.weft:2379,dc3.weft:2379\") ; empty = panel offline", func(s string) error {
+		cfg.EtcdEndpoints = splitCSV(s)
+		return nil
+	})
+	flagSet.StringVar(&cfg.EtcdMonitorsPrefix, "etcd-monitors-prefix", cfg.EtcdMonitorsPrefix, "override the etcd key prefix the monitors source reads ; empty = /weft/coord/hosts/")
+	flagSet.IntVar(&cfg.ExpectedMonitors, "expected-monitors", cfg.ExpectedMonitors, "pin expected_count in /api/monitors (0 = fall back to etcd member count)")
 	return cfg, nil
 }
 

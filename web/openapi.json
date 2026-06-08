@@ -2807,6 +2807,79 @@
         ],
         "type": "object"
       },
+      "MonitorHost": {
+        "additionalProperties": false,
+        "properties": {
+          "host_uuid": {
+            "description": "Host identifier — matches the etcd lease key suffix and the weft-agent --host-uuid flag",
+            "type": "string"
+          },
+          "hostname": {
+            "description": "Operator-visible hostname (e.g. dc1-r1-h1)",
+            "type": "string"
+          },
+          "hypervisor": {
+            "description": "'qemu' | 'vz' | 'vmd' | 'dcs' — the backend driver this host runs",
+            "type": "string"
+          },
+          "started_at": {
+            "description": "RFC-3339 timestamp of the monitor's last (re)start ; uptime is derived client-side",
+            "type": "string"
+          },
+          "version": {
+            "description": "weft-agent version string (e.g. v0.4.1) — surfaces version skew across the fleet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host_uuid",
+          "hostname",
+          "hypervisor",
+          "version",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "MonitorsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MonitorsBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "count": {
+            "description": "Number of live monitors at the moment of the read",
+            "format": "int64",
+            "type": "integer"
+          },
+          "expected_count": {
+            "description": "Expected monitor count — operator-pinned override or the etcd member count",
+            "format": "int64",
+            "type": "integer"
+          },
+          "monitors": {
+            "description": "Live monitor set ordered by hostname for stable rendering",
+            "items": {
+              "$ref": "#/components/schemas/MonitorHost"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "monitors",
+          "count",
+          "expected_count"
+        ],
+        "type": "object"
+      },
       "NetworkMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -8628,6 +8701,38 @@
         "tags": [
           "microvms",
           "uefi"
+        ]
+      }
+    },
+    "/api/monitors": {
+      "get": {
+        "description": "Reads /weft/coord/hosts/\u003chost_uuid\u003e from etcd — one entry per healthy weft-agent in the cluster. A drop in count vs expected_count is the canonical signal of a DC partition or rack outage. expected_count defaults to the etcd member count ; pin a static value via WEFT_WEBUI_EXPECTED_MONITORS for clusters where the static topology should drive the badge regardless of etcd roster churn.",
+        "operationId": "list-monitors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the live weft-agent monitor set (cross-host respawn HA topology)",
+        "tags": [
+          "monitors"
         ]
       }
     },

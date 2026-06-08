@@ -298,6 +298,39 @@ export const getQuotas = async (): Promise<Quota[]> => {
   return data ?? [];
 };
 
+// ---- /api/monitors cross-host respawn HA topology ----------------
+//
+// One row per healthy weft-agent monitor (one per host). The webui
+// reads /weft/coord/hosts/<host_uuid> from etcd and surfaces the set
+// here. count vs expected_count drives the badge color on the panel.
+//
+// expected_count = 0 when the etcd source is offline and no static
+// override was pinned ; the panel renders that as "baseline unknown".
+
+export interface MonitorHost {
+  host_uuid: string;
+  hostname: string;
+  hypervisor: string;
+  version: string;
+  started_at: string;
+}
+
+export interface MonitorsSnapshot {
+  monitors: MonitorHost[];
+  count: number;
+  expected_count: number;
+}
+
+export const listMonitors = async (): Promise<MonitorsSnapshot> => {
+  const { data, error } = await client.GET('/api/monitors');
+  if (error) throwErr(error);
+  return {
+    monitors: (data.monitors ?? []) as MonitorHost[],
+    count: data.count ?? 0,
+    expected_count: data.expected_count ?? 0,
+  };
+};
+
 // ---- /api/registry/upload (multipart) -----------------------------
 
 // uploadArtifact uses FormData directly because openapi-fetch's
