@@ -167,6 +167,11 @@ export type APISubnet = components['schemas']['Subnet'];
 export type APIAuthorizedGroup = components['schemas']['AuthorizedGroup'];
 export type APIEffectiveKey    = components['schemas']['EffectiveKey'];
 
+// Cluster diagnoses — weft-doctor analyser output fed via NATS into the
+// in-process cache and surfaced on the Infra portal.
+export type APIDiagnosis = components['schemas']['DiagnosisOutput'];
+export type APIDiagnosisExample = components['schemas']['LogEventOutput'];
+
 // Re-export the raw types so call sites can reach for anything not
 // aliased above without importing api.gen directly.
 export type { paths, components };

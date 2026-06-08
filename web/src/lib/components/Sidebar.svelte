@@ -75,6 +75,18 @@
           Federation
         </a>
       </li>
+      <li>
+        <a href="#/diagnoses" class:menu-active={active === 'diagnoses'}>
+          <!-- stethoscope-ish motif : circle (sensor) + curve. -->
+          <svg viewBox="0 0 24 24" class="h-4 w-4 opacity-70" fill="none"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 4v6a4 4 0 0 0 8 0V4" />
+            <path d="M10 14v3a4 4 0 0 0 8 0v-2" />
+            <circle cx="18" cy="11" r="2" />
+          </svg>
+          Diagnoses
+        </a>
+      </li>
     </ul>
 
     {#each grouped as group (group.section)}

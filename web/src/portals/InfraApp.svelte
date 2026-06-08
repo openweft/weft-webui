@@ -25,6 +25,7 @@
   import GroupsTreePage from '../lib/components/GroupsTreePage.svelte';
   import InventoryTreePage from '../lib/components/InventoryTreePage.svelte';
   import AuditLogPage from '../lib/components/AuditLogPage.svelte';
+  import DiagnosesPage from '../lib/components/DiagnosesPage.svelte';
   import Overview from '../lib/components/Overview.svelte';
   import ActivityPage from '../lib/components/ActivityPage.svelte';
   import EventToasts from '../lib/components/EventToasts.svelte';
@@ -61,12 +62,13 @@
     return order.map((section) => ({ section, items: m.get(section)! }));
   });
 
-  const SPECIAL = new Set(['activity', 'federation']);
+  const SPECIAL = new Set(['activity', 'federation', 'diagnoses']);
   let active = $derived(byId.has($route) || SPECIAL.has($route) ? $route : '');
   let pageTitle = $derived.by(() => {
     if (active === '') return 'Overview';
     if (active === 'activity') return 'Activity';
     if (active === 'federation') return 'Federation';
+    if (active === 'diagnoses') return 'Diagnoses';
     return byId.get(active)?.label ?? '';
   });
 </script>
@@ -86,6 +88,8 @@
         <ActivityPage />
       {:else if active === 'federation'}
         {#key active}<FederationPage />{/key}
+      {:else if active === 'diagnoses'}
+        {#key active}<DiagnosesPage />{/key}
       {:else if active === 'registries'}
         {#key active}<RegistryPage meta={byId.get(active)!} />{/key}
       {:else if active === 'dns'}

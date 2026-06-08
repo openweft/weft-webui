@@ -210,6 +210,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnoses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active cluster diagnoses
+         * @description Returns the current weft-doctor diagnoses cached in-process, sorted by severity (critical first) then by occurrence count. Cache is fed from the NATS subject weft.diagnosis.> ; an offline cache (no NATS configured) returns an empty list.
+         */
+        get: operations["list-diagnoses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dns-records": {
         parameters: {
             query?: never;
@@ -3083,6 +3103,19 @@ export interface components {
             readonly $schema?: string;
             deleted: string;
         };
+        DiagnosisOutput: {
+            examples?: components["schemas"]["LogEventOutput"][] | null;
+            file_location?: string;
+            first_seen?: string;
+            last_seen?: string;
+            /** Format: int64 */
+            occurrences: number;
+            pattern_hash: string;
+            root_cause?: string;
+            severity: string;
+            suggested_action?: string;
+            title: string;
+        };
         EditableMetadata: {
             /**
              * Format: uri
@@ -3264,6 +3297,15 @@ export interface components {
             /** @description Project to install the instance under */
             project: string;
         };
+        ListDiagnosesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListDiagnosesOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["DiagnosisOutput"][] | null;
+        };
         ListFlavorsOutputBody: {
             /**
              * Format: uri
@@ -3273,6 +3315,15 @@ export interface components {
             readonly $schema?: string;
             /** @description Cluster-wide compute envelope catalogue */
             flavors: components["schemas"]["APIFlavor"][] | null;
+        };
+        LogEventOutput: {
+            attrs?: {
+                [key: string]: unknown;
+            };
+            level?: string;
+            msg?: string;
+            source?: string;
+            time?: string;
         };
         MapFIPResp: {
             /**
@@ -4850,6 +4901,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BucketPolicy"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-diagnoses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListDiagnosesOutputBody"];
                 };
             };
             /** @description Error */

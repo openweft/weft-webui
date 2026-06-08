@@ -38,6 +38,7 @@ import {
   type APIEditableMetadata,
   type APISubnet,
   type APIAuthorizedGroup, type APIEffectiveKey,
+  type APIDiagnosis, type APIDiagnosisExample,
   type paths,
 } from './client';
 
@@ -1860,3 +1861,26 @@ export function filterQuotaDims(catalogue: ResourceMeta[]): QuotaDimMeta[] {
   const available = new Set(catalogue.map((r) => r.id));
   return QUOTA_DIMS.filter((d) => !d.resource || available.has(d.resource));
 }
+
+// ---- Diagnoses (admin-only, Infra portal) -------------------------
+//
+// Snapshot fed by weft-doctor via NATS → in-process cache. The wire
+// shape is { items: Diagnosis[] } ; the helper unwraps the envelope
+// and coerces the nullable arrays at the boundary so the SPA never
+// has to ternary-guard.
+
+export type DiagnosisExample = APIDiagnosisExample;
+export type Diagnosis = Omit<APIDiagnosis, 'examples'> & {
+  examples: DiagnosisExample[];
+};
+
+const coerceDiagnosis = (d: APIDiagnosis): Diagnosis => ({
+  ...d,
+  examples: (d.examples ?? []) as DiagnosisExample[],
+});
+
+export const listDiagnoses = async (): Promise<Diagnosis[]> => {
+  const { data, error } = await client.GET('/api/diagnoses');
+  if (error) throwErr(error);
+  return (data.items ?? []).map(coerceDiagnosis);
+};

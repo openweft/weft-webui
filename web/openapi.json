@@ -2021,6 +2021,55 @@
         ],
         "type": "object"
       },
+      "DiagnosisOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/LogEventOutput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "file_location": {
+            "type": "string"
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "occurrences": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pattern_hash": {
+            "type": "string"
+          },
+          "root_cause": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "suggested_action": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern_hash",
+          "severity",
+          "title",
+          "occurrences"
+        ],
+        "type": "object"
+      },
       "EditableMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -2429,6 +2478,33 @@
         ],
         "type": "object"
       },
+      "ListDiagnosesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ListDiagnosesOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosisOutput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "ListFlavorsOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2455,6 +2531,28 @@
         "required": [
           "flavors"
         ],
+        "type": "object"
+      },
+      "LogEventOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "attrs": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "level": {
+            "type": "string"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "MapFIPResp": {
@@ -6019,6 +6117,38 @@
         "summary": "Atomically set a bucket's policy",
         "tags": [
           "buckets"
+        ]
+      }
+    },
+    "/api/diagnoses": {
+      "get": {
+        "description": "Returns the current weft-doctor diagnoses cached in-process, sorted by severity (critical first) then by occurrence count. Cache is fed from the NATS subject weft.diagnosis.\u003e ; an offline cache (no NATS configured) returns an empty list.",
+        "operationId": "list-diagnoses",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDiagnosesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List active cluster diagnoses",
+        "tags": [
+          "diagnoses"
         ]
       }
     },
