@@ -932,6 +932,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/monitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the live weft-agent monitor set (cross-host respawn HA topology)
+         * @description Reads /weft/coord/hosts/<host_uuid> from etcd — one entry per healthy weft-agent in the cluster. A drop in count vs expected_count is the canonical signal of a DC partition or rack outage. expected_count defaults to the etcd member count ; pin a static value via WEFT_WEBUI_EXPECTED_MONITORS for clusters where the static topology should drive the badge regardless of etcd roster churn.
+         */
+        get: operations["list-monitors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/network-topology": {
         parameters: {
             query?: never;
@@ -3437,6 +3457,38 @@ export interface components {
              * @description Seconds since the last successful boot.
              */
             uptime_seconds: number;
+        };
+        MonitorHost: {
+            /** @description Host identifier — matches the etcd lease key suffix and the weft-agent --host-uuid flag */
+            host_uuid: string;
+            /** @description Operator-visible hostname (e.g. dc1-r1-h1) */
+            hostname: string;
+            /** @description 'qemu' | 'vz' | 'vmd' | 'dcs' — the backend driver this host runs */
+            hypervisor: string;
+            /** @description RFC-3339 timestamp of the monitor's last (re)start ; uptime is derived client-side */
+            started_at: string;
+            /** @description weft-agent version string (e.g. v0.4.1) — surfaces version skew across the fleet */
+            version: string;
+        };
+        MonitorsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MonitorsBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of live monitors at the moment of the read
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description Expected monitor count — operator-pinned override or the etcd member count
+             */
+            expected_count: number;
+            /** @description Live monitor set ordered by hostname for stable rendering */
+            monitors: components["schemas"]["MonitorHost"][] | null;
         };
         NetworkMetadata: {
             /**
@@ -6534,6 +6586,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RemovedOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-monitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonitorsBody"];
                 };
             };
             /** @description Error */

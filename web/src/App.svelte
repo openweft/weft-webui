@@ -26,6 +26,10 @@
   import EventToasts from './lib/components/EventToasts.svelte';
   import FailoverBanner from './lib/components/FailoverBanner.svelte';
   import SearchPalette from './lib/components/SearchPalette.svelte';
+  // Cross-host respawn HA topology (weft v0.4.1). Surfaces the live
+  // weft-agent monitor set + quorum-aware badge so a DC partition or
+  // rack outage is visible at a glance from the dashboard root.
+  import MonitorsPanel from './lib/MonitorsPanel.svelte';
 
   let resources = $state<ResourceMeta[]>([]);
   let loaded = $state(false);
@@ -89,6 +93,9 @@
       {:else if error}
         <div class="alert alert-error">Failed to load resources: {error}</div>
       {:else if active === ''}
+        <div class="mb-4">
+          <MonitorsPanel />
+        </div>
         <Overview {grouped} />
       {:else if active === 'activity'}
         <ActivityPage />
