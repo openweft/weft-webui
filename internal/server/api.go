@@ -85,6 +85,7 @@ func mountAPI(mux *http.ServeMux, scope Scope) huma.API {
 		mountFederationAPI(api, scope)
 	}
 	mountInventoryAPI(api, scope)
+	mountDiagnosesAPI(api, scope)
 	mountMiscAPI(api, scope)
 
 	return api

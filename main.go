@@ -56,6 +56,7 @@ import (
 	"github.com/openweft/weft-webui/internal/audit"
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/config"
+	"github.com/openweft/weft-webui/internal/diagnoses"
 	"github.com/openweft/weft-webui/internal/ratelimit"
 	"github.com/openweft/weft-webui/internal/server"
 	"github.com/openweft/weft-webui/internal/telemetry"
@@ -250,6 +251,28 @@ func run() error {
 		}
 	}
 
+	// Diagnoses cache : in-process subscriber to weft.diagnosis.> on
+	// NATS, fed by the weft-doctor pipeline. Empty WEFT_NATS_URL =
+	// offline mode (panel renders, list stays empty). A dial failure
+	// is logged but doesn't abort startup ; the operator can boot the
+	// webui before NATS is reachable, and the panel comes online on
+	// next reconnect via the SSE EventSource auto-reconnect.
+	var diagCache *diagnoses.Cache
+	if natsURL := os.Getenv("WEFT_NATS_URL"); natsURL != "" {
+		c, err := diagnoses.NewCache(diagnoses.Options{
+			NATSURL: natsURL,
+			Logger:  logger,
+		})
+		if err != nil {
+			logger.Warn("diagnoses cache offline — NATS dial failed", "err", err)
+		} else {
+			diagCache = c
+			defer c.Close()
+		}
+	} else {
+		logger.Info("diagnoses cache offline — WEFT_NATS_URL unset")
+	}
+
 	deps := server.Deps{
 		Logger:       logger,
 		Static:       static,
@@ -268,6 +291,7 @@ func run() error {
 		KeypairAudience:         keypairAudience,
 		SessionStoreForKeypair:  keypairSessions,
 		SessionMaxAgeForKeypair: time.Duration(cfg.SessionMaxAge) * time.Second,
+		DiagnosesCache:          diagCache,
 	}
 
 	// Fold the legacy --admin-addr into --tenant-addr (deprecation
