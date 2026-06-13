@@ -8,12 +8,12 @@ require (
 	github.com/nats-io/nats.go v1.52.0
 	github.com/openweft/weft-client v0.2.2
 	github.com/openweft/weft-network-proto v0.1.0
-	github.com/openweft/weft-proto v0.9.0
-	github.com/prometheus/client_golang v1.20.5
+	github.com/openweft/weft-proto v0.11.1
+	github.com/prometheus/client_golang v1.23.2
 	go.etcd.io/etcd/client/v3 v3.6.12
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.80.0
+	google.golang.org/grpc v1.81.1
 )
 
 require (
