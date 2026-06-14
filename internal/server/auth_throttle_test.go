@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/openweft/weft-webui/internal/audit"
 )
 
 // stampHTTPReqCtx mirrors withHTTPRequest's job in the production
@@ -52,6 +54,63 @@ func TestAuthThrottle_BelowThresholdPasses(t *testing.T) {
 	if calls != 4 {
 		t.Errorf("inner calls = %d, want 4", calls)
 	}
+}
+
+func TestAuthThrottle_BlockedAttemptEmitsAuditEvent(t *testing.T) {
+	resetThrottle(t)
+	t.Cleanup(func() { resetThrottle(t) })
+
+	// Capture audit emissions so we can assert the throttle wrote
+	// one for the blocked request.
+	captured := &captureAuditLogger{}
+	prev := auditLogger
+	auditLogger = captured
+	t.Cleanup(func() { auditLogger = prev })
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	mw := withAuthCallbackThrottle(inner)
+
+	// Burn the budget : 5 fails get through and tick the counter.
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/api/auth/callback?state=x", nil)
+		req.RemoteAddr = "1.2.3.4:1024"
+		req = req.WithContext(stampHTTPReqCtx(req))
+		mw.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	prevEventCount := len(captured.events)
+
+	// 6th attempt blocked.
+	req := httptest.NewRequest("GET", "/api/auth/callback?state=x", nil)
+	req.RemoteAddr = "1.2.3.4:1024"
+	req = req.WithContext(stampHTTPReqCtx(req))
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	if len(captured.events) != prevEventCount+1 {
+		t.Fatalf("blocked attempt should emit exactly 1 audit event ; got %d new", len(captured.events)-prevEventCount)
+	}
+	ev := captured.events[len(captured.events)-1]
+	if ev.Action != "auth.callback.throttled" {
+		t.Errorf("Action = %q, want auth.callback.throttled", ev.Action)
+	}
+	if ev.Result != "error" {
+		t.Errorf("Result = %q, want error", ev.Result)
+	}
+	if ev.RemoteIP != "1.2.3.4" {
+		t.Errorf("RemoteIP = %q, want 1.2.3.4", ev.RemoteIP)
+	}
+	if ev.Extra["retry_after_s"] == "" {
+		t.Errorf("Extra.retry_after_s should be populated")
+	}
+}
+
+// captureAuditLogger collects audit events into a slice so tests
+// can assert their contents.
+type captureAuditLogger struct{ events []audit.Event }
+
+func (c *captureAuditLogger) Log(_ context.Context, ev audit.Event) {
+	c.events = append(c.events, ev)
 }
 
 func TestAuthThrottle_BlocksAfterThreshold(t *testing.T) {
