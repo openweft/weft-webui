@@ -57,7 +57,13 @@ func MountAPIForCodegen(mux *http.ServeMux, scope Scope) huma.API {
 // Returns the huma.API instance for completeness (tests can
 // introspect the spec via api.OpenAPI()).
 func mountAPI(mux *http.ServeMux, scope Scope) huma.API {
-	cfg := huma.DefaultConfig("Weft WebUI API", "v1")
+	// info.version in the spec tracks the build version so downstream
+	// codegen tools (openapi-generator, openapi-typescript, terraform
+	// provider regen) can pin to a specific release. serverVersion is
+	// stamped by buildHandler before mountAPI runs ; the codegen
+	// `dump-openapi` tool defaults to "dev" which is correct for an
+	// unstamped build artifact.
+	cfg := huma.DefaultConfig("Weft WebUI API", serverVersion)
 	cfg.OpenAPIPath = "/api/openapi"
 	cfg.DocsPath = "/api/docs"
 	api := humago.New(mux, cfg)

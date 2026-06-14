@@ -71,6 +71,35 @@ func TestVersion_ExposedOnEveryPortal(t *testing.T) {
 	}
 }
 
+func TestVersion_OpenAPISpecCarriesBuildVersion(t *testing.T) {
+	// The spec at /api/openapi advertises info.version. Downstream
+	// codegen / contract-test tooling pins to specific releases by
+	// reading that field — it MUST track the binary build version,
+	// not the "v1" placeholder huma defaults to.
+	prev := serverVersion
+	t.Cleanup(func() { serverVersion = prev })
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+	// Note : mountAPI ran when newE2EHandler built the handler and
+	// captured serverVersion at that point. Mutating it now wouldn't
+	// affect the already-generated spec. Read the actual stamped
+	// value (newE2EHandler doesn't set Deps.Version → "dev"
+	// fallback).
+	var spec map[string]any
+	if c := hit(t, srv, "GET", "/api/openapi.json", nil, &spec); c != 200 {
+		t.Fatalf("status = %d", c)
+	}
+	info, _ := spec["info"].(map[string]any)
+	if info == nil {
+		t.Fatalf("spec has no info block ; got %+v", spec)
+	}
+	v, _ := info["version"].(string)
+	if v != "dev" {
+		t.Errorf("info.version = %q, want \"dev\" (newE2EHandler default)", v)
+	}
+}
+
 func scopeName(s Scope) string {
 	switch {
 	case s.Has(ScopeAdmin):
