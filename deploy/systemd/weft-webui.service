@@ -27,6 +27,7 @@ Environment="WEBUI_WEFT_NETWORK_SOCKET=unix:///run/weft-network/weft-network.soc
 Environment="WEBUI_AUTH_MODE=oidc"
 Environment="WEBUI_AUDIT_LOG_PATH=/var/lib/weft-webui/audit.log"
 Environment="WEBUI_AUDIT_ROTATE_BYTES=104857600"
+Environment="WEBUI_AUDIT_RETENTION_DAYS=30"
 
 # Mock-layer persistence : the dashboard rehydrates inventory / DNS /
 # security-group / scripts state from JSON files at boot and flushes

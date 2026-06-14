@@ -156,6 +156,7 @@ sessions / audit trails into another.
 | `WEBUI_STATE_HISTORY_KEEP`         | 0 (off)        | Snapshot retention per state file ; production = 20  |
 | `WEBUI_AUDIT_LOG_PATH`             | (empty=off)    | JSONL audit trail ; production = on                  |
 | `WEBUI_AUDIT_ROTATE_BYTES`         | 104857600      | Audit log rotation threshold (100 MiB)               |
+| `WEBUI_AUDIT_RETENTION_DAYS`       | 0 (off)        | Delete rotated audit log siblings older than N days ; sweep at boot + every 6h |
 
 Every `WEBUI_*` env var has a matching `--*` flag for one-off
 overrides ; `weft-webui --help` enumerates them.

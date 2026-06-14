@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -287,6 +288,56 @@ func tailJSONL(path string, size int64, n int) ([]Event, error) {
 		}
 	}
 	return events, nil
+}
+
+// PruneOlderThan deletes rotated audit log files (named
+// <path>.<RFC3339Nano>) whose modtime is older than `cutoff`.
+// The CURRENT path is never deleted — only its rotated siblings.
+//
+// Returns the number of files removed + the first error if any
+// (rest are logged via slog.Error to keep retention best-effort).
+// Idempotent : a second call with the same cutoff is a no-op once
+// the eligible files are gone.
+func (l *FileLogger) PruneOlderThan(cutoff time.Time) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	dir := filepath.Dir(l.path)
+	base := filepath.Base(l.path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("audit: prune readdir: %w", err)
+	}
+	removed := 0
+	var firstErr error
+	for _, e := range entries {
+		name := e.Name()
+		// Only touch files whose name starts with "<base>." — the
+		// rotation convention. The current file itself doesn't have
+		// the trailing dot so it's skipped automatically.
+		if name == base || !strings.HasPrefix(name, base+".") {
+			continue
+		}
+		// Skip non-files (a sibling directory shouldn't be touched).
+		if e.Type().IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if !info.ModTime().Before(cutoff) {
+			continue
+		}
+		victim := filepath.Join(dir, name)
+		if err := os.Remove(victim); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		removed++
+	}
+	return removed, firstErr
 }
 
 // Close flushes (implicitly via OS) and releases the underlying file.

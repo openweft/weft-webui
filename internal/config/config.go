@@ -165,6 +165,14 @@ type Config struct {
 	// opened when the next write would exceed this limit. Default 100MB.
 	AuditRotateBytes int64
 
+	// AuditRetentionDays controls age-based pruning of rotated audit
+	// log files (the <path>.<RFC3339> siblings — never the current
+	// file). The sweep runs once at boot + every 6h thereafter, so a
+	// 30-day setting bounds disk usage to roughly 30 rotations'
+	// worth. Zero / negative disables the sweep entirely (rotated
+	// files accumulate forever). Default 0 = off, prod typically 30.
+	AuditRetentionDays int
+
 	// EtcdEndpoints lists the etcd v3 cluster members the webui dials
 	// for the cross-host respawn HA topology read
 	// (/weft/coord/hosts/<host_uuid>, see weft v0.4.1). Empty = no
@@ -277,6 +285,13 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		// 100 MiB default ; flag/env can lower (or raise) it. Loaded
 		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
 		AuditRotateBytes: 100 << 20,
+	}
+	if v := os.Getenv("WEBUI_AUDIT_RETENTION_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("WEBUI_AUDIT_RETENTION_DAYS: %w", err)
+		}
+		cfg.AuditRetentionDays = n
 	}
 	if v := os.Getenv("WEBUI_AUDIT_ROTATE_BYTES"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
@@ -417,6 +432,7 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		return nil
 	})
 	flagSet.Int64Var(&cfg.AuditRotateBytes, "audit-rotate-bytes", cfg.AuditRotateBytes, "rotate the audit log when the next write would exceed this size (bytes)")
+	flagSet.IntVar(&cfg.AuditRetentionDays, "audit-retention-days", cfg.AuditRetentionDays, "delete rotated audit log siblings older than this many days ; 0 = disabled (keep forever)")
 	flagSet.StringVar(&cfg.KeypairAllowlistPath, "keypair-allowlist", cfg.KeypairAllowlistPath, "JSON file enabling the dev ed25519 keypair fallback (POST /api/auth/keypair on the user portal) ; empty = endpoint NOT registered. NEVER use in production.")
 	flagSet.Func("etcd-endpoints", "comma-separated etcd v3 endpoints powering the /api/monitors cross-host respawn HA panel (e.g. \"dc1.weft:2379,dc2.weft:2379,dc3.weft:2379\") ; empty = panel offline", func(s string) error {
 		cfg.EtcdEndpoints = splitCSV(s)
