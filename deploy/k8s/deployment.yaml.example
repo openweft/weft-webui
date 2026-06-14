@@ -1,0 +1,197 @@
+# k8s starter for weft-webui : Namespace + Deployment + Service +
+# ConfigMap + Secret + PersistentVolumeClaim. Adjust the
+# image tag, hostnames, OIDC issuer, then :
+#
+#   kubectl apply -f deploy/k8s/deployment.yaml.example
+#
+# Front this with Caddy / Ingress NGINX / etc. for TLS termination ;
+# the deploy/caddy/Caddyfile.example shows the request shape the
+# CSRF Origin check + OIDC redirect builder expect.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: weft-webui
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: weft-webui-env
+  namespace: weft-webui
+data:
+  # User + infra listeners. Tenant + infra portal would be
+  # bound to in-cluster-only ClusterIP services in a real deploy.
+  WEBUI_USER_ADDR: ":8080"
+  WEBUI_TENANT_ADDR: ":8082"
+  WEBUI_ADMIN_ADDR: ":8088"
+  WEBUI_AUTH_MODE: oidc
+  WEBUI_PUBLIC_URL: "https://weft.example.com"
+  # OIDC issuer URL points at the cluster's Dex / Keycloak /
+  # Authentik. Leave OIDC_CLIENT_SECRET in the Secret below.
+  WEBUI_OIDC_ISSUER: "https://dex.example.com"
+  WEBUI_OIDC_CLIENT_ID: "weft-webui"
+  WEBUI_TRUST_PROXIES: "true"
+  # Persistence — written under the volume mounted at /var/lib/weft-webui.
+  WEBUI_AUDIT_LOG_PATH: "/var/lib/weft-webui/audit.log"
+  WEBUI_AUDIT_RETENTION_DAYS: "30"
+  WEBUI_INVENTORY_PATH: "/var/lib/weft-webui/inventory.json"
+  WEBUI_DNS_PATH: "/var/lib/weft-webui/dns.json"
+  WEBUI_SECURITY_PATH: "/var/lib/weft-webui/security.json"
+  WEBUI_SCRIPTS_PATH: "/var/lib/weft-webui/scripts.json"
+  WEBUI_STATE_HISTORY_KEEP: "20"
+  # Hardening defaults matching the systemd unit.
+  WEBUI_MAX_REQUEST_BODY_BYTES: "1048576"
+  WEBUI_SHUTDOWN_TIMEOUT: "10s"
+  WEBUI_TLS_MIN_VERSION: "1.2"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: weft-webui-secrets
+  namespace: weft-webui
+type: Opaque
+stringData:
+  # `openssl rand -base64 32` for the session HMAC.
+  WEBUI_SESSION_KEY: "REPLACE-WITH-RANDOM-32-BYTES-BASE64"
+  WEBUI_OIDC_CLIENT_SECRET: "REPLACE-WITH-DEX-OR-KEYCLOAK-CLIENT-SECRET"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: weft-webui-state
+  namespace: weft-webui
+spec:
+  accessModes: [ ReadWriteOnce ]
+  resources:
+    requests:
+      # Audit log + 4 state files + 20 snapshots × N rotations.
+      # 5 GiB is generous for a 30-day retention on a busy cluster.
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weft-webui
+  namespace: weft-webui
+  labels:
+    app.kubernetes.io/name: weft-webui
+spec:
+  # Stay at one replica until the state files live in etcd : the
+  # JSON persistence layer is local + a sibling pod would diverge.
+  # Bump after the weft-network swap-out lands.
+  replicas: 1
+  strategy:
+    # Local PVC → stop-then-start to avoid two pods racing the
+    # state files during a rollout.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: weft-webui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: weft-webui
+      annotations:
+        # Bump to force a rolling restart when only the ConfigMap
+        # changed (k8s doesn't restart pods on ConfigMap edits).
+        config.hash: "REPLACE-ON-CONFIG-CHANGE"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: weft-webui
+          image: ghcr.io/openweft/weft-webui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: user,   containerPort: 8080, protocol: TCP }
+            - { name: tenant, containerPort: 8082, protocol: TCP }
+            - { name: infra,  containerPort: 8088, protocol: TCP }
+          envFrom:
+            - configMapRef: { name: weft-webui-env }
+            - secretRef:    { name: weft-webui-secrets }
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/weft-webui
+          # Liveness : process up + listener answering. /api/healthz
+          # is dirt-cheap so the 5 s period is fine.
+          livenessProbe:
+            httpGet:    { path: /api/healthz, port: user }
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Readiness : also surfaces state-file writability via the
+          # 503 branch in /api/readyz. k8s removes the pod from the
+          # Service backend when a state mount goes read-only.
+          readinessProbe:
+            httpGet:    { path: /api/readyz, port: user }
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          # Startup : tolerate slow OIDC discovery + state-file
+          # rehydration on a big audit log.
+          startupProbe:
+            httpGet:    { path: /api/healthz, port: user }
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ ALL ]
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: weft-webui-state
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weft-webui-user
+  namespace: weft-webui
+  labels:
+    app.kubernetes.io/name: weft-webui
+spec:
+  selector:
+    app.kubernetes.io/name: weft-webui
+  ports:
+    - { name: user, port: 80, targetPort: user, protocol: TCP }
+---
+# Tenant + infra portals are ClusterIP-only — front them with
+# an in-cluster Ingress + restrict by hostname / source-range,
+# OR (preferred) expose only via WireGuard if your cluster
+# joins the weft mesh.
+apiVersion: v1
+kind: Service
+metadata:
+  name: weft-webui-tenant
+  namespace: weft-webui
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: weft-webui
+  ports:
+    - { name: tenant, port: 80, targetPort: tenant, protocol: TCP }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weft-webui-infra
+  namespace: weft-webui
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: weft-webui
+  ports:
+    - { name: infra, port: 80, targetPort: infra, protocol: TCP }
