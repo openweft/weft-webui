@@ -93,6 +93,27 @@ export const getVersion = async (): Promise<string> => {
   return (data?.version ?? 'dev') as string;
 };
 
+// ---- /api/auth/throttle (admin) -----------------------------------
+
+export type ThrottledIP =
+  paths['/api/auth/throttle']['get']['responses']['200']['content']['application/json']['entries'] extends (infer T)[] | null
+    ? T
+    : never;
+
+export const listThrottledIPs = async (): Promise<ThrottledIP[]> => {
+  const { data, error } = await client.GET('/api/auth/throttle');
+  if (error) throwErr(error);
+  return (data.entries ?? []) as ThrottledIP[];
+};
+
+export const clearThrottledIP = async (ip: string): Promise<boolean> => {
+  const { data, error } = await client.DELETE('/api/auth/throttle/{ip}', {
+    params: { path: { ip } },
+  });
+  if (error) throwErr(error);
+  return Boolean(data?.cleared);
+};
+
 // ---- /api/resources/{id} paginated rows ---------------------------
 
 export interface Page<T> {
