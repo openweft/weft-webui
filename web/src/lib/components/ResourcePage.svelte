@@ -330,6 +330,14 @@
       </svg>
       <input type="search" class="grow" placeholder="Filter…" bind:value={query} />
     </label>
+    <a class="btn btn-sm btn-ghost gap-1"
+      href={`/api/resources/${meta.id}/export.csv`}
+      title="Export the current row set as CSV">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      CSV
+    </a>
     <button
       class="btn btn-sm btn-primary gap-1"
       disabled={!canCreate}

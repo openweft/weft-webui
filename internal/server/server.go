@@ -13,6 +13,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
@@ -310,6 +311,30 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	if scope.Has(ScopeTenant) || scope.Has(ScopeAdmin) {
 		mountAuditCSVExport(mux)
 	}
+
+	// Generic per-resource CSV export. Reuses handleResourceRows
+	// (so scope filtering + sort + live-or-mock fallback all
+	// apply) ; the response handler just switches to CSV when
+	// `format=csv` is set. The wrapper here injects that param
+	// + forwards the PathValue so a stale fetch doesn't bypass
+	// the dispatcher.
+	mux.HandleFunc("GET /api/resources/{id}/export.csv", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		res, ok := resourceByID[id]
+		if !ok || !resolveScope(res.Scope).Has(scope) {
+			http.NotFound(w, r)
+			return
+		}
+		// Rebuild the URL with format=csv stamped on top of any
+		// existing query (project / tenant / etc.). handleResourceRows
+		// reads PathValue + URL.Query independently.
+		q := r.URL.Query()
+		q.Set("format", "csv")
+		r2 := r.Clone(r.Context())
+		r2.URL.RawQuery = q.Encode()
+		r2.SetPathValue("id", id)
+		handleResourceRows(w, r2)
+	})
 
 	// (/api/resources, /api/resources/{id}, /api/summary,
 	// /api/registry/upload moved to huma — see api_misc.go.)
@@ -1006,6 +1031,15 @@ func writePage(w http.ResponseWriter, r *http.Request, rows []map[string]any) {
 	if rows == nil {
 		rows = []map[string]any{}
 	}
+	// ?format=csv switches the response from the paginated JSON
+	// envelope to a CSV dump of every row (after scope filtering
+	// upstream). Auditors + spreadsheets prefer the flat file.
+	// pagination params are ignored for CSV — the operator wants
+	// the full snapshot in one fetch.
+	if r.URL.Query().Get("format") == "csv" {
+		writeRowsCSV(w, r, rows)
+		return
+	}
 	limit := 50
 	if q := r.URL.Query().Get("limit"); q != "" {
 		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 1000 {
@@ -1035,4 +1069,70 @@ func writePage(w http.ResponseWriter, r *http.Request, rows []map[string]any) {
 		"next":  next,
 		"total": len(rows),
 	})
+}
+
+// writeRowsCSV emits `rows` as a CSV using the resource's declared
+// Columns for the header order. Columns the dispatcher doesn't
+// declare (live rows that diverge from the registry schema) are
+// dropped — auditors want a stable column list, not the union of
+// every row's keys.
+func writeRowsCSV(w http.ResponseWriter, r *http.Request, rows []map[string]any) {
+	id := r.PathValue("id")
+	res, ok := resourceByID[id]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown resource"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="`+id+`-`+time.Now().UTC().Format("20060102-150405")+`.csv"`)
+	cw := csv.NewWriter(w)
+	defer cw.Flush()
+	hdr := make([]string, 0, len(res.Columns))
+	keys := make([]string, 0, len(res.Columns))
+	for _, c := range res.Columns {
+		hdr = append(hdr, c.Label)
+		keys = append(keys, c.Key)
+	}
+	_ = cw.Write(hdr)
+	for _, row := range rows {
+		out := make([]string, len(keys))
+		for i, k := range keys {
+			out[i] = csvCell(row[k])
+		}
+		_ = cw.Write(out)
+	}
+}
+
+// csvCell renders a row-cell value as the CSV-safe string. Pulled
+// out of writeRowsCSV so a future change to handle e.g. slice
+// values has one place to edit.
+func csvCell(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case float64:
+		// integer-valued floats render as plain digits (json
+		// unmarshal makes every number a float64).
+		if x == float64(int64(x)) {
+			return strconv.FormatInt(int64(x), 10)
+		}
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	default:
+		// json-friendly fallback for slices / maps / time / etc.
+		b, _ := json.Marshal(x)
+		return string(b)
+	}
 }
