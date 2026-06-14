@@ -44,7 +44,31 @@ func newE2EHandler(t *testing.T, scope Scope) http.Handler {
 	if scope == ScopeAdmin {
 		return NewAdmin(d)
 	}
+	if scope.Has(ScopeTenant) && !scope.Has(ScopeAdmin) {
+		return NewPortal(d, PortalTenant)
+	}
 	return New(d)
+}
+
+// newE2EHandlerForTenant mints a handler bound to the tenant portal
+// with a synthetic session whose Tenant claim is the given string.
+// Used by tests that need to assert cross-tenant filtering.
+func newE2EHandlerForTenant(t *testing.T, tenant string) http.Handler {
+	t.Helper()
+	d := Deps{
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Static: staticFakeFS{},
+		Auth: &auth.Middleware{
+			Mode: auth.ModeNone,
+			MockUser: auth.User{
+				Subject: "tenant:" + tenant, Email: tenant + "@weft.local",
+				Name: tenant + " admin", Groups: []string{"tenant-admin"},
+				Tenant: tenant, DevMode: true,
+			},
+		},
+		DevMode: true,
+	}
+	return NewPortal(d, PortalTenant)
 }
 
 // hit is the smallest readable wrapper around httptest. Returns the

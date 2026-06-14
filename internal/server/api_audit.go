@@ -18,6 +18,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openweft/weft-webui/internal/audit"
+	"github.com/openweft/weft-webui/internal/auth"
 )
 
 // auditTailer is the seam server.New() can set so the endpoint sees
@@ -76,35 +77,66 @@ func mountAuditAPI(api huma.API, scope Scope) {
 	if !scope.Has(ScopeTenant) && !scope.Has(ScopeAdmin) {
 		return
 	}
+	// Capture the mount-time scope in the closure so the handler
+	// knows which portal it's serving. Infra-portal callers
+	// (ScopeAdmin) get the cluster-wide stream ; tenant-portal
+	// callers see only entries whose ev.Tenant matches the session's
+	// own tenant — a tenant-admin must not learn about other
+	// tenants' actions via the audit trail.
+	infra := scope.Has(ScopeAdmin)
 	huma.Register(api, huma.Operation{
 		OperationID: "tail-audit-log",
 		Method:      "GET",
 		Path:        "/api/audit-log",
-		Summary:     "Tail the recent audit log entries (cluster-admin)",
-		Description: "Returns the most recent N events from the audit JSONL file (newest first). Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
+		Summary:     "Tail the recent audit log entries",
+		Description: "Returns the most recent N events from the audit JSONL file (newest first). The tenant portal narrows the view to events tagged with the caller's own tenant ; the infra portal sees every event. Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
 		Tags:        []string{"audit"},
-	}, func(_ context.Context, in *auditTailInput) (*auditTailOutput, error) {
+	}, func(ctx context.Context, in *auditTailInput) (*auditTailOutput, error) {
 		out := &auditTailOutput{}
 		if auditTail == nil {
 			out.Body.Enabled = false
 			out.Body.Events = []AuditEventDTO{}
 			return out, nil
 		}
+		// Tenant filter : non-admin callers see only their own
+		// tenant. Empty session.Tenant on a non-admin path collapses
+		// to "no events" rather than "all events" — we never want
+		// to leak cross-tenant on a misconfigured caller.
+		var tenantFilter string
+		if !infra {
+			if u := auth.UserFromContext(ctx); u != nil {
+				tenantFilter = u.Tenant
+			}
+		}
 		limit := in.Limit
 		if limit == 0 {
 			limit = 100
 		}
-		events, err := auditTail.Tail(limit)
+		// Tail more than requested when we'll be filtering — the
+		// filter can drop the count below the limit. Cap the
+		// pre-filter window at 10x the limit so a tenant with very
+		// little activity doesn't pin the reader on a huge log.
+		fetch := limit
+		if tenantFilter != "" || in.Action != "" || in.Result != "" {
+			fetch = limit * 10
+			if fetch > 10000 {
+				fetch = 10000
+			}
+		}
+		events, err := auditTail.Tail(fetch)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("audit: tail: " + err.Error())
 		}
 		out.Body.Enabled = true
-		out.Body.Events = make([]AuditEventDTO, 0, len(events))
+		out.Body.Events = make([]AuditEventDTO, 0, limit)
 		for _, ev := range events {
 			if in.Action != "" && !containsFold(ev.Action, in.Action) {
 				continue
 			}
 			if in.Result != "" && ev.Result != in.Result {
+				continue
+			}
+			if tenantFilter != "" && ev.Tenant != tenantFilter {
 				continue
 			}
 			out.Body.Events = append(out.Body.Events, AuditEventDTO{
@@ -121,6 +153,9 @@ func mountAuditAPI(api huma.API, scope Scope) {
 				RequestID:    ev.RequestID,
 				Extra:        ev.Extra,
 			})
+			if len(out.Body.Events) >= limit {
+				break
+			}
 		}
 		return out, nil
 	})

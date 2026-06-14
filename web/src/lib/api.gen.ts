@@ -12,8 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Tail the recent audit log entries (cluster-admin)
-         * @description Returns the most recent N events from the audit JSONL file (newest first). Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly "audit log not enabled" panel instead of 503.
+         * Tail the recent audit log entries
+         * @description Returns the most recent N events from the audit JSONL file (newest first). The tenant portal narrows the view to events tagged with the caller's own tenant ; the infra portal sees every event. Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly "audit log not enabled" panel instead of 503.
          */
         get: operations["tail-audit-log"];
         put?: never;
