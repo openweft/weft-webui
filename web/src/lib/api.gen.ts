@@ -2099,6 +2099,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Build version surfaced to operators + the SPA footer
+         * @description Returns the linker-stamped version string (`-ldflags "-X main.version=..."`). Defaults to "dev" when not stamped. Surfaces on every portal — operators verifying a rolling deploy poll this before reloading the SPA.
+         */
+        get: operations["version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/volumes": {
         parameters: {
             query?: never;
@@ -4309,6 +4329,16 @@ export interface components {
             };
             name: string;
             ts: string;
+        };
+        VersionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VersionBody.json
+             */
+            readonly $schema?: string;
+            /** @example v0.4.7 */
+            version: string;
         };
         VmAuthzAddInputBody: {
             /**
@@ -9180,6 +9210,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantUsageView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionBody"];
                 };
             };
             /** @description Error */

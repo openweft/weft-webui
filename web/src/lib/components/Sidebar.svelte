@@ -1,10 +1,21 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { ResourceMeta } from '../api';
+  import { getVersion } from '../api';
   import { sectionIcon } from '../icons';
   import WeftLogo from './WeftLogo.svelte';
 
   let { grouped, active }: { grouped: { section: string; items: ResourceMeta[] }[]; active: string } =
     $props();
+
+  // /api/version — fetched once on mount. Sits in the sidebar footer
+  // so an operator verifying a rolling deploy reads it without
+  // hunting through menus. Falls back to "" when the fetch fails
+  // (the footer hides the line in that case).
+  let version = $state('');
+  onMount(async () => {
+    try { version = await getVersion(); } catch { version = ''; }
+  });
 
   // Per-section collapse state. Persisted in localStorage so the
   // operator's choice survives navigation and reloads. The key is the
@@ -121,4 +132,9 @@
     {/each}
   </nav>
 
+  {#if version}
+    <div class="border-t border-base-300 px-4 py-2 text-xs text-base-content/40">
+      build <span class="font-mono">{version}</span>
+    </div>
+  {/if}
 </aside>

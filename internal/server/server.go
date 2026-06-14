@@ -155,6 +155,13 @@ type Deps struct {
 	// in New() / NewAdmin().
 	PolicyStrict bool
 
+	// Version is the build's semver / git-describe string, surfaced
+	// at /api/version. Empty falls back to "dev" so the endpoint is
+	// always defined. -ldflags "-X main.version=..." sets this at
+	// build time ; the env-var fallback lets test fixtures stamp it
+	// without going through the linker.
+	Version string
+
 	// DiagnosesCache is the live in-memory store fed by the
 	// weft-doctor pipeline over NATS. Nil = panel offline (the
 	// endpoint still registers on the Infra portal, returns []) ;
@@ -171,6 +178,12 @@ func (d Deps) Diagnoses() *diagnoses.Cache { return d.DiagnosesCache }
 // once in New()/NewAdmin() so handlers don't need a closure dance.
 // See the field comment on Deps.PolicyStrict for semantics.
 var policyStrict bool
+
+// serverVersion is the dashboard build's version string surfaced at
+// /api/version. Defaults to "dev" so the endpoint is well-defined
+// before main wires Deps.Version. buildHandler overwrites it once
+// per construction.
+var serverVersion = "dev"
 
 // New returns the user-facing http.Handler — the public listener.
 // Admin-only resources (hosts, users, tenants, groups) and /metrics
@@ -212,6 +225,11 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 		auditLogger = audit.NopLogger{}
 	}
 	policyStrict = d.PolicyStrict
+	if d.Version != "" {
+		serverVersion = d.Version
+	} else {
+		serverVersion = "dev"
+	}
 
 	// Flip the flavor + script catalogues to live-first when the
 	// agent client is wired. The mem seed stays as the fallback

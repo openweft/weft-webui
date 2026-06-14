@@ -51,6 +51,17 @@ func mountHealthAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "version",
+		Method:      "GET",
+		Path:        "/api/version",
+		Summary:     "Build version surfaced to operators + the SPA footer",
+		Description: "Returns the linker-stamped version string (`-ldflags \"-X main.version=...\"`). Defaults to \"dev\" when not stamped. Surfaces on every portal — operators verifying a rolling deploy poll this before reloading the SPA.",
+		Tags:        []string{"health"},
+	}, func(_ context.Context, _ *struct{}) (*versionOutput, error) {
+		return &versionOutput{Body: versionBody{Version: serverVersion}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "readyz",
 		Method:      "GET",
 		Path:        "/api/readyz",
@@ -319,6 +330,14 @@ type okBody struct {
 
 type okOutput struct {
 	Body okBody
+}
+
+type versionBody struct {
+	Version string `json:"version" example:"v0.4.7"`
+}
+
+type versionOutput struct {
+	Body versionBody
 }
 
 type listResourcesOutput struct {
