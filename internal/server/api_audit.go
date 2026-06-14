@@ -14,6 +14,9 @@ package server
 
 import (
 	"context"
+	"encoding/csv"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -70,6 +73,13 @@ type auditTailOutput struct {
 		Events  []AuditEventDTO `json:"events" doc:"Newest first"`
 		Enabled bool            `json:"enabled" doc:"True when an audit-log file is wired up. When false, the events list is always empty even if the operator stored history previously."`
 	}
+}
+
+// mountAuditCSVExport wires the stdlib (non-huma) CSV handler onto
+// the mux. Called from server.go alongside the other stdlib routes
+// so the same scope filter applies.
+func mountAuditCSVExport(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/audit-log/export.csv", handleAuditCSVExport)
 }
 
 func mountAuditAPI(api huma.API, scope Scope) {
@@ -195,6 +205,113 @@ func mountAuditAPI(api huma.API, scope Scope) {
 		}
 		return out, nil
 	})
+}
+
+// handleAuditCSVExport serves a CSV dump of the audit events that
+// match the same filters as GET /api/audit-log. Mounted outside
+// huma because huma's body model is JSON-only — CSV needs a
+// hand-rolled writer + Content-Type. Admin-only at the auth layer ;
+// scope-gating is done in server.go by guarding the mount.
+//
+// Useful for the compliance hand-off : an operator drops the file
+// into a ticket / shared-drive / SIEM ingest without having to
+// post-process JSON.
+func handleAuditCSVExport(w http.ResponseWriter, r *http.Request) {
+	if auditTail == nil {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("error\naudit log not enabled (set WEBUI_AUDIT_LOG_PATH)\n"))
+		return
+	}
+	q := r.URL.Query()
+	limit := 1000
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 10000 {
+			http.Error(w, "limit: must be int 1..10000", http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+	var sinceT, untilT time.Time
+	if v := q.Get("since"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			http.Error(w, "since: invalid RFC3339", http.StatusBadRequest)
+			return
+		}
+		sinceT = t
+	}
+	if v := q.Get("until"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			http.Error(w, "until: invalid RFC3339", http.StatusBadRequest)
+			return
+		}
+		untilT = t
+	}
+	action := q.Get("action")
+	result := q.Get("result")
+	subject := q.Get("subject")
+
+	// Tenant scope : the dashboard reads it the same way as the
+	// JSON endpoint via auth.UserFromContext.
+	var tenantFilter string
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		// Heuristic : if the caller is cluster-admin (Admin group
+		// or DevMode) we don't filter. Otherwise narrow to their
+		// own tenant. Mirrors the JSON endpoint's `infra` capture.
+		if !isClusterAdmin(u) {
+			tenantFilter = u.Tenant
+		}
+	}
+
+	events, err := auditTail.Tail(limit * 5)
+	if err != nil {
+		http.Error(w, "audit: tail: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="audit-`+time.Now().UTC().Format("20060102-150405")+`.csv"`)
+	cw := csv.NewWriter(w)
+	defer cw.Flush()
+	_ = cw.Write([]string{
+		"ts", "subject", "tenant", "project", "action",
+		"resource_kind", "resource_id", "result", "error",
+		"remote_ip", "request_id",
+	})
+	written := 0
+	for _, ev := range events {
+		if action != "" && !containsFold(ev.Action, action) {
+			continue
+		}
+		if result != "" && ev.Result != result {
+			continue
+		}
+		if subject != "" && !containsFold(ev.Subject, subject) {
+			continue
+		}
+		if tenantFilter != "" && ev.Tenant != tenantFilter {
+			continue
+		}
+		if !sinceT.IsZero() && ev.Timestamp.Before(sinceT) {
+			continue
+		}
+		if !untilT.IsZero() && !ev.Timestamp.Before(untilT) {
+			continue
+		}
+		_ = cw.Write([]string{
+			ev.Timestamp.UTC().Format(time.RFC3339Nano),
+			ev.Subject, ev.Tenant, ev.Project, ev.Action,
+			ev.ResourceKind, ev.ResourceID, ev.Result, ev.ErrorMessage,
+			ev.RemoteIP, ev.RequestID,
+		})
+		written++
+		if written >= limit {
+			break
+		}
+	}
 }
 
 // containsFold returns true when needle is a case-insensitive

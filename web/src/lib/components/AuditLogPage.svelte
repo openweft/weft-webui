@@ -90,6 +90,20 @@
     const m = ip.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
     return m ? m[1] : ip;
   }
+
+  // Build the CSV-export URL with the same filters the in-page
+  // table is showing — operator hands one file to compliance, no
+  // post-processing.
+  function exportCSVHref(): string {
+    const p = new URLSearchParams();
+    p.set('limit', String(limit));
+    if (filterAction) p.set('action', filterAction);
+    if (filterResult) p.set('result', filterResult);
+    if (filterSubject) p.set('subject', filterSubject);
+    if (filterSince) p.set('since', filterSince + ':00Z');
+    if (filterUntil) p.set('until', filterUntil + ':00Z');
+    return '/api/audit-log/export.csv?' + p.toString();
+  }
 </script>
 
 <div class="flex items-center gap-3">
@@ -103,6 +117,14 @@
     </p>
   </div>
   <div class="ml-auto flex items-center gap-2">
+    {#if enabled}
+      <a class="btn btn-sm btn-ghost gap-1" href={exportCSVHref()} title="Export the current filter set as CSV">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export CSV
+      </a>
+    {/if}
     <button class="btn btn-sm btn-ghost gap-1" onclick={refresh} title="Force refresh">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" stroke-linecap="round" stroke-linejoin="round"/>
