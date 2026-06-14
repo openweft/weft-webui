@@ -286,6 +286,48 @@
       {#if subnetsErr}<div class="alert alert-error py-2 text-sm">{subnetsErr}</div>{/if}
       {#if subnetActionErr}<div class="alert alert-error py-2 text-sm">{subnetActionErr}</div>{/if}
 
+      {#if String(selectedNetwork.type ?? '') === 'bridged'}
+        <div class="rounded-box border border-info/30 bg-info/5 p-3">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-info badge-sm">DHCPv4</span>
+            <span class="text-xs font-semibold uppercase text-base-content/70">Lease server</span>
+            <span class="ml-auto text-xs text-base-content/50">Auto-managed by weft-agent on the host bridge</span>
+          </div>
+          <div class="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <span class="text-base-content/60">CIDR </span>
+              <span class="font-mono">{selectedNetwork.cidr ?? '—'}</span>
+            </div>
+            <div>
+              <span class="text-base-content/60">Gateway </span>
+              <span class="font-mono">{selectedNetwork.gateway || '—'}</span>
+            </div>
+            <div>
+              <span class="text-base-content/60">DNS servers </span>
+              <span class="font-mono">
+                {#if Array.isArray(selectedNetwork.dns_servers) && selectedNetwork.dns_servers.length > 0}
+                  {(selectedNetwork.dns_servers as string[]).join(', ')}
+                {:else}
+                  none configured
+                {/if}
+              </span>
+            </div>
+            <div>
+              <span class="text-base-content/60">Lease range </span>
+              <span class="font-mono text-base-content/80">
+                derived from CIDR (skip network + gateway + broadcast)
+              </span>
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-base-content/50">
+            VMs joining this network receive their IP / gateway / DNS
+            automatically via DHCPv4 option 1/3/6/54. The
+            <span class="font-mono">weft-firstboot</span> agent in the
+            guest still consumes static cloud-init data when present.
+          </p>
+        </div>
+      {/if}
+
       <div class="rounded-box border border-base-300 bg-base-100">
         <table class="table table-sm">
           <thead>

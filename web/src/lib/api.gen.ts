@@ -848,6 +848,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/microvms/{name}/network-diag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregate networks + floating IPs visible to a VM
+         * @description Mirrors `weft network diag <vm-name>` : lists networks in scope plus every floating IP mapped to this VM. Read-only.
+         */
+        get: operations["vm-network-diag"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/microvms/{name}/properties": {
         parameters: {
             query?: never;
@@ -2996,10 +3016,22 @@ export interface components {
             /** @example 10.0.0.0/24 */
             cidr: string;
             dns_servers?: string[] | null;
+            /**
+             * @description 'bgp' (default) or 'vlan' for L2-attached subnets
+             * @enum {string}
+             */
+            external_mode?: "bgp" | "vlan";
             gateway?: string;
             name: string;
-            /** @description e.g. 'wireguard' / 'flat' */
+            /** @description Host NIC name for the macvlan when external_mode == 'vlan' */
+            parent_interface?: string;
+            /** @description e.g. 'wireguard' / 'flat' / 'mesh' / 'bridged' */
             type?: string;
+            /**
+             * Format: int32
+             * @description 802.1Q tag when external_mode == 'vlan' ; 0 = untagged trunk
+             */
+            vlan?: number;
         };
         CreateNetworkResp: {
             /**
@@ -3025,6 +3057,13 @@ export interface components {
             kind: string;
             name: string;
             networks?: string[] | null;
+            /** @description CIDRs the router advertises (kind=egress + backend=gobgp) */
+            prefixes?: string[] | null;
+            /**
+             * Format: int32
+             * @description Number of weft-router microVMs (HA). 0 = server default (1).
+             */
+            replicas?: number;
         };
         CreateSGInputBody: {
             /**
@@ -3530,6 +3569,11 @@ export interface components {
              * @example https://example.com/schemas/MapFloatingIPInputBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inbound packets/sec cap (0=unlimited, capped at 100000)
+             */
+            rate_limit_pps?: number;
             /** @enum {string} */
             target_kind: "vm" | "lb";
             target_name: string;
@@ -4493,6 +4537,24 @@ export interface components {
             contents: string;
             /** Format: int64 */
             total_bytes: number;
+        };
+        VMNetworkDiagBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VMNetworkDiagBody.json
+             */
+            readonly $schema?: string;
+            floating_ips: {
+                [key: string]: unknown;
+            }[] | null;
+            networks: {
+                [key: string]: unknown;
+            }[] | null;
+            ports?: {
+                [key: string]: unknown;
+            }[] | null;
+            vm_name: string;
         };
         VMTimingEvent: {
             meta: {
@@ -6519,6 +6581,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsSnapshot"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "vm-network-diag": {
+        parameters: {
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path: {
+                /** @description VM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VMNetworkDiagBody"];
                 };
             };
             /** @description Error */

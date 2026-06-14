@@ -12,7 +12,7 @@
   // instead of leaving the panel empty.
   import { onMount, onDestroy } from 'svelte';
   import {
-    getVMStatus, getVMTimings, getVMLogs, getRows,
+    getVMStatus, getVMTimings, getVMLogs, getVMNetworkDiag, getRows,
     startVM, stopVM, deleteVM,
     attachVolume, detachVolume,
     listVMKeys, addVMKey, removeVMKey, listSSHKeyCatalogue,
@@ -20,7 +20,7 @@
     listUEFIVars, setUEFIVar, removeUEFIVar,
     listVMAuthorizedGroups, addVMAuthorizedGroup, removeVMAuthorizedGroup,
     listVMEffectiveKeys,
-    type VMStatus, type VMTimingEvent, type VMLogs, type Row, type VMSSHKey,
+    type VMStatus, type VMTimingEvent, type VMLogs, type VMNetworkDiag, type Row, type VMSSHKey,
     type SSHKeyEntry, type VMProperty, type UEFIVar,
     type AuthorizedGroup, type EffectiveKey,
   } from '../api';
@@ -44,7 +44,7 @@
   // keeps the prop tracking sound.
   let name = $derived(row.name as string);
 
-  let tab = $state<'summary' | 'metrics' | 'volumes' | 'keys' | 'authz' | 'props' | 'uefi' | 'timings' | 'logs'>('summary');
+  let tab = $state<'summary' | 'metrics' | 'volumes' | 'keys' | 'authz' | 'props' | 'uefi' | 'network' | 'timings' | 'logs'>('summary');
 
   // Per-tab loading + data + error.
   let status = $state<VMStatus | null>(null);
@@ -58,6 +58,10 @@
   let logs = $state<VMLogs | null>(null);
   let logsErr = $state('');
   let logsBusy = $state(false);
+
+  let netDiag = $state<VMNetworkDiag | null>(null);
+  let netDiagErr = $state('');
+  let netDiagBusy = $state(false);
 
   // Volumes tab : the table-wide volume list, filtered by
   // attached_to == this VM's name OR uuid. The "available" pool is the
@@ -194,6 +198,12 @@
     try { logs = await getVMLogs(name); }
     catch (e) { logsErr = String(e); }
     finally { logsBusy = false; }
+  }
+  async function loadNetDiag() {
+    netDiagBusy = true; netDiagErr = '';
+    try { netDiag = await getVMNetworkDiag(name); }
+    catch (e) { netDiagErr = String(e); }
+    finally { netDiagBusy = false; }
   }
   async function loadVolumes() {
     volumesBusy = true; volumesErr = '';
@@ -336,6 +346,7 @@
     if (tab === 'authz' && !authzGroups && !authzErr) refreshAuthz();
     if (tab === 'props' && !vmProperties && !propsErr) loadProps();
     if (tab === 'uefi' && !uefi && !uefiErr) loadUEFI();
+    if (tab === 'network' && !netDiag && !netDiagErr) loadNetDiag();
   });
 
   async function refreshAll() {
@@ -490,6 +501,10 @@
     <button role="tab" class="tab" class:tab-active={tab === 'uefi'} onclick={() => (tab = 'uefi')}>
       UEFI
       {#if uefi && uefi.length > 0}<span class="ml-1 badge badge-xs">{uefi.length}</span>{/if}
+    </button>
+    <button role="tab" class="tab" class:tab-active={tab === 'network'} onclick={() => (tab = 'network')}>
+      Network
+      {#if netDiag && netDiag.floating_ips && netDiag.floating_ips.length > 0}<span class="ml-1 badge badge-xs">{netDiag.floating_ips.length}</span>{/if}
     </button>
     <button role="tab" class="tab" class:tab-active={tab === 'timings'} onclick={() => (tab = 'timings')}>
       Timings
@@ -915,6 +930,135 @@
           </button>
         </div>
       </div>
+
+    {:else if tab === 'network'}
+      <div class="flex items-center gap-2">
+        <h3 class="text-sm font-semibold">Networks &amp; floating IPs</h3>
+        <button class="ml-auto btn btn-xs btn-ghost" disabled={netDiagBusy} onclick={loadNetDiag}>
+          {#if netDiagBusy}<span class="loading loading-spinner loading-xs"></span>{:else}↻{/if}
+        </button>
+      </div>
+      <p class="mt-1 text-xs text-base-content/60">
+        Mirrors <span class="font-mono">weft network diag {name}</span> :
+        every network visible in scope (BGP vs VLAN, parent
+        interface) and every floating IP currently DNAT'd to this
+        VM. Read-only ; refresh polls fresh state.
+      </p>
+      {#if netDiagErr}
+        <div class="mt-3 alert alert-error py-2 text-sm">{netDiagErr}</div>
+      {:else if !netDiag}
+        <div class="mt-3 text-xs text-base-content/60">Loading…</div>
+      {:else}
+        <h4 class="mt-4 text-xs font-medium uppercase text-base-content/60">Networks in scope</h4>
+        {#if netDiag.networks && netDiag.networks.length > 0}
+          <div class="mt-2 overflow-x-auto">
+            <table class="table table-xs">
+              <thead>
+                <tr><th>Name</th><th>CIDR</th><th>Type</th><th>External</th><th>VLAN</th><th>Parent</th></tr>
+              </thead>
+              <tbody>
+                {#each netDiag.networks as n}
+                  <tr>
+                    <td class="font-mono">{n.name ?? ''}</td>
+                    <td class="font-mono">{n.cidr ?? ''}</td>
+                    <td>{n.type ?? ''}</td>
+                    <td>{n.external_mode || 'bgp'}</td>
+                    <td>{n.vlan || ''}</td>
+                    <td class="font-mono text-xs">{n.parent_interface ?? ''}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <div class="mt-2 text-xs text-base-content/60">(none)</div>
+        {/if}
+
+        <h4 class="mt-5 text-xs font-medium uppercase text-base-content/60">Ports (NICs)</h4>
+        {#if netDiag.ports && netDiag.ports.length > 0}
+          <div class="mt-2 overflow-x-auto">
+            <table class="table table-xs">
+              <thead>
+                <tr><th>MAC</th><th>IP</th><th>Security groups</th><th>Ingress</th><th>Egress</th></tr>
+              </thead>
+              <tbody>
+                {#each netDiag.ports as p}
+                  <tr>
+                    <td class="font-mono">{p.mac ?? ''}</td>
+                    <td class="font-mono">{p.ip ?? ''}</td>
+                    <td class="text-xs">
+                      {#if Array.isArray(p.security_groups) && p.security_groups.length > 0}
+                        {p.security_groups.length} bound
+                      {:else}
+                        <span class="text-base-content/40">none</span>
+                      {/if}
+                    </td>
+                    <td class="font-mono">
+                      {#if typeof p.ingress_mbps === 'number' && p.ingress_mbps > 0}
+                        {p.ingress_mbps} Mbps
+                      {:else}
+                        <span class="text-base-content/40">unlimited</span>
+                      {/if}
+                    </td>
+                    <td class="font-mono">
+                      {#if typeof p.egress_mbps === 'number' && p.egress_mbps > 0}
+                        {p.egress_mbps} Mbps
+                      {:else}
+                        <span class="text-base-content/40">unlimited</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <p class="mt-2 text-xs text-base-content/50">
+            Anti-spoof (<span class="font-mono">portsec</span>) drops
+            frames whose source MAC/IP don't match the row above.
+            Bandwidth caps (<span class="font-mono">portqos</span>)
+            program <span class="font-mono">tc/htb</span> on the
+            host-side tap interface.
+          </p>
+        {:else}
+          <div class="mt-2 text-xs text-base-content/60">(no ports yet — VM may still be booting)</div>
+        {/if}
+
+        <h4 class="mt-5 text-xs font-medium uppercase text-base-content/60">Floating IPs mapped to this VM</h4>
+        {#if netDiag.floating_ips && netDiag.floating_ips.length > 0}
+          <div class="mt-2 overflow-x-auto">
+            <table class="table table-xs">
+              <thead>
+                <tr><th>Address</th><th>Network</th><th>Status</th><th>Rate limit</th></tr>
+              </thead>
+              <tbody>
+                {#each netDiag.floating_ips as f}
+                  <tr>
+                    <td class="font-mono">{f.address ?? ''}</td>
+                    <td class="font-mono">{f.network ?? ''}</td>
+                    <td>{f.status ?? ''}</td>
+                    <td class="font-mono">
+                      {#if typeof f.rate_limit_pps === 'number' && f.rate_limit_pps > 0}
+                        {f.rate_limit_pps.toLocaleString()} pps
+                      {:else}
+                        <span class="text-base-content/40">unlimited</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <div class="mt-2 text-xs text-base-content/60">(none)</div>
+        {/if}
+
+        <p class="mt-4 text-xs text-base-content/50">
+          Next steps : SSH to the host and run <span class="font-mono">nft list table ip weft-fip-nat</span>
+          to see the DNAT rules in place. For VLAN-mode networks,
+          <span class="font-mono">ip -d link show type macvlan</span> reveals
+          the weft-mvl-* interfaces and their parents.
+        </p>
+      {/if}
 
     {:else if tab === 'timings'}
       <div class="flex items-center gap-2">

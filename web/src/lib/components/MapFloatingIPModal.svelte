@@ -1,7 +1,7 @@
 <script lang="ts">
   // Map a floating IP to a microVM or load-balancer VIP. The row
   // dropdown opens this modal pre-filled with the FIP uuid + address ;
-  // the operator picks a target kind + name.
+  // the operator picks a target kind + name + optional anti-DDoS PPS cap.
   import { mapFloatingIP } from '../api';
 
   let {
@@ -17,6 +17,7 @@
   let dialog: HTMLDialogElement;
   let kind = $state<'vm' | 'lb'>('vm');
   let target = $state('');
+  let rateLimitPps = $state(0);
   let error = $state('');
   let busy = $state(false);
 
@@ -25,6 +26,7 @@
       dialog?.showModal();
       kind = 'vm';
       target = '';
+      rateLimitPps = 0;
       error = '';
     } else {
       dialog?.close();
@@ -41,7 +43,7 @@
     busy = true;
     error = '';
     try {
-      await mapFloatingIP(fip.uuid, kind, target.trim());
+      await mapFloatingIP(fip.uuid, kind, target.trim(), rateLimitPps);
       onMapped();
       onClose();
     } catch (err) {
@@ -74,6 +76,28 @@
       <input class="input input-sm input-bordered font-mono"
         placeholder={kind === 'vm' ? 'web-1' : 'web-prod'}
         bind:value={target} required />
+    </div>
+
+    <div class="mt-4">
+      <div class="flex items-center justify-between text-xs">
+        <span class="font-medium">Inbound rate limit</span>
+        <span class="font-mono text-base-content/70">
+          {rateLimitPps === 0 ? 'unlimited' : `${rateLimitPps.toLocaleString()} pps`}
+        </span>
+      </div>
+      <input type="range" min="0" max="100000" step="1000"
+        class="range range-xs range-primary mt-1"
+        bind:value={rateLimitPps} />
+      <div class="mt-1 flex justify-between text-[0.65rem] text-base-content/50">
+        <span>0 (none)</span>
+        <span>10k</span>
+        <span>50k</span>
+        <span>100k</span>
+      </div>
+      <p class="mt-2 text-xs text-base-content/60">
+        Anti-DDoS cap installed as an nftables limit on inbound
+        packets to this floating IP. 0 = no limit.
+      </p>
     </div>
 
     {#if error}<div class="mt-3 alert alert-error py-2 text-sm">{error}</div>{/if}

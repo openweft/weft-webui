@@ -19,7 +19,7 @@
   let name = $state('');
   let cidr = $state('10.30.0.0/16');
   let gateway = $state('');
-  let type = $state<'nat' | 'overlay' | 'wireguard'>('overlay');
+  let type = $state<'nat' | 'bridged' | 'isolated' | 'mesh'>('nat');
   let dnsServers = $state(''); // comma-separated input → []string
 
   // Edge-attachment for floating IPs : default "bgp" matches the
@@ -83,7 +83,7 @@
 
   function reset() {
     name = ''; cidr = '10.30.0.0/16'; gateway = '';
-    type = 'overlay'; dnsServers = ''; error = '';
+    type = 'nat'; dnsServers = ''; error = '';
     externalMode = 'bgp'; vlan = 0; parentInterface = '';
   }
   function cancel() { open = false; reset(); }
@@ -114,17 +114,32 @@
 
     <div class="mt-3">
       <span class="label-text text-xs">Type</span>
-      <div class="mt-1 grid grid-cols-3 gap-2">
-        {#each ['nat', 'overlay', 'wireguard'] as t (t)}
+      <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {#each [
+          { v: 'nat',      desc: 'Default — host-shared NAT egress' },
+          { v: 'bridged',  desc: 'Bridge to a host interface ; DHCP server runs on the bridge' },
+          { v: 'isolated', desc: 'VM-to-VM only, no host or external reach' },
+          { v: 'mesh',     desc: 'WireGuard mesh between weft-agents' },
+        ] as t (t.v)}
           <label class="cursor-pointer rounded-box border p-2 text-center text-sm"
-            class:border-primary={type === t}
-            class:border-base-300={type !== t}>
-            <input type="radio" name="type" class="hidden" value={t}
-              checked={type === t} onchange={() => (type = t as typeof type)} />
-            {t}
+            class:border-primary={type === t.v}
+            class:border-base-300={type !== t.v}
+            title={t.desc}>
+            <input type="radio" name="type" class="hidden" value={t.v}
+              checked={type === t.v} onchange={() => (type = t.v as typeof type)} />
+            {t.v}
           </label>
         {/each}
       </div>
+      {#if type === 'bridged'}
+        <p class="mt-2 text-xs text-base-content/60">
+          The host runs a DHCPv4 server on the bridge so VMs get
+          their IP/gateway/DNS automatically. The lease range is
+          derived from the CIDR (skipping the network address,
+          gateway, broadcast). DNS servers below populate option
+          6 in the DHCP offer.
+        </p>
+      {/if}
     </div>
 
     <label class="form-control mt-3">
