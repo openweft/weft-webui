@@ -1,0 +1,307 @@
+// network.proto — gRPC contract of weft-network, the controller that
+// reconciles Routers, Load Balancers, DNS zones / records, and
+// Scheduling Rules from the agent's event stream into the data plane
+// (Caddy + WireGuard + GoBGP micro-VMs + CoreDNS ; VyOS / FRR remain
+// accepted as the classic-VM escape hatch for tenants who need
+// multi-protocol routing).
+//
+// weft-network runs as 3 infra microVMs (one per DC), etcd-elected
+// leader, fed by weft-agent's WatchEvents. The webui talks to whichever
+// replica is reachable ; reads are local snapshots, writes go to the
+// leader (the followers forward).
+//
+// Stability: backwards-compatible additions only — breaking changes
+// need a new major version. Same rule as weft.proto.
+
+syntax = "proto3";
+
+package weft.network.v1;
+option go_package = "github.com/openweft/weft-network-proto;netv1";
+
+// ------------------------------------------------------------------
+//  Routers : mesh ↔ mesh peering (WireGuard) or mesh ↔ outside
+//            (GoBGP micro-VM as default ; VyOS / FRR as escape hatch).
+// ------------------------------------------------------------------
+
+// RouterInfo is one entry in the router registry.
+//
+// `kind` distinguishes the controller's two main shapes :
+//   - "peer"   : a WireGuard peer wiring two tenant networks together.
+//                Backend is always "wireguard". `peer_state` carries
+//                the live handshake info reported by the data plane.
+//   - "egress" : BGP gateway to the public internet. Backend defaults
+//                to "gobgp" (the weft-router micro-VM running GoBGP +
+//                netlink — pure-Go, micro-VM-scaled, the openweft
+//                microVM-first strategy). "vyos" / "frr" remain
+//                accepted as escape hatches for tenants that need
+//                multi-protocol routing (OSPF / IS-IS / RSVP-TE) and
+//                run as classic VMs via `weft instance`.
+//                `external` describes the upstream (ASN, peer IP, …).
+message RouterInfo {
+  string uuid               = 1;
+  string name               = 2;
+  string kind               = 3; // "peer" | "egress"
+  string backend            = 4; // "wireguard" | "gobgp" | "vyos" | "frr"
+  repeated string networks  = 5; // tenant network names this router stitches
+  string external           = 6; // AS number / peer ; empty for `kind=peer`
+  string peer_state         = 7; // live handshake info for `kind=peer`
+  string project            = 8; // owning project ; "platform" for infra routers
+  string status             = 9; // "active" | "down" | "configuring"
+  int64  created_at_unix_ns = 10;
+  // Prefixes the router advertises to its peers (kind=egress + backend=gobgp).
+  // CIDR strings, IPv4 or IPv6 ; one entry per advertised prefix. Empty for
+  // kind=peer routers. Optional communities / per-prefix next-hops will land
+  // in a separate field shape when the operator workflow asks for them ;
+  // today this single list covers the 99% case of "advertise my owned space".
+  repeated string prefixes  = 11;
+  // Replicas is the number of weft-router microVMs spawned for this
+  // Router. Default 1 (single-VM, single point of failure).
+  // Production HA setup : set to 2 or 3, the orchestrator spawns one
+  // microVM per replica with deterministic names
+  // ("weft-router-<uuid>-1", "-2", ...). All replicas subscribe to
+  // the same NATS config subject + advertise the same prefixes ;
+  // the upstream peer load-balances inbound traffic via BGP
+  // multipath / ECMP. Failure of one replica drops a path ; the
+  // others stay live, the upstream redistributes within one BGP
+  // keepalive window. 1 ≤ replicas ≤ 10.
+  int32  replicas           = 12;
+}
+
+message ListRoutersRequest  {
+  string project    = 1;
+  int32  limit      = 2;
+  string page_token = 3;
+}
+message ListRoutersResponse {
+  repeated RouterInfo routers = 1;
+  string next_page_token      = 2;
+}
+
+message CreateRouterRequest {
+  string project          = 1;
+  string name             = 2;
+  string kind             = 3;
+  string backend          = 4;
+  repeated string networks = 5;
+  string external         = 6;
+  repeated string prefixes = 7; // see RouterInfo.prefixes
+  int32  replicas         = 8; // see RouterInfo.replicas ; 0 → default 1
+}
+message CreateRouterResponse { RouterInfo router = 1; }
+
+message DeleteRouterRequest  { string uuid = 1; }
+message DeleteRouterResponse {}
+
+// ------------------------------------------------------------------
+//  Load Balancers : programmable L4 / L7 in front of microVMs and
+//                   instances. Backed by embedded Caddy (caddy-l4 for
+//                   L4) inside weft-agent, programmed via Caddy's
+//                   admin API — no separate Envoy fleet, no xDS push.
+//                   See project_router_lb_gonative memory for context.
+// ------------------------------------------------------------------
+
+message LoadBalancerInfo {
+  string uuid               = 1;
+  string name               = 2;
+  string mode               = 3; // "L4" | "L7"
+  string address            = 4; // VIP : "203.0.113.20" or "10.10.0.100"
+  uint32 port               = 5;
+  repeated string backends  = 6; // VM / instance names this LB fronts
+  string az                 = 7; // "DC-A" / "DC-B" / "DC-C" / "multi"
+  string controller         = 8; // weft-network instance currently owning the Caddy reconciler
+  string project            = 9;
+  string status             = 10; // "active" | "provisioning" | "failed"
+  int64  created_at_unix_ns = 11;
+}
+
+message ListLoadBalancersRequest  {
+  string project    = 1;
+  int32  limit      = 2;
+  string page_token = 3;
+}
+message ListLoadBalancersResponse {
+  repeated LoadBalancerInfo load_balancers = 1;
+  string next_page_token                   = 2;
+}
+
+message CreateLoadBalancerRequest {
+  string project           = 1;
+  string name              = 2;
+  string mode              = 3; // "L4" | "L7"
+  uint32 port              = 4;
+  repeated string backends = 5;
+  string az                = 6; // empty → "multi"
+}
+message CreateLoadBalancerResponse { LoadBalancerInfo load_balancer = 1; }
+
+message DeleteLoadBalancerRequest  { string uuid = 1; }
+message DeleteLoadBalancerResponse {}
+
+// SetLoadBalancerBackends replaces the backend list atomically. The
+// reconciler diffs against the live state and patches the embedded
+// Caddy config via its admin API (only the changed upstream pool).
+message SetLoadBalancerBackendsRequest  { string uuid = 1; repeated string backends = 2; }
+message SetLoadBalancerBackendsResponse { LoadBalancerInfo load_balancer = 1; }
+
+// ------------------------------------------------------------------
+//  DNS Zones : namespaces served by the per-DC CoreDNS microVMs.
+//              Primary zones may be pushed to an external BIND via
+//              RFC-2136 NS update (the `push_target` field describes
+//              the upstream).
+// ------------------------------------------------------------------
+
+message DNSZoneInfo {
+  string uuid               = 1;
+  string name               = 2; // "weft.internal", "acme.weft.internal", …
+  string role               = 3; // "primary" | "secondary" | "forward"
+  int32  records            = 4; // live record count
+  int32  ttl_default        = 5;
+  string backend            = 6; // "coredns"
+  string push_target        = 7; // empty = internal-only ; "ns1.acme.example (bind9, tsig acme-key)"
+  string push_state         = 8; // empty | "synced @ <ts>" | "failed: <reason>"
+  string project            = 9; // "platform" for root / tenant glue, else the project
+  string status             = 10; // "active" | "syncing" | "failed"
+  int64  created_at_unix_ns = 11;
+}
+
+message ListDNSZonesRequest  {
+  string project    = 1;
+  int32  limit      = 2;
+  string page_token = 3;
+}
+message ListDNSZonesResponse {
+  repeated DNSZoneInfo zones = 1;
+  string next_page_token     = 2;
+}
+
+message CreateDNSZoneRequest {
+  string project      = 1;
+  string name         = 2;
+  string role         = 3; // empty → "primary"
+  int32  ttl_default  = 4;
+  string push_target  = 5; // empty = internal-only
+}
+message CreateDNSZoneResponse { DNSZoneInfo zone = 1; }
+
+message DeleteDNSZoneRequest  { string uuid = 1; }
+message DeleteDNSZoneResponse {}
+
+// ------------------------------------------------------------------
+//  DNS Records : entries inside zones.
+//
+//  `source` distinguishes operator-managed records (`static`) from
+//  records reconciled from the agent's event stream (`auto`) — a
+//  microVM coming up materialises an `A` record automatically, an
+//  LB allocation materialises a public-facing `A` etc.
+// ------------------------------------------------------------------
+
+message DNSRecordInfo {
+  string uuid       = 1;
+  string zone_uuid  = 2;
+  string zone       = 3; // denormalised for the table
+  string name       = 4; // leaf or "@" for the apex
+  string type       = 5; // "A" | "AAAA" | "CNAME" | "SRV" | "TXT" | "NS" | "MX"
+  string value      = 6; // RHS
+  int32  ttl        = 7;
+  string source     = 8; // "static" | "auto"
+}
+
+message ListDNSRecordsRequest  {
+  string zone_uuid  = 1; // empty = every zone
+  int32  limit      = 2;
+  string page_token = 3;
+}
+message ListDNSRecordsResponse {
+  repeated DNSRecordInfo records = 1;
+  string next_page_token         = 2;
+}
+
+message CreateDNSRecordRequest {
+  string zone_uuid = 1;
+  string name      = 2;
+  string type      = 3;
+  string value     = 4;
+  int32  ttl       = 5;
+}
+message CreateDNSRecordResponse { DNSRecordInfo record = 1; }
+
+message DeleteDNSRecordRequest  { string uuid = 1; }
+message DeleteDNSRecordResponse {}
+
+// ------------------------------------------------------------------
+//  Scheduling Rules : declarative constraints the agent's scheduler
+//                     honours when picking hosts. weft-network watches
+//                     them so the topology + LB controllers can pre-
+//                     warm Caddy upstream pools and DNS records around
+//                     the placement intent.
+// ------------------------------------------------------------------
+
+message SchedulingRuleInfo {
+  string uuid       = 1;
+  string name       = 2;
+  int32  count      = 3; // desired replicas
+  int32  ready      = 4; // observed compliant replicas
+  string selector   = 5;
+  string az         = 6; // "" | "same" | "different" | <name>
+  string rack       = 7;
+  string host       = 8;
+  string project    = 9;
+  string status     = 10; // "compliant" | "drifting" | "unschedulable"
+  int64  created_at_unix_ns = 11;
+}
+
+message ListSchedulingRulesRequest  {
+  string project    = 1;
+  int32  limit      = 2;
+  string page_token = 3;
+}
+message ListSchedulingRulesResponse {
+  repeated SchedulingRuleInfo rules = 1;
+  string next_page_token            = 2;
+}
+
+message CreateSchedulingRuleRequest {
+  string project  = 1;
+  string name     = 2;
+  int32  count    = 3;
+  string selector = 4;
+  string az       = 5;
+  string rack     = 6;
+  string host     = 7;
+}
+message CreateSchedulingRuleResponse { SchedulingRuleInfo rule = 1; }
+
+message DeleteSchedulingRuleRequest  { string uuid = 1; }
+message DeleteSchedulingRuleResponse {}
+
+// ------------------------------------------------------------------
+//  Service
+// ------------------------------------------------------------------
+
+service NetworkControlPlane {
+  // Routers
+  rpc ListRouters   (ListRoutersRequest)   returns (ListRoutersResponse);
+  rpc CreateRouter  (CreateRouterRequest)  returns (CreateRouterResponse);
+  rpc DeleteRouter  (DeleteRouterRequest)  returns (DeleteRouterResponse);
+
+  // Load Balancers
+  rpc ListLoadBalancers        (ListLoadBalancersRequest)        returns (ListLoadBalancersResponse);
+  rpc CreateLoadBalancer       (CreateLoadBalancerRequest)       returns (CreateLoadBalancerResponse);
+  rpc DeleteLoadBalancer       (DeleteLoadBalancerRequest)       returns (DeleteLoadBalancerResponse);
+  rpc SetLoadBalancerBackends  (SetLoadBalancerBackendsRequest)  returns (SetLoadBalancerBackendsResponse);
+
+  // DNS Zones
+  rpc ListDNSZones   (ListDNSZonesRequest)   returns (ListDNSZonesResponse);
+  rpc CreateDNSZone  (CreateDNSZoneRequest)  returns (CreateDNSZoneResponse);
+  rpc DeleteDNSZone  (DeleteDNSZoneRequest)  returns (DeleteDNSZoneResponse);
+
+  // DNS Records
+  rpc ListDNSRecords   (ListDNSRecordsRequest)   returns (ListDNSRecordsResponse);
+  rpc CreateDNSRecord  (CreateDNSRecordRequest)  returns (CreateDNSRecordResponse);
+  rpc DeleteDNSRecord  (DeleteDNSRecordRequest)  returns (DeleteDNSRecordResponse);
+
+  // Scheduling Rules
+  rpc ListSchedulingRules   (ListSchedulingRulesRequest)   returns (ListSchedulingRulesResponse);
+  rpc CreateSchedulingRule  (CreateSchedulingRuleRequest)  returns (CreateSchedulingRuleResponse);
+  rpc DeleteSchedulingRule  (DeleteSchedulingRuleRequest)  returns (DeleteSchedulingRuleResponse);
+}

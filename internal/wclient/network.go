@@ -286,6 +286,13 @@ func (c *NetworkClient) ListSchedulingRules(ctx context.Context, project string,
 type CreateRouterOpts struct {
 	Project, Name, Kind, Backend, External string
 	Networks                               []string
+	// Prefixes is the operator-typed CIDR announce list for
+	// kind=egress + backend=gobgp routers ; ignored for kind=peer.
+	Prefixes []string
+	// Replicas is the number of weft-router microVMs to spawn.
+	// 0 = server-side default (1) ; 2-3 = HA active-active with
+	// BGP multipath. Capped at 10 by the orchestrator.
+	Replicas int32
 }
 
 func (c *NetworkClient) CreateRouter(ctx context.Context, o CreateRouterOpts) (uuid string, retErr error) {
@@ -299,6 +306,8 @@ func (c *NetworkClient) CreateRouter(ctx context.Context, o CreateRouterOpts) (u
 	resp, err := rpc.CreateRouter(cctx, &netv1.CreateRouterRequest{
 		Project: o.Project, Name: o.Name, Kind: o.Kind, Backend: o.Backend,
 		Networks: o.Networks, External: o.External,
+		Prefixes: o.Prefixes,
+		Replicas: o.Replicas,
 	})
 	if err != nil {
 		return "", err
