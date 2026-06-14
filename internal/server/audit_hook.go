@@ -93,4 +93,26 @@ func Audit(ctx context.Context, logger audit.Logger, action, kind, id, result st
 		ev.Result = "ok"
 	}
 	logger.Log(ctx, ev)
+	// Mirror to the prometheus AuditEvents counter (when wired) so
+	// operators can alert on surge — auth.callback.failed +
+	// auth.callback.throttled are the canonical brute-force
+	// signals. Labels are kept low-cardinality : the action prefix
+	// up to the first dot (auth, az, rack, host, vm, …) + the
+	// result, never the full action string + never the subject.
+	if metrics != nil && metrics.AuditEvents != nil {
+		metrics.AuditEvents.WithLabelValues(auditActionPrefix(ev.Action), ev.Result).Inc()
+	}
+}
+
+// auditActionPrefix returns the bit of `action` before the first
+// dot, so a label cardinality of ~dozens (auth, az, rack, host, vm,
+// volume, dns, security-group, scheduling-rule, plugin, …) instead
+// of thousands. "az.create" → "az". No dot → the action itself.
+func auditActionPrefix(action string) string {
+	for i := 0; i < len(action); i++ {
+		if action[i] == '.' {
+			return action[:i]
+		}
+	}
+	return action
 }
