@@ -84,6 +84,15 @@ export const getResources = async (): Promise<ResourceMeta[]> => {
   return (data ?? []) as ResourceMeta[];
 };
 
+// /api/version — operator-facing build identifier. Defaults to
+// "dev" when the binary wasn't linker-stamped (-ldflags
+// -X main.version=...). The footer polls this once at mount.
+export const getVersion = async (): Promise<string> => {
+  const { data, error } = await client.GET('/api/version');
+  if (error) throwErr(error);
+  return (data?.version ?? 'dev') as string;
+};
+
 // ---- /api/resources/{id} paginated rows ---------------------------
 
 export interface Page<T> {

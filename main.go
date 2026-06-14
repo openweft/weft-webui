@@ -315,6 +315,7 @@ func run() error {
 		AllowedOrigins:      cfg.AllowedOrigins,
 		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
 		PolicyStrict: cfg.PolicyStrict,
+		Version:      version,
 		KeypairAllowlist:        keypairAllow,
 		KeypairAudience:         keypairAudience,
 		SessionStoreForKeypair:  keypairSessions,
