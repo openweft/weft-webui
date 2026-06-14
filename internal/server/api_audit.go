@@ -38,9 +38,10 @@ func SetAuditTailer(t auditTailer) {
 }
 
 type auditTailInput struct {
-	Limit  int    `query:"limit" doc:"How many recent events to return" minimum:"1" maximum:"1000"`
-	Action string `query:"action" doc:"Optional substring filter on event.action (e.g. \"auth.\", \"az.\")" maxLength:"64"`
-	Result string `query:"result" doc:"Optional exact-match filter on event.result (\"ok\", \"error\")" enum:",ok,error"`
+	Limit   int    `query:"limit" doc:"How many recent events to return" minimum:"1" maximum:"1000"`
+	Action  string `query:"action" doc:"Optional substring filter on event.action (e.g. \"auth.\", \"az.\")" maxLength:"64"`
+	Result  string `query:"result" doc:"Optional exact-match filter on event.result (\"ok\", \"error\")" enum:",ok,error"`
+	Subject string `query:"subject" doc:"Optional substring filter on event.subject (the OIDC sub / email of the actor)" maxLength:"128"`
 }
 
 // AuditEventDTO mirrors audit.Event but with JSON-friendly defaults
@@ -117,7 +118,7 @@ func mountAuditAPI(api huma.API, scope Scope) {
 		// pre-filter window at 10x the limit so a tenant with very
 		// little activity doesn't pin the reader on a huge log.
 		fetch := limit
-		if tenantFilter != "" || in.Action != "" || in.Result != "" {
+		if tenantFilter != "" || in.Action != "" || in.Result != "" || in.Subject != "" {
 			fetch = limit * 10
 			if fetch > 10000 {
 				fetch = 10000
@@ -134,6 +135,9 @@ func mountAuditAPI(api huma.API, scope Scope) {
 				continue
 			}
 			if in.Result != "" && ev.Result != in.Result {
+				continue
+			}
+			if in.Subject != "" && !containsFold(ev.Subject, in.Subject) {
 				continue
 			}
 			if tenantFilter != "" && ev.Tenant != tenantFilter {

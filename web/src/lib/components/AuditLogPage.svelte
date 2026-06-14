@@ -21,6 +21,7 @@
   // Server-side filter knobs.
   let filterAction = $state('');
   let filterResult = $state<'' | 'ok' | 'error'>('');
+  let filterSubject = $state('');
   let limit = $state(200);
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -31,6 +32,7 @@
         limit,
         action: filterAction || undefined,
         result: filterResult || undefined,
+        subject: filterSubject || undefined,
       });
       events = r.events;
       enabled = r.enabled;
@@ -51,6 +53,7 @@
   $effect(() => {
     void filterAction;
     void filterResult;
+    void filterSubject;
     void limit;
     refresh();
   });
@@ -124,6 +127,11 @@
         <option value="ok">ok</option>
         <option value="error">error</option>
       </select>
+    </label>
+    <label class="form-control">
+      <span class="label-text mb-1 text-xs">Subject contains</span>
+      <input class="input input-bordered input-sm w-48" placeholder="alice@... or oidc sub"
+        bind:value={filterSubject}/>
     </label>
     <label class="form-control">
       <span class="label-text mb-1 text-xs">Tail size</span>
