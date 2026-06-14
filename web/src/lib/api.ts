@@ -1059,6 +1059,12 @@ export interface CreateNetworkBody {
   gateway?: string;
   type?: string;
   dns_servers?: string[];
+  /** Edge-attachment mode for floating IPs : "bgp" (default) or "vlan". */
+  external_mode?: 'bgp' | 'vlan';
+  /** 802.1Q VLAN tag when external_mode == "vlan". 0 = untagged trunk. */
+  vlan?: number;
+  /** Host NIC name (e.g. "eth0", "bond0") when external_mode == "vlan". */
+  parent_interface?: string;
 }
 
 export const createNetwork = async (b: CreateNetworkBody) => {

@@ -22,6 +22,15 @@
   let type = $state<'nat' | 'overlay' | 'wireguard'>('overlay');
   let dnsServers = $state(''); // comma-separated input → []string
 
+  // Edge-attachment for floating IPs : default "bgp" matches the
+  // existing data-plane behaviour. Switching to "vlan" reveals the
+  // VLAN + parent_interface fields and turns the network into an
+  // L2-attached one (academic / enterprise where the establishment
+  // gives you a VLAN trunk + subnet, no routing protocol).
+  let externalMode = $state<'bgp' | 'vlan'>('bgp');
+  let vlan = $state<number>(0);
+  let parentInterface = $state('');
+
   let project = $state('');
   let error = $state('');
   let busy = $state(false);
@@ -46,6 +55,10 @@
       error = 'name and CIDR are required';
       return;
     }
+    if (externalMode === 'vlan' && !parentInterface.trim()) {
+      error = 'parent_interface is required when external_mode == "vlan"';
+      return;
+    }
     busy = true;
     try {
       await createNetwork({
@@ -54,6 +67,9 @@
         gateway: gateway.trim(),
         type,
         dns_servers: dnsServers.split(',').map((s) => s.trim()).filter(Boolean),
+        external_mode: externalMode,
+        vlan: externalMode === 'vlan' ? Number(vlan) || 0 : undefined,
+        parent_interface: externalMode === 'vlan' ? parentInterface.trim() : undefined,
       });
       onCreated();
       reset();
@@ -68,6 +84,7 @@
   function reset() {
     name = ''; cidr = '10.30.0.0/16'; gateway = '';
     type = 'overlay'; dnsServers = ''; error = '';
+    externalMode = 'bgp'; vlan = 0; parentInterface = '';
   }
   function cancel() { open = false; reset(); }
 </script>
@@ -114,6 +131,49 @@
       <span class="label-text text-xs">DNS servers (comma-separated)</span>
       <input class="input input-sm input-bordered font-mono" placeholder="10.0.0.53, 1.1.1.1" bind:value={dnsServers} />
     </label>
+
+    <!--
+      Edge attachment for floating IPs. Default 'bgp' keeps the
+      historic behaviour (per-tenant weft-router microVM announces
+      /32 via BGP). 'vlan' is the academic / enterprise path where
+      the establishment gives a VLAN trunk + subnet and weft-agent
+      attaches a macvlan on the host running each VM.
+    -->
+    <div class="mt-4 rounded-box border border-base-300 p-3">
+      <div class="text-xs font-semibold uppercase text-base-content/70">Floating-IP edge attachment</div>
+      <div class="mt-2 grid grid-cols-2 gap-2">
+        {#each [
+          { v: 'bgp',  label: 'BGP /32',  desc: 'Per-tenant weft-router announces' },
+          { v: 'vlan', label: 'VLAN L2',  desc: 'Host attaches macvlan + ARP/gARP' },
+        ] as m (m.v)}
+          <label class="cursor-pointer rounded-box border p-2 text-left text-sm"
+            class:border-primary={externalMode === m.v}
+            class:border-base-300={externalMode !== m.v}>
+            <input type="radio" name="extmode" class="hidden" value={m.v}
+              checked={externalMode === m.v}
+              onchange={() => (externalMode = m.v as typeof externalMode)} />
+            <div class="font-medium">{m.label}</div>
+            <div class="text-xs text-base-content/60">{m.desc}</div>
+          </label>
+        {/each}
+      </div>
+
+      {#if externalMode === 'vlan'}
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="form-control">
+            <span class="label-text text-xs">VLAN (0 = untagged trunk)</span>
+            <input type="number" min="0" max="4094"
+              class="input input-sm input-bordered font-mono"
+              placeholder="100" bind:value={vlan} />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Parent interface (host NIC)</span>
+            <input class="input input-sm input-bordered font-mono"
+              placeholder="eth0" bind:value={parentInterface} required />
+          </label>
+        </div>
+      {/if}
+    </div>
 
     {#if error}<div class="mt-3 alert alert-error py-2 text-sm">{error}</div>{/if}
 
