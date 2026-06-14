@@ -5469,7 +5469,7 @@
   },
   "info": {
     "title": "Weft WebUI API",
-    "version": "v1"
+    "version": "dev"
   },
   "openapi": "3.1.0",
   "paths": {
