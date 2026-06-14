@@ -80,16 +80,32 @@ func mountPluginsAPI(api huma.API, scope Scope) {
 		return out, nil
 	})
 
+	// Capture infra-portal vs tenant-portal at mount time : tenant
+	// callers see only instances in projects under their own tenant.
+	infraPlugins := scope.Has(ScopeAdmin)
 	huma.Register(api, huma.Operation{
 		OperationID: "list-plugin-instances",
 		Method:      "GET",
 		Path:        "/api/plugins/installed",
 		Summary:     "List installed plugin instances",
-		Description: "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.",
+		Description: "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). The tenant portal narrows the list to instances in projects owned by the caller's tenant ; the infra portal sees every instance.",
 		Tags:        []string{"plugins"},
 	}, func(ctx context.Context, _ *struct{}) (*listPluginInstancesOutput, error) {
 		out := &listPluginInstancesOutput{}
-		out.Body = listPluginInstances(ctx)
+		all := listPluginInstances(ctx)
+		if infraPlugins {
+			out.Body = all
+			return out, nil
+		}
+		// Tenant-scope : narrow to instances in projects owned by the
+		// caller's tenant. Empty session tenant → empty list
+		// (fail-closed, never leak cross-tenant on a misconfigured
+		// caller).
+		var tenant string
+		if u := auth.UserFromContext(ctx); u != nil {
+			tenant = u.Tenant
+		}
+		out.Body = filterPluginInstancesByTenant(all, tenant)
 		return out, nil
 	})
 
@@ -518,6 +534,28 @@ func mapPluginInputType(declared string, secret bool) string {
 	default:
 		return declared
 	}
+}
+
+// filterPluginInstancesByTenant returns the subset of `all` whose
+// Project is owned by `tenant` (per tenantsDB.projectsInTenant).
+// Empty tenant → empty slice — fail-closed. Pure function for unit
+// tests ; the handler path always invokes it with the session's
+// tenant.
+func filterPluginInstancesByTenant(all []PluginInstance, tenant string) []PluginInstance {
+	if tenant == "" {
+		return []PluginInstance{}
+	}
+	allowed := map[string]struct{}{}
+	for _, p := range tenantsDB.projectsInTenant(tenant) {
+		allowed[p] = struct{}{}
+	}
+	out := make([]PluginInstance, 0, len(all))
+	for _, inst := range all {
+		if _, ok := allowed[inst.Project]; ok {
+			out = append(out, inst)
+		}
+	}
+	return out
 }
 
 func listPluginInstances(ctx context.Context) []PluginInstance {
