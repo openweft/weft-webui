@@ -1151,7 +1151,7 @@ export interface paths {
         };
         /**
          * List installed plugin instances
-         * @description Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.
+         * @description Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). The tenant portal narrows the list to instances in projects owned by the caller's tenant ; the infra portal sees every instance.
          */
         get: operations["list-plugin-instances"];
         put?: never;
@@ -4426,6 +4426,8 @@ export interface operations {
                 action?: string;
                 /** @description Optional exact-match filter on event.result ("ok", "error") */
                 result?: "" | "ok" | "error";
+                /** @description Optional substring filter on event.subject (the OIDC sub / email of the actor) */
+                subject?: string;
             };
             header?: never;
             path?: never;

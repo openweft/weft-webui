@@ -5395,6 +5395,17 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Optional substring filter on event.subject (the OIDC sub / email of the actor)",
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "description": "Optional substring filter on event.subject (the OIDC sub / email of the actor)",
+              "maxLength": 128,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9298,7 +9309,7 @@
     },
     "/api/plugins/installed": {
       "get": {
-        "description": "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). Includes the bound VMs the instance manages, the install timestamp, and a status flag.",
+        "description": "Surfaces each instance the operator has provisioned via `weft plugin install` (or via the dashboard's plugin install drawer). The tenant portal narrows the list to instances in projects owned by the caller's tenant ; the infra portal sees every instance.",
         "operationId": "list-plugin-instances",
         "responses": {
           "200": {

@@ -6,6 +6,7 @@ package server
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,6 +122,65 @@ func TestAuditLog_FilterByResult(t *testing.T) {
 	}
 	if len(body.Events) != 1 {
 		t.Errorf("want 1 error event, got %d", len(body.Events))
+	}
+}
+
+func TestAuditLog_FilterBySubject(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+
+	auditTail = &stubTailer{events: []audit.Event{
+		{Action: "vm.create", Subject: "alice@acme.example"},
+		{Action: "vm.delete", Subject: "bob@globex.example"},
+		{Action: "az.update", Subject: "alice@acme.example"},
+		{Action: "az.create", Subject: "carol@platform.example"},
+	}}
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	var body struct {
+		Events []map[string]any `json:"events"`
+	}
+	// Substring match : "alice" hits two events.
+	code := hit(t, srv, "GET", "/api/audit-log?subject=alice", nil, &body)
+	if code != 200 {
+		t.Fatalf("status = %d", code)
+	}
+	if len(body.Events) != 2 {
+		t.Errorf("want 2 alice events, got %d : %+v", len(body.Events), body.Events)
+	}
+	for _, ev := range body.Events {
+		if !strings.Contains(str(ev["subject"]), "alice") {
+			t.Errorf("event without alice in subject : %+v", ev)
+		}
+	}
+}
+
+func TestAuditLog_SubjectFilterIsCaseInsensitive(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+
+	auditTail = &stubTailer{events: []audit.Event{
+		{Action: "vm.create", Subject: "Alice@ACME.example"},
+		{Action: "vm.create", Subject: "bob@globex.example"},
+	}}
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	var body struct {
+		Events []map[string]any `json:"events"`
+	}
+	// Search "ALICE" — capital — must still match the mixed-case
+	// Subject. Operators dealing with OIDC subs that have varied
+	// case shouldn't have to retype with the exact casing.
+	code := hit(t, srv, "GET", "/api/audit-log?subject=ALICE", nil, &body)
+	if code != 200 {
+		t.Fatalf("status = %d", code)
+	}
+	if len(body.Events) != 1 {
+		t.Errorf("case-insensitive ALICE should match Alice@ACME — got %d events", len(body.Events))
 	}
 }
 

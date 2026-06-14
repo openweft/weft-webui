@@ -214,6 +214,7 @@ export interface AuditTailOpts {
   limit?: number;
   action?: string;
   result?: '' | 'ok' | 'error';
+  subject?: string;
 }
 
 export const tailAuditLog = async (
@@ -225,6 +226,7 @@ export const tailAuditLog = async (
         limit: opts.limit,
         action: opts.action,
         result: opts.result,
+        subject: opts.subject,
       },
     },
   });
