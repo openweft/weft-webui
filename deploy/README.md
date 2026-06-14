@@ -99,6 +99,27 @@ the source of truth shifts to etcd. The JSON layer stays around as
 the in-process cache so the dashboard works through brief controller
 outages.
 
+### Backup
+
+`deploy/scripts/weft-webui-backup.sh` packages every persistence
+path declared in `/etc/default/weft-webui` (or the env vars in the
+current shell) plus the sibling `<path>.history/` rotation
+directories plus the audit log into one timestamped tarball :
+
+```sh
+sudo install -m 0755 deploy/scripts/weft-webui-backup.sh \
+  /usr/local/bin/weft-webui-backup.sh
+sudo /usr/local/bin/weft-webui-backup.sh \
+  /var/backups/weft-webui-$(date +%F).tar.gz
+```
+
+A MANIFEST file inside the tarball records hostname + timestamp +
+the source paths so a cross-cluster restore can refuse mismatched
+metadata. Drop the script into cron / a borg pre-hook / Restic
+pre-exec and the dashboard's persisted state survives a
+node-reimage. Restore is a `tar -x` into `/`, then
+`systemctl restart weft-webui`.
+
 ## Operational tunables
 
 | env                                | default        | purpose                                              |
