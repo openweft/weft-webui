@@ -1044,6 +1044,55 @@
         ],
         "type": "object"
       },
+      "BuildInfoBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/BuildInfoBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "build_time": {
+            "description": "RFC3339 commit time of the source the binary was built from. Empty in non-VCS builds.",
+            "examples": [
+              "2026-06-02T14:30:00Z"
+            ],
+            "type": "string"
+          },
+          "commit": {
+            "description": "Git revision the binary was built from. Empty when built outside a VCS checkout (e.g. tarball + go install).",
+            "examples": [
+              "a1b2c3d…"
+            ],
+            "type": "string"
+          },
+          "dirty": {
+            "description": "True when the working tree was dirty at build time (uncommitted changes).",
+            "type": "boolean"
+          },
+          "go_version": {
+            "examples": [
+              "go1.26.4"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "v0.4.7"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "go_version"
+        ],
+        "type": "object"
+      },
       "CascadeStruct": {
         "additionalProperties": false,
         "properties": {
@@ -6424,6 +6473,38 @@
         "summary": "Atomically set a bucket's policy",
         "tags": [
           "buckets"
+        ]
+      }
+    },
+    "/api/build-info": {
+      "get": {
+        "description": "Strictly more detail than /api/version. Reads runtime/debug.BuildInfo for go_version + VCS commit + VCS time (populated automatically by `go build` on a clean checkout). Operators verifying a rolling deploy can cross-check the commit hash against what's expected, not just the human-friendly version tag.",
+        "operationId": "build-info",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildInfoBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Detailed build identifier : version + go runtime + commit + build time",
+        "tags": [
+          "health"
         ]
       }
     },
