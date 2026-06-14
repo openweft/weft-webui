@@ -124,6 +124,76 @@ func TestAuditLog_FilterByResult(t *testing.T) {
 	}
 }
 
+func TestAuditLog_TenantPortalFiltersByOwnTenant(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+
+	// Three tenants' events in the underlying log ; the tenant
+	// portal called with Tenant=acme MUST only see acme's events.
+	auditTail = &stubTailer{events: []audit.Event{
+		{Action: "vm.create", Tenant: "acme", Subject: "alice@acme"},
+		{Action: "vm.create", Tenant: "globex", Subject: "bob@globex"},
+		{Action: "vm.create", Tenant: "acme", Subject: "alice@acme"},
+		{Action: "az.create", Tenant: "", Subject: "platform-admin"},
+	}}
+
+	srv := httptest.NewServer(newE2EHandlerForTenant(t, "acme"))
+	t.Cleanup(srv.Close)
+
+	// Dev-mode middleware reads the tenant from /api/session/scope
+	// rather than the MockUser fields (intentional — operators
+	// switch scope live without re-logging-in). Post the scope
+	// before the audit query.
+	if c := hit(t, srv, "POST", "/api/session/scope",
+		map[string]any{"tenant": "acme", "project": ""}, nil); c != 200 && c != 204 {
+		t.Fatalf("set scope : status %d", c)
+	}
+
+	var body struct {
+		Events []map[string]any `json:"events"`
+	}
+	code := hit(t, srv, "GET", "/api/audit-log?limit=50", nil, &body)
+	if code != 200 {
+		t.Fatalf("status = %d", code)
+	}
+	if len(body.Events) != 2 {
+		t.Fatalf("want 2 acme events, got %d (cross-tenant leak ?) ; events=%+v", len(body.Events), body.Events)
+	}
+	for _, ev := range body.Events {
+		if ev["tenant"] != "acme" {
+			t.Errorf("tenant %q leaked into acme portal", ev["tenant"])
+		}
+	}
+}
+
+func TestAuditLog_InfraPortalSeesAllTenants(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+
+	// Same fixture as the previous test ; infra portal sees every
+	// event regardless of Tenant.
+	auditTail = &stubTailer{events: []audit.Event{
+		{Action: "vm.create", Tenant: "acme"},
+		{Action: "vm.create", Tenant: "globex"},
+		{Action: "vm.create", Tenant: "acme"},
+		{Action: "az.create", Tenant: ""},
+	}}
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	var body struct {
+		Events []map[string]any `json:"events"`
+	}
+	code := hit(t, srv, "GET", "/api/audit-log?limit=50", nil, &body)
+	if code != 200 {
+		t.Fatalf("status = %d", code)
+	}
+	if len(body.Events) != 4 {
+		t.Errorf("infra portal should see all 4 events, got %d", len(body.Events))
+	}
+}
+
 func TestAuditLog_UserListenerHidesEndpoint(t *testing.T) {
 	srv := httptest.NewServer(newE2EHandler(t, ScopeUser))
 	t.Cleanup(srv.Close)

@@ -5354,7 +5354,7 @@
   "paths": {
     "/api/audit-log": {
       "get": {
-        "description": "Returns the most recent N events from the audit JSONL file (newest first). Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
+        "description": "Returns the most recent N events from the audit JSONL file (newest first). The tenant portal narrows the view to events tagged with the caller's own tenant ; the infra portal sees every event. Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
         "operationId": "tail-audit-log",
         "parameters": [
           {
@@ -5419,7 +5419,7 @@
             "description": "Error"
           }
         },
-        "summary": "Tail the recent audit log entries (cluster-admin)",
+        "summary": "Tail the recent audit log entries",
         "tags": [
           "audit"
         ]
