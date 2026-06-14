@@ -196,6 +196,51 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 		return &vmLogsOutput{Body: *out}, nil
 	})
 
+	huma.Register(api, huma.Operation{
+		OperationID: "vm-network-diag",
+		Method:      "GET",
+		Path:        "/api/microvms/{name}/network-diag",
+		Summary:     "Aggregate networks + floating IPs visible to a VM",
+		Description: "Mirrors `weft network diag <vm-name>` : lists networks in scope plus every floating IP mapped to this VM. Read-only.",
+		Tags:        []string{"microvms", "inspect"},
+	}, func(ctx context.Context, in *vmProjectInput) (*vmNetworkDiagOutput, error) {
+		if err := requireLiveCtx(); err != nil {
+			return nil, err
+		}
+		project, err := resolveVMProjectCtx(ctx, in.Project)
+		if err != nil {
+			return nil, err
+		}
+		nets, _, nerr := live.ListNetworks(ctx, project, wclient.ListOpts{Limit: 200})
+		if nerr != nil {
+			return nil, huma.Error502BadGateway("ListNetworks: " + nerr.Error())
+		}
+		fips, _, ferr := live.ListFloatingIPs(ctx, project, wclient.ListOpts{Limit: 500})
+		if ferr != nil {
+			return nil, huma.Error502BadGateway("ListFloatingIPs: " + ferr.Error())
+		}
+		mapped := make([]map[string]any, 0, 4)
+		for _, f := range fips {
+			if s, _ := f["mapped_to"].(string); s == in.Name {
+				mapped = append(mapped, f)
+			}
+		}
+		// Ports : best-effort — a fresh VM may not have any yet.
+		ports, perr := live.ListPortsForVM(ctx, "", in.Name, project)
+		if perr != nil {
+			// Don't fail the whole diag if Ports aren't reachable
+			// (e.g. older daemon without the RPC). Surface as a
+			// warning slot instead — empty list + non-fatal.
+			ports = nil
+		}
+		return &vmNetworkDiagOutput{Body: VMNetworkDiagBody{
+			VMName:      in.Name,
+			Networks:    nets,
+			FloatingIPs: mapped,
+			Ports:       ports,
+		}}, nil
+	})
+
 	// --- Create ---------------------------------------------------
 
 	huma.Register(api, huma.Operation{
@@ -246,7 +291,7 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 				warnings = append(warnings, "ingress=floating_ip but no IngressFloatingIP UUID — allocation flow not wired here ; allocate then Map from the Floating IPs page")
 				break
 			}
-			if err := live.MapFloatingIP(ctx, in.Body.IngressFloatingIP, "vm", in.Body.Name); err != nil {
+			if err := live.MapFloatingIP(ctx, in.Body.IngressFloatingIP, "vm", in.Body.Name, 0); err != nil {
 				warnings = append(warnings, "MapFloatingIP: "+err.Error())
 			}
 		case "loadbalancer":
@@ -377,6 +422,18 @@ type createVMOutput struct {
 type vmStatusOutput  struct{ Body wclient.VMInfo }
 type vmTimingsOutput struct{ Body []wclient.VMTimingEvent }
 type vmLogsOutput    struct{ Body wclient.VMLogsResult }
+
+// VMNetworkDiagBody mirrors the CLI `weft network diag` output : every
+// network in scope, the floating IPs filtered to mapped_to==vm, plus
+// every Port currently attached to the VM (MAC/IP/security-groups
+// drive the host-side portsec anti-spoof reconciler).
+type VMNetworkDiagBody struct {
+	VMName      string           `json:"vm_name"`
+	Networks    []map[string]any `json:"networks"`
+	FloatingIPs []map[string]any `json:"floating_ips"`
+	Ports       []map[string]any `json:"ports,omitempty"`
+}
+type vmNetworkDiagOutput struct{ Body VMNetworkDiagBody }
 
 // passthroughOutput is the response shape for endpoints that
 // forward whatever the live client returned without re-typing.

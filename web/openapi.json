@@ -1429,6 +1429,14 @@
               "null"
             ]
           },
+          "external_mode": {
+            "description": "'bgp' (default) or 'vlan' for L2-attached subnets",
+            "enum": [
+              "bgp",
+              "vlan"
+            ],
+            "type": "string"
+          },
           "gateway": {
             "type": "string"
           },
@@ -1437,9 +1445,20 @@
             "minLength": 1,
             "type": "string"
           },
-          "type": {
-            "description": "e.g. 'wireguard' / 'flat'",
+          "parent_interface": {
+            "description": "Host NIC name for the macvlan when external_mode == 'vlan'",
             "type": "string"
+          },
+          "type": {
+            "description": "e.g. 'wireguard' / 'flat' / 'mesh' / 'bridged'",
+            "type": "string"
+          },
+          "vlan": {
+            "description": "802.1Q tag when external_mode == 'vlan' ; 0 = untagged trunk",
+            "format": "int32",
+            "maximum": 4094,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -1512,6 +1531,23 @@
               "array",
               "null"
             ]
+          },
+          "prefixes": {
+            "description": "CIDRs the router advertises (kind=egress + backend=gobgp)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "replicas": {
+            "description": "Number of weft-router microVMs (HA). 0 = server default (1).",
+            "format": "int32",
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -2773,6 +2809,13 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
+          },
+          "rate_limit_pps": {
+            "description": "Inbound packets/sec cap (0=unlimited, capped at 100000)",
+            "format": "int32",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
           },
           "target_kind": {
             "enum": [
@@ -5288,6 +5331,59 @@
         "required": [
           "contents",
           "total_bytes"
+        ],
+        "type": "object"
+      },
+      "VMNetworkDiagBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VMNetworkDiagBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "floating_ips": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "networks": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ports": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "vm_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "vm_name",
+          "networks",
+          "floating_ips"
         ],
         "type": "object"
       },
@@ -8456,6 +8552,63 @@
         "tags": [
           "microvms",
           "metrics"
+        ]
+      }
+    },
+    "/api/microvms/{name}/network-diag": {
+      "get": {
+        "description": "Mirrors `weft network diag \u003cvm-name\u003e` : lists networks in scope plus every floating IP mapped to this VM. Read-only.",
+        "operationId": "vm-network-diag",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMNetworkDiagBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Aggregate networks + floating IPs visible to a VM",
+        "tags": [
+          "microvms",
+          "inspect"
         ]
       }
     },

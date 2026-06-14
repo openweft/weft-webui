@@ -422,10 +422,11 @@ func mountFloatingIPsAPI(api huma.API) {
 		if in.Body.TargetName == "" {
 			return nil, huma.Error400BadRequest("target_name is required")
 		}
-		err := live.MapFloatingIP(ctx, in.UUID, in.Body.TargetKind, in.Body.TargetName)
+		err := live.MapFloatingIP(ctx, in.UUID, in.Body.TargetKind, in.Body.TargetName, in.Body.RateLimitPPS)
 		Audit(ctx, auditLogger, "floating-ip.map", "floating-ip", in.UUID, "", err, map[string]string{
-			"target_kind": in.Body.TargetKind,
-			"target_name": in.Body.TargetName,
+			"target_kind":    in.Body.TargetKind,
+			"target_name":    in.Body.TargetName,
+			"rate_limit_pps": strconv.Itoa(int(in.Body.RateLimitPPS)),
 		})
 		if err != nil {
 			return nil, huma.Error502BadGateway("live: " + err.Error())
@@ -1506,8 +1507,9 @@ type allocateFloatingIPInput struct {
 type mapFloatingIPInput struct {
 	UUID string `path:"uuid" minLength:"1"`
 	Body struct {
-		TargetKind string `json:"target_kind" enum:"vm,lb"`
-		TargetName string `json:"target_name" minLength:"1"`
+		TargetKind   string `json:"target_kind" enum:"vm,lb"`
+		TargetName   string `json:"target_name" minLength:"1"`
+		RateLimitPPS int32  `json:"rate_limit_pps,omitempty" doc:"Inbound packets/sec cap (0=unlimited, capped at 100000)" minimum:"0" maximum:"100000"`
 	}
 }
 

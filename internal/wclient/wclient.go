@@ -220,14 +220,55 @@ func (c *Client) ListNetworks(ctx context.Context, project string, opts ListOpts
 	out := make([]map[string]any, 0, len(resp.GetNetworks()))
 	for _, n := range resp.GetNetworks() {
 		out = append(out, map[string]any{
-			"name":    n.Name,
-			"cidr":    n.Cidr,
-			"type":    n.Type,
-			"gateway": n.Gateway,
-			"created": tsDate(n.CreatedAtUnixNs),
+			"uuid":             n.Uuid,
+			"project":          n.ProjectUuid,
+			"name":             n.Name,
+			"cidr":             n.Cidr,
+			"type":             n.Type,
+			"gateway":          n.Gateway,
+			"external_mode":    n.ExternalMode,
+			"vlan":             int(n.Vlan),
+			"parent_interface": n.ParentInterface,
+			"created":          tsDate(n.CreatedAtUnixNs),
 		})
 	}
 	return out, resp.GetNextPageToken(), nil
+}
+
+// ListPortsForVM returns every NIC binding for the named VM.
+// Either vmUUID or (vmName + project) must be supplied ; the server
+// resolves and authorises.
+func (c *Client) ListPortsForVM(ctx context.Context, vmUUID, vmName, project string) (ports []map[string]any, retErr error) {
+	defer c.measured("ListPortsForVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.ListPortsForVM(cctx, &weftv1.ListPortsForVMRequest{
+		VmUuid: vmUUID, VmName: vmName, Project: project,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(resp.GetPorts()))
+	for _, p := range resp.GetPorts() {
+		out = append(out, map[string]any{
+			"uuid":            p.Uuid,
+			"project":         p.ProjectUuid,
+			"vm_uuid":         p.VmUuid,
+			"network_uuid":    p.NetworkUuid,
+			"mac":             p.Mac,
+			"ip":              p.Ip,
+			"security_groups": p.SecurityGroups,
+			"ingress_mbps":    int(p.IngressMbps),
+			"egress_mbps":     int(p.EgressMbps),
+			"mesh_endpoint":   p.MeshEndpoint,
+			"created":         tsDate(p.CreatedAtUnixNs),
+		})
+	}
+	return out, nil
 }
 
 func (c *Client) ListHosts(ctx context.Context, az string, opts ListOpts) (rows []map[string]any, next string, retErr error) {
@@ -1214,12 +1255,13 @@ func (c *Client) ListFloatingIPs(ctx context.Context, project string, opts ListO
 	out := make([]map[string]any, 0, len(resp.GetFloatingIps()))
 	for _, f := range resp.GetFloatingIps() {
 		out = append(out, map[string]any{
-			"uuid":      f.Uuid,
-			"address":   f.Address,
-			"network":   f.Network,
-			"project":   f.ProjectUuid,
-			"mapped_to": f.MappedTo,
-			"status":    f.Status,
+			"uuid":           f.Uuid,
+			"address":        f.Address,
+			"network":        f.Network,
+			"project":        f.ProjectUuid,
+			"mapped_to":      f.MappedTo,
+			"status":         f.Status,
+			"rate_limit_pps": int(f.RateLimitPps),
 		})
 	}
 	return out, resp.GetNextPageToken(), nil
@@ -1255,7 +1297,7 @@ func (c *Client) ReleaseFloatingIP(ctx context.Context, uuid string) (retErr err
 	return err
 }
 
-func (c *Client) MapFloatingIP(ctx context.Context, uuid, targetKind, targetName string) (retErr error) {
+func (c *Client) MapFloatingIP(ctx context.Context, uuid, targetKind, targetName string, rateLimitPPS int32) (retErr error) {
 	defer c.measured("MapFloatingIP", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -1265,6 +1307,7 @@ func (c *Client) MapFloatingIP(ctx context.Context, uuid, targetKind, targetName
 	defer cancel()
 	_, err = rpc.MapFloatingIP(cctx, &weftv1.MapFloatingIPRequest{
 		Uuid: uuid, TargetKind: targetKind, TargetName: targetName,
+		RateLimitPps: rateLimitPPS,
 	})
 	return err
 }

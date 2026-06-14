@@ -23,7 +23,7 @@ import {
   type APIFlavor, type APIScript, type APISSHKey,
   type MeBody, type APIQuota, type APIScopeEntry,
   type APITopoNetwork, type APITopoNode, type APITopologyBody,
-  type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult, type APIMetricsSnapshot,
+  type APIVMInfo, type APIVMTimingEvent, type APIVMLogsResult, type APIVMNetworkDiag, type APIMetricsSnapshot,
   type APISecurityRule, type APIImportResult,
   type APITenantDetail, type APITenantMember, type APITenantProjectEntry,
   type APITenantGroup, type APITenantQuotaView, type APIProjectQuotaView,
@@ -1240,10 +1240,10 @@ export const releaseFloatingIP = async (uuid: string): Promise<void> => {
   if (error) throwErr(error);
 };
 
-export const mapFloatingIP = async (uuid: string, targetKind: 'vm' | 'lb', targetName: string) => {
+export const mapFloatingIP = async (uuid: string, targetKind: 'vm' | 'lb', targetName: string, rateLimitPps: number = 0) => {
   const { data, error } = await client.POST('/api/floating-ips/{uuid}/map', {
     params: { path: { uuid } },
-    body: { target_kind: targetKind, target_name: targetName },
+    body: { target_kind: targetKind, target_name: targetName, rate_limit_pps: rateLimitPps },
   });
   if (error) throwErr(error);
   return data;
@@ -1278,6 +1278,15 @@ export const getVMTimings = async (name: string): Promise<VMTimingEvent[]> => {
 export const getVMLogs = async (name: string, tail = 65536): Promise<VMLogs> => {
   const { data, error } = await client.GET('/api/microvms/{name}/logs', {
     params: { path: { name }, query: { tail } },
+  });
+  if (error) throwErr(error);
+  return data;
+};
+
+export type VMNetworkDiag = APIVMNetworkDiag;
+export const getVMNetworkDiag = async (name: string): Promise<VMNetworkDiag> => {
+  const { data, error } = await client.GET('/api/microvms/{name}/network-diag', {
+    params: { path: { name } },
   });
   if (error) throwErr(error);
   return data;
