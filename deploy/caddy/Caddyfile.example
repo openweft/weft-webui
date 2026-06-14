@@ -1,0 +1,85 @@
+# Caddyfile.example — Caddy 2 reverse-proxy fronting weft-webui.
+#
+# Drop into /etc/caddy/sites-enabled/ (or wherever your Caddy
+# install reads vhosts), tweak the hostnames, then :
+#
+#   sudo systemctl reload caddy
+#
+# Caddy fetches the certs from Let's Encrypt automatically
+# provided the DNS A/AAAA points here + ports 80/443 are open.
+# For mTLS / internal-CA setups see the commented `tls`
+# directive at the bottom.
+
+# Public end-user portal — TLS, OIDC sign-in, project-scoped views.
+# weft-webui binds :8080 by default for this listener.
+weft.example.com {
+	encode zstd gzip
+
+	# Health probes wired to /api/healthz so an upstream LB sees the
+	# Caddy round-trip, not just the local socket.
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Everything else proxies straight through. weft-webui's CSRF
+	# Origin check needs the public Host preserved + the OIDC
+	# redirect builder reads X-Forwarded-Proto, so honour both.
+	reverse_proxy 127.0.0.1:8080 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto https
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	# Strict security headers Caddy can stamp without involving the
+	# upstream. weft-webui sets its own CSP / X-Content-Type-Options
+	# in middleware.go — these add HSTS at the edge.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		# Defence in depth — Caddy redacts these by default but
+		# stamping them explicitly survives a misconfigured upstream.
+		-Server
+	}
+}
+
+# Tenant portal — same machine, separate hostname, separate
+# weft-webui process (or the same binary on a second --tenant-addr
+# listener). Operators usually bind this on a WireGuard interface
+# so only tenant admins reach it.
+tenant.weft.example.com {
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:8082 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto https
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		-Server
+	}
+}
+
+# Infra portal — WireGuard-only by convention. Bind Caddy on the
+# WireGuard listener IP to keep this off the public Internet :
+#   bind 10.99.0.1
+#
+# infra.weft.example.com {
+#     bind 10.99.0.1
+#     reverse_proxy 127.0.0.1:8088 {
+#         header_up Host {host}
+#         header_up X-Forwarded-Proto https
+#     }
+# }
+
+# Optional : mTLS / internal-CA terminating block. Operators with
+# their own PKI swap Let's Encrypt out wholesale ; uncomment + edit.
+#
+# tls /etc/ssl/weft/server.crt /etc/ssl/weft/server.key {
+#     client_auth {
+#         mode require_and_verify
+#         trusted_ca_cert_file /etc/ssl/weft/ca.crt
+#     }
+# }

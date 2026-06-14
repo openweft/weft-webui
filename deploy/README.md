@@ -172,6 +172,35 @@ overrides ; `weft-webui --help` enumerates them.
   rotation on 503 — its mutations would succeed in memory but vanish
   on restart.
 
+## Reverse proxy & TLS via Caddy
+
+Operators using Caddy (the canonical weft front-proxy ; the agent
+embeds it for L7 routing — see
+[project_reverse_proxy_caddy](https://github.com/openweft/weft/blob/main/agent/proxy/))
+get a ready-to-edit `deploy/caddy/Caddyfile.example` :
+
+```sh
+sudo install -m 0644 deploy/caddy/Caddyfile.example \
+  /etc/caddy/sites-enabled/weft-webui.caddy
+
+# Edit the hostnames + binds, then :
+sudo systemctl reload caddy
+```
+
+The example covers the three-portal split :
+
+- `weft.example.com` → user portal (`:8080`), public, Let's Encrypt auto.
+- `tenant.weft.example.com` → tenant portal (`:8082`), public + OIDC.
+- `infra.weft.example.com` → infra portal (`:8088`), bound to a
+  WireGuard listener IP so it never reaches the public Internet.
+
+The blocks forward `X-Forwarded-Proto: https` + `Host:` so weft-
+webui's CSRF Origin check + OIDC redirect builder see the public
+hostname rather than `127.0.0.1`. HSTS is stamped at the edge.
+
+For mTLS / internal-CA, swap the auto-Let's-Encrypt with the
+commented `tls` directive at the bottom of the example.
+
 ## Reverse proxy & TLS
 
 The unit does **not** terminate TLS — front it with Caddy / nginx
