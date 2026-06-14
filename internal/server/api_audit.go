@@ -31,6 +31,15 @@ type auditTailer interface {
 	Tail(n int) ([]audit.Event, error)
 }
 
+// auditAllTailer is the extended seam : in addition to Tail (which
+// reads the current file only), TailAll walks rotated siblings too.
+// FileLogger satisfies both ; the test stub satisfies only Tail so
+// the CSV export's "include_rotated=1" branch transparently falls
+// back to the current file in unit tests.
+type auditAllTailer interface {
+	TailAll(n int) ([]audit.Event, error)
+}
+
 var auditTail auditTailer
 
 // SetAuditTailer hands the (optional) audit-log reader to the
@@ -266,7 +275,24 @@ func handleAuditCSVExport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	events, err := auditTail.Tail(limit * 5)
+	includeRotated := q.Get("include_rotated") == "1" || q.Get("include_rotated") == "true"
+	var (
+		events []audit.Event
+		err    error
+	)
+	if includeRotated {
+		if all, ok := auditTail.(auditAllTailer); ok {
+			events, err = all.TailAll(limit * 5)
+		} else {
+			// Stub tailer in unit tests doesn't expose TailAll ;
+			// silently fall back to the current file rather than
+			// 500. The full sweep matters in production where the
+			// concrete FileLogger is always wired.
+			events, err = auditTail.Tail(limit * 5)
+		}
+	} else {
+		events, err = auditTail.Tail(limit * 5)
+	}
 	if err != nil {
 		http.Error(w, "audit: tail: "+err.Error(), http.StatusInternalServerError)
 		return

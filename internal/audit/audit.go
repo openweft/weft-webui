@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -288,6 +289,74 @@ func tailJSONL(path string, size int64, n int) ([]Event, error) {
 		}
 	}
 	return events, nil
+}
+
+// TailAll behaves like Tail but reads the current file AND every
+// rotated sibling (named <base>.<RFC3339>). Returns newest-first
+// across the full set so compliance hand-offs of the form "last
+// 30 days" actually see history beyond the current rotation cycle.
+//
+// Walks newest-rotation-first so we stop reading as soon as we
+// have n events. Empty result is allowed — no current file, no
+// rotated siblings (operator just enabled audit logging).
+func (l *FileLogger) TailAll(n int) ([]Event, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	l.mu.Lock()
+	path := l.path
+	currentSize := l.size
+	l.mu.Unlock()
+
+	// Build the file list newest-first : current, then rotated
+	// siblings sorted by mtime descending.
+	type fileEntry struct {
+		path string
+		size int64
+		mod  time.Time
+	}
+	files := []fileEntry{{path: path, size: currentSize, mod: time.Now()}}
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		var rotated []fileEntry
+		for _, e := range entries {
+			if e.Type().IsDir() || !strings.HasPrefix(e.Name(), base+".") {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			rotated = append(rotated, fileEntry{
+				path: filepath.Join(dir, e.Name()),
+				size: info.Size(),
+				mod:  info.ModTime(),
+			})
+		}
+		// Newest first.
+		sort.Slice(rotated, func(i, j int) bool {
+			return rotated[i].mod.After(rotated[j].mod)
+		})
+		files = append(files, rotated...)
+	}
+
+	out := make([]Event, 0, n)
+	for _, f := range files {
+		need := n - len(out)
+		if need <= 0 {
+			break
+		}
+		evs, err := tailJSONL(f.path, f.size, need)
+		if err != nil {
+			// Per-file errors don't abort the sweep — a corrupted
+			// rotated file shouldn't deny the operator the rest.
+			continue
+		}
+		out = append(out, evs...)
+	}
+	return out, nil
 }
 
 // PruneOlderThan deletes rotated audit log files (named

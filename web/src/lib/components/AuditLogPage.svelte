@@ -117,6 +117,12 @@
     return m ? m[1] : ip;
   }
 
+  // When checked, the CSV export walks the rotated audit-log
+  // siblings too — for "give me the last 30 days" compliance
+  // requests. The in-page table always tails the current file only
+  // (5 s polling) ; this toggle only affects the download URL.
+  let exportIncludeRotated = $state(false);
+
   // Build the CSV-export URL with the same filters the in-page
   // table is showing — operator hands one file to compliance, no
   // post-processing.
@@ -128,6 +134,7 @@
     if (filterSubject) p.set('subject', filterSubject);
     if (filterSince) p.set('since', filterSince + ':00Z');
     if (filterUntil) p.set('until', filterUntil + ':00Z');
+    if (exportIncludeRotated) p.set('include_rotated', '1');
     return '/api/audit-log/export.csv?' + p.toString();
   }
 </script>
@@ -254,6 +261,14 @@
       <span class="label-text mb-1 text-xs">Until (UTC)</span>
       <input type="datetime-local" class="input input-bordered input-sm"
         bind:value={filterUntil}/>
+    </label>
+    <label class="form-control">
+      <span class="label-text mb-1 text-xs">CSV scope</span>
+      <label class="label cursor-pointer gap-2 py-1">
+        <input type="checkbox" class="checkbox checkbox-sm"
+          bind:checked={exportIncludeRotated}/>
+        <span class="label-text text-xs">include rotated files</span>
+      </label>
     </label>
     <label class="form-control">
       <span class="label-text mb-1 text-xs">Tail size</span>
