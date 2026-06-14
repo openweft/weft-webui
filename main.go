@@ -139,6 +139,28 @@ func run() error {
 		// so the dashboard can tail recent entries.
 		server.SetAuditTailer(fl)
 		logger.Info("audit log ready", "path", cfg.AuditLogPath, "rotate_bytes", cfg.AuditRotateBytes)
+
+		// Age-based retention sweep : delete rotated siblings older
+		// than AuditRetentionDays. Run once at boot + every 6h
+		// thereafter. The ticker leaks on program exit ; main's
+		// signal-handled shutdown lets the OS reclaim it cleanly.
+		if cfg.AuditRetentionDays > 0 {
+			retention := time.Duration(cfg.AuditRetentionDays) * 24 * time.Hour
+			sweep := func() {
+				removed, err := fl.PruneOlderThan(time.Now().Add(-retention))
+				if err != nil {
+					logger.Warn("audit retention sweep", "err", err.Error())
+					return
+				}
+				if removed > 0 {
+					logger.Info("audit retention sweep", "removed", removed)
+				}
+			}
+			sweep() // initial sweep — catches accumulated rotation backlog at restart
+			t := time.NewTicker(6 * time.Hour)
+			go func() { for range t.C { sweep() } }()
+			logger.Info("audit retention armed", "days", cfg.AuditRetentionDays)
+		}
 	}
 
 	// Bridge OIDC auth-lifecycle events into the audit log so a
