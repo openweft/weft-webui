@@ -117,8 +117,33 @@ A MANIFEST file inside the tarball records hostname + timestamp +
 the source paths so a cross-cluster restore can refuse mismatched
 metadata. Drop the script into cron / a borg pre-hook / Restic
 pre-exec and the dashboard's persisted state survives a
-node-reimage. Restore is a `tar -x` into `/`, then
-`systemctl restart weft-webui`.
+node-reimage.
+
+### Restore
+
+`deploy/scripts/weft-webui-restore.sh` is the companion. It reads
+the tarball, checks the MANIFEST hostname against the running box
+(refuses cross-cluster restores unless `--force`), stops the
+weft-webui systemd unit, drops every captured file into place,
+then restarts the daemon.
+
+```sh
+sudo install -m 0755 deploy/scripts/weft-webui-restore.sh \
+  /usr/local/bin/weft-webui-restore.sh
+
+# Dry-run first : prints the file list without writing.
+sudo /usr/local/bin/weft-webui-restore.sh --dry-run \
+  /var/backups/weft-webui-2026-06-02.tar.gz
+
+# Real restore.
+sudo /usr/local/bin/weft-webui-restore.sh \
+  /var/backups/weft-webui-2026-06-02.tar.gz
+```
+
+Pass `--force` only for a deliberate cross-cluster restore (e.g.
+seeding a fresh box from a peer). Without it the MANIFEST hostname
+check guards against accidentally cross-pollinating one cluster's
+sessions / audit trails into another.
 
 ## Operational tunables
 
