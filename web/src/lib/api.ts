@@ -215,6 +215,8 @@ export interface AuditTailOpts {
   action?: string;
   result?: '' | 'ok' | 'error';
   subject?: string;
+  since?: string; // RFC3339, e.g. "2026-06-02T00:00:00Z"
+  until?: string; // RFC3339
 }
 
 export const tailAuditLog = async (
@@ -227,6 +229,8 @@ export const tailAuditLog = async (
         action: opts.action,
         result: opts.result,
         subject: opts.subject,
+        since: opts.since,
+        until: opts.until,
       },
     },
   });

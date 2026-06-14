@@ -4428,6 +4428,10 @@ export interface operations {
                 result?: "" | "ok" | "error";
                 /** @description Optional substring filter on event.subject (the OIDC sub / email of the actor) */
                 subject?: string;
+                /** @description Optional RFC3339 lower bound (inclusive) on event.ts. Example : 2026-06-02T00:00:00Z */
+                since?: string;
+                /** @description Optional RFC3339 upper bound (exclusive) on event.ts. Example : 2026-06-03T00:00:00Z */
+                until?: string;
             };
             header?: never;
             path?: never;
