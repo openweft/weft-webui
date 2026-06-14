@@ -7,6 +7,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-14
+
 ### Added
 
 - **Three-portal split (user / tenant / infra) on isolated listeners
