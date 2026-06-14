@@ -9,7 +9,10 @@
   // implemented yet.
 
   import { onMount, onDestroy } from 'svelte';
-  import { tailAuditLog, type AuditEvent, type ResourceMeta } from '../api';
+  import {
+    tailAuditLog, listThrottledIPs, clearThrottledIP,
+    type AuditEvent, type ResourceMeta, type ThrottledIP,
+  } from '../api';
 
   let { meta }: { meta: ResourceMeta } = $props();
 
@@ -35,6 +38,11 @@
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
 
+  // Throttled-IP state surfaces the per-IP failure budget operators
+  // see at the top of the page : counts, lock status, "Unlock"
+  // button. Refreshed on the same 5 s tick as the event tail.
+  let throttled = $state<ThrottledIP[]>([]);
+
   async function refresh() {
     try {
       const r = await tailAuditLog({
@@ -49,6 +57,24 @@
       enabled = r.enabled;
       loadErr = '';
       lastRefresh = new Date().toLocaleTimeString();
+    } catch (e) {
+      loadErr = String(e);
+    }
+    // Throttle list is independent of the audit-log toggle — even
+    // when audit is disabled the operator may want to see who's
+    // bouncing off the gate.
+    try {
+      throttled = await listThrottledIPs();
+    } catch {
+      throttled = [];
+    }
+  }
+
+  async function unlock(ip: string) {
+    if (!confirm(`Clear the auth-callback throttle for ${ip} ?`)) return;
+    try {
+      await clearThrottledIP(ip);
+      await refresh();
     } catch (e) {
       loadErr = String(e);
     }
@@ -136,6 +162,57 @@
 
 {#if loadErr}
   <div class="alert alert-error mt-4 py-2 text-sm">{loadErr}</div>
+{/if}
+
+{#if throttled.length > 0}
+  <div class="mt-4 rounded-box border border-warning/40 bg-warning/5 p-3">
+    <div class="flex items-center gap-2 text-sm font-semibold text-warning">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Auth-callback throttle : {throttled.length} IP{throttled.length === 1 ? '' : 's'} tracked
+    </div>
+    <div class="mt-2 overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr class="text-base-content/60">
+            <th>IP</th>
+            <th>Failures</th>
+            <th>Status</th>
+            <th>Window expires</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each throttled as t (t.ip)}
+            <tr>
+              <td class="font-mono text-xs">{t.ip}</td>
+              <td>{t.failures}</td>
+              <td>
+                {#if t.locked}
+                  <span class="badge badge-sm badge-error">locked</span>
+                {:else}
+                  <span class="badge badge-sm badge-warning">tracking</span>
+                {/if}
+              </td>
+              <td class="text-xs text-base-content/70">
+                {#if t.expires_in_seconds > 0}
+                  in {t.expires_in_seconds}s
+                {:else}
+                  expired
+                {/if}
+              </td>
+              <td>
+                <button class="btn btn-xs btn-ghost" onclick={() => unlock(t.ip)}>
+                  Unlock
+                </button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </div>
 {/if}
 
 {#if !enabled}
