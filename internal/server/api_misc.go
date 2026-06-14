@@ -35,6 +35,7 @@ func mountMiscAPI(api huma.API, scope Scope) {
 	mountSummaryAPI(api, scope)
 	mountRegistryUploadAPI(api)
 	mountAuditAPI(api, scope)
+	mountAuthThrottleAPI(api, scope)
 }
 
 // ---- /api/healthz + /api/readyz -----------------------------------

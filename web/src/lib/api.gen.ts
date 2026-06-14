@@ -24,6 +24,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/throttle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List IPs currently tracked by the auth-callback throttle
+         * @description Returns every IP with a non-zero failure count in the current sliding window. An IP whose count >= 5 is currently locked ; below = it'll lock on its next failure. Use this + /api/audit-log?action=auth.callback to confirm a brute-force attempt and decide whether to extend the block list at the firewall.
+         */
+        get: operations["list-throttled-ips"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/throttle/{ip}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear an IP's failure budget (cluster-admin)
+         * @description Drops the IP's entry from the throttle counter, releasing any current lock. The operator should ONLY do this when they've confirmed (out-of-band) that the IP belongs to a legitimate user who hit the window — e.g. someone fat-fingered their OIDC redirect a few times. Every clear is audited so a malicious admin can't quietly whitelist their own spray IP.
+         */
+        delete: operations["clear-throttled-ip"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/azs": {
         parameters: {
             query?: never;
@@ -2775,6 +2815,17 @@ export interface components {
             /** Format: int64 */
             racks?: number;
         };
+        ClearThrottleResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClearThrottleResp.json
+             */
+            readonly $schema?: string;
+            /** @description True when an entry existed and was removed ; false when the IP wasn't tracked */
+            cleared: boolean;
+            ip: string;
+        };
         Column: {
             key: string;
             label: string;
@@ -3355,6 +3406,16 @@ export interface components {
             readonly $schema?: string;
             /** @description Cluster-wide compute envelope catalogue */
             flavors: components["schemas"]["APIFlavor"][] | null;
+        };
+        ListThrottledOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListThrottledOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description One row per IP with active failure history */
+            entries: components["schemas"]["ThrottledIP"][] | null;
         };
         LogEventOutput: {
             attrs?: {
@@ -4132,6 +4193,29 @@ export interface components {
              */
             volumes: number;
         };
+        ThrottledIP: {
+            /**
+             * Format: int64
+             * @description Seconds until window_ends from server.now()
+             */
+            expires_in_seconds: number;
+            /**
+             * Format: int64
+             * @description Failure count in the current window
+             */
+            failures: number;
+            /** @description RFC3339Nano of the first failure in this window */
+            first_hit: string;
+            /**
+             * @description Tracked IP
+             * @example 1.2.3.4
+             */
+            ip: string;
+            /** @description True when Failures >= threshold ; the next callback returns 429 */
+            locked: boolean;
+            /** @description RFC3339Nano when the window expires + the counter resets */
+            window_ends: string;
+        };
         TopoNetwork: {
             az: string;
             cidr: string;
@@ -4476,6 +4560,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditTailOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-throttled-ips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListThrottledOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "clear-throttled-ip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description IPv4 / IPv6 string to clear */
+                ip: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearThrottleResp"];
                 };
             };
             /** @description Error */

@@ -110,6 +110,35 @@ func (b *ipFailureBudget) recordSuccess(ip string) {
 	delete(b.entries, ip)
 }
 
+// clear drops the IP's entry unconditionally. Used by the admin
+// "unlock" endpoint when an operator confirms a legitimate user
+// got caught in the throttle window. Returns true when an entry
+// existed (so the audit event can record "lock removed" vs
+// "noop").
+func (b *ipFailureBudget) clear(ip string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.entries[ip]; !ok {
+		return false
+	}
+	delete(b.entries, ip)
+	return true
+}
+
+// snapshot returns the currently-tracked IPs with their (count,
+// firstHit). Used by the admin "list locked" endpoint so operators
+// can see who's currently bouncing off the throttle. Caller MUST
+// NOT mutate the returned map.
+func (b *ipFailureBudget) snapshot() map[string]ipFailures {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make(map[string]ipFailures, len(b.entries))
+	for k, v := range b.entries {
+		out[k] = *v
+	}
+	return out
+}
+
 // withAuthCallbackThrottle wraps the OIDC callback so we can pre-
 // reject locked IPs AND observe the handler's outcome to update
 // the counter. Other auth routes pass through untouched.

@@ -1058,6 +1058,32 @@
         },
         "type": "object"
       },
+      "ClearThrottleResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ClearThrottleResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cleared": {
+            "description": "True when an entry existed and was removed ; false when the IP wasn't tracked",
+            "type": "boolean"
+          },
+          "ip": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip",
+          "cleared"
+        ],
+        "type": "object"
+      },
       "Column": {
         "additionalProperties": false,
         "properties": {
@@ -2530,6 +2556,34 @@
         },
         "required": [
           "flavors"
+        ],
+        "type": "object"
+      },
+      "ListThrottledOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ListThrottledOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "entries": {
+            "description": "One row per IP with active failure history",
+            "items": {
+              "$ref": "#/components/schemas/ThrottledIP"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries"
         ],
         "type": "object"
       },
@@ -4570,6 +4624,49 @@
         ],
         "type": "object"
       },
+      "ThrottledIP": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_seconds": {
+            "description": "Seconds until window_ends from server.now()",
+            "format": "int64",
+            "type": "integer"
+          },
+          "failures": {
+            "description": "Failure count in the current window",
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_hit": {
+            "description": "RFC3339Nano of the first failure in this window",
+            "type": "string"
+          },
+          "ip": {
+            "description": "Tracked IP",
+            "examples": [
+              "1.2.3.4"
+            ],
+            "type": "string"
+          },
+          "locked": {
+            "description": "True when Failures \u003e= threshold ; the next callback returns 429",
+            "type": "boolean"
+          },
+          "window_ends": {
+            "description": "RFC3339Nano when the window expires + the counter resets",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip",
+          "failures",
+          "first_hit",
+          "window_ends",
+          "expires_in_seconds",
+          "locked"
+        ],
+        "type": "object"
+      },
       "TopoNetwork": {
         "additionalProperties": false,
         "properties": {
@@ -5478,6 +5575,86 @@
         },
         "summary": "Tail the recent audit log entries",
         "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/auth/throttle": {
+      "get": {
+        "description": "Returns every IP with a non-zero failure count in the current sliding window. An IP whose count \u003e= 5 is currently locked ; below = it'll lock on its next failure. Use this + /api/audit-log?action=auth.callback to confirm a brute-force attempt and decide whether to extend the block list at the firewall.",
+        "operationId": "list-throttled-ips",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListThrottledOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List IPs currently tracked by the auth-callback throttle",
+        "tags": [
+          "auth",
+          "audit"
+        ]
+      }
+    },
+    "/api/auth/throttle/{ip}": {
+      "delete": {
+        "description": "Drops the IP's entry from the throttle counter, releasing any current lock. The operator should ONLY do this when they've confirmed (out-of-band) that the IP belongs to a legitimate user who hit the window — e.g. someone fat-fingered their OIDC redirect a few times. Every clear is audited so a malicious admin can't quietly whitelist their own spray IP.",
+        "operationId": "clear-throttled-ip",
+        "parameters": [
+          {
+            "description": "IPv4 / IPv6 string to clear",
+            "in": "path",
+            "name": "ip",
+            "required": true,
+            "schema": {
+              "description": "IPv4 / IPv6 string to clear",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearThrottleResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Clear an IP's failure budget (cluster-admin)",
+        "tags": [
+          "auth",
           "audit"
         ]
       }
