@@ -93,6 +93,18 @@ export const getVersion = async (): Promise<string> => {
   return (data?.version ?? 'dev') as string;
 };
 
+// /api/build-info — richer version surface : version + go runtime
+// + VCS commit + build time + dirty flag. The sidebar footer
+// composes the human-readable "v0.5.0 (a1b2c3d*)" from this.
+export type BuildInfo =
+  paths['/api/build-info']['get']['responses']['200']['content']['application/json'];
+
+export const getBuildInfo = async (): Promise<BuildInfo> => {
+  const { data, error } = await client.GET('/api/build-info');
+  if (error) throwErr(error);
+  return data as BuildInfo;
+};
+
 // ---- /api/auth/throttle (admin) -----------------------------------
 
 export type ThrottledIP =

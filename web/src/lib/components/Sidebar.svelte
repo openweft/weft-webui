@@ -1,21 +1,40 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ResourceMeta } from '../api';
-  import { getVersion } from '../api';
+  import type { ResourceMeta, BuildInfo } from '../api';
+  import { getBuildInfo } from '../api';
   import { sectionIcon } from '../icons';
   import WeftLogo from './WeftLogo.svelte';
 
   let { grouped, active }: { grouped: { section: string; items: ResourceMeta[] }[]; active: string } =
     $props();
 
-  // /api/version — fetched once on mount. Sits in the sidebar footer
-  // so an operator verifying a rolling deploy reads it without
-  // hunting through menus. Falls back to "" when the fetch fails
-  // (the footer hides the line in that case).
-  let version = $state('');
+  // /api/build-info — fetched once on mount. Sits in the sidebar
+  // footer so an operator verifying a rolling deploy reads version
+  // + short commit + dirty marker without hunting through menus.
+  // Falls back to {} (footer hidden) when the fetch fails.
+  let buildInfo = $state<BuildInfo | null>(null);
   onMount(async () => {
-    try { version = await getVersion(); } catch { version = ''; }
+    try { buildInfo = await getBuildInfo(); } catch { buildInfo = null; }
   });
+
+  // Format the build line. version always present ; commit is 7-char
+  // short hash with a trailing "*" when dirty, like git status.
+  function buildLine(b: BuildInfo | null): string {
+    if (!b) return '';
+    let s = b.version ?? '';
+    if (b.commit) {
+      s += ' (' + b.commit.slice(0, 7) + (b.dirty ? '*' : '') + ')';
+    }
+    return s;
+  }
+  function buildTooltip(b: BuildInfo | null): string {
+    if (!b) return '';
+    const parts: string[] = [];
+    if (b.go_version) parts.push(b.go_version);
+    if (b.build_time) parts.push('built ' + b.build_time);
+    if (b.commit) parts.push('commit ' + b.commit + (b.dirty ? ' (dirty)' : ''));
+    return parts.join(' · ');
+  }
 
   // Per-section collapse state. Persisted in localStorage so the
   // operator's choice survives navigation and reloads. The key is the
@@ -132,9 +151,10 @@
     {/each}
   </nav>
 
-  {#if version}
-    <div class="border-t border-base-300 px-4 py-2 text-xs text-base-content/40">
-      build <span class="font-mono">{version}</span>
+  {#if buildInfo}
+    <div class="border-t border-base-300 px-4 py-2 text-xs text-base-content/40"
+      title={buildTooltip(buildInfo)}>
+      build <span class="font-mono">{buildLine(buildInfo)}</span>
     </div>
   {/if}
 </aside>
