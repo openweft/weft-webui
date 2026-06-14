@@ -1600,6 +1600,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sbom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Software bill of materials (CycloneDX 1.5) for the running binary
+         * @description Synthesised from runtime/debug.BuildInfo — same source the dependency-scanning side of `go list -m all` consumes. Feed to cyclonedx-cli / Grype / Trivy to surface CVEs against the linked modules. Admin-only ; the exact dependency versions are recon material for an attacker, never exposed on tenant + user portals.
+         */
+        get: operations["get-sbom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scheduling-rules": {
         parameters: {
             query?: never;
@@ -2853,6 +2873,15 @@ export interface components {
             /** @example v0.4.7 */
             version: string;
         };
+        CDXComponent: {
+            name: string;
+            purl?: string;
+            type: string;
+            version: string;
+        };
+        CDXMetadata: {
+            component: components["schemas"]["CDXComponent"];
+        };
         CascadeStruct: {
             /** Format: int64 */
             hosts?: number;
@@ -3181,6 +3210,20 @@ export interface components {
             readonly $schema?: string;
             /** @description Snapshot name (unique within the parent volume) */
             name: string;
+        };
+        CycloneDX: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CycloneDX.json
+             */
+            readonly $schema?: string;
+            bomFormat: string;
+            components: components["schemas"]["CDXComponent"][] | null;
+            metadata: components["schemas"]["CDXMetadata"];
+            specVersion: string;
+            /** Format: int64 */
+            version: number;
         };
         DeleteOutputBody: {
             /**
@@ -8134,6 +8177,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-sbom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycloneDX"];
+                };
             };
             /** @description Error */
             default: {

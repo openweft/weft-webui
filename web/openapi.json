@@ -1093,6 +1093,41 @@
         ],
         "type": "object"
       },
+      "CDXComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "purl": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "CDXMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/CDXComponent"
+          }
+        },
+        "required": [
+          "component"
+        ],
+        "type": "object"
+      },
       "CascadeStruct": {
         "additionalProperties": false,
         "properties": {
@@ -1963,6 +1998,50 @@
         },
         "required": [
           "name"
+        ],
+        "type": "object"
+      },
+      "CycloneDX": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CycloneDX.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "bomFormat": {
+            "type": "string"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/CDXComponent"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CDXMetadata"
+          },
+          "specVersion": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bomFormat",
+          "specVersion",
+          "version",
+          "metadata",
+          "components"
         ],
         "type": "object"
       },
@@ -10908,6 +10987,39 @@
         "summary": "Delete a router",
         "tags": [
           "routers"
+        ]
+      }
+    },
+    "/api/sbom": {
+      "get": {
+        "description": "Synthesised from runtime/debug.BuildInfo — same source the dependency-scanning side of `go list -m all` consumes. Feed to cyclonedx-cli / Grype / Trivy to surface CVEs against the linked modules. Admin-only ; the exact dependency versions are recon material for an attacker, never exposed on tenant + user portals.",
+        "operationId": "get-sbom",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycloneDX"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Software bill of materials (CycloneDX 1.5) for the running binary",
+        "tags": [
+          "audit",
+          "supply-chain"
         ]
       }
     },
