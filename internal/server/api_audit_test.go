@@ -125,6 +125,77 @@ func TestAuditLog_FilterByResult(t *testing.T) {
 	}
 }
 
+func TestAuditLog_FilterBySinceUntil(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+
+	d := func(h int) time.Time {
+		return time.Date(2026, 6, 2, h, 0, 0, 0, time.UTC)
+	}
+	auditTail = &stubTailer{events: []audit.Event{
+		{Action: "vm.create", Timestamp: d(8), Subject: "alice"},
+		{Action: "vm.delete", Timestamp: d(10), Subject: "alice"},
+		{Action: "az.create", Timestamp: d(13), Subject: "bob"},
+		{Action: "az.delete", Timestamp: d(15), Subject: "bob"},
+	}}
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	cases := []struct {
+		name     string
+		query    string
+		wantHits int
+	}{
+		// 09:00..14:00 = the 10:00 + 13:00 events.
+		{"since+until window", "since=2026-06-02T09:00:00Z&until=2026-06-02T14:00:00Z", 2},
+		// since only : drop events before 12:00 → keep 13:00 + 15:00.
+		{"since only", "since=2026-06-02T12:00:00Z", 2},
+		// until only : drop 13:00 + 15:00 → keep 08:00 + 10:00.
+		{"until only", "until=2026-06-02T12:00:00Z", 2},
+		// boundary : until is EXCLUSIVE — until=13:00 should NOT
+		// include the 13:00 event.
+		{"until exclusive", "until=2026-06-02T13:00:00Z", 2},
+		// boundary : since is INCLUSIVE — since=13:00 keeps the
+		// 13:00 event.
+		{"since inclusive", "since=2026-06-02T13:00:00Z", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body struct {
+				Events []map[string]any `json:"events"`
+			}
+			code := hit(t, srv, "GET", "/api/audit-log?"+tc.query, nil, &body)
+			if code != 200 {
+				t.Fatalf("status = %d", code)
+			}
+			if len(body.Events) != tc.wantHits {
+				t.Errorf("got %d events, want %d : %+v", len(body.Events), tc.wantHits, body.Events)
+			}
+		})
+	}
+}
+
+func TestAuditLog_RejectsBadTimestamps(t *testing.T) {
+	prev := auditTail
+	t.Cleanup(func() { auditTail = prev })
+	auditTail = &stubTailer{events: nil}
+
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	// Malformed since → 400, not a silent "no filter".
+	if code := hit(t, srv, "GET", "/api/audit-log?since=yesterday", nil, nil); code != 400 {
+		t.Errorf("bad since: status %d, want 400", code)
+	}
+	// until before since → 400.
+	if code := hit(t, srv, "GET",
+		"/api/audit-log?since=2026-06-02T12:00:00Z&until=2026-06-02T10:00:00Z",
+		nil, nil); code != 400 {
+		t.Errorf("inverted window: status %d, want 400", code)
+	}
+}
+
 func TestAuditLog_FilterBySubject(t *testing.T) {
 	prev := auditTail
 	t.Cleanup(func() { auditTail = prev })

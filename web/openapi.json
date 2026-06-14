@@ -5406,6 +5406,28 @@
               "maxLength": 128,
               "type": "string"
             }
+          },
+          {
+            "description": "Optional RFC3339 lower bound (inclusive) on event.ts. Example : 2026-06-02T00:00:00Z",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Optional RFC3339 lower bound (inclusive) on event.ts. Example : 2026-06-02T00:00:00Z",
+              "maxLength": 40,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional RFC3339 upper bound (exclusive) on event.ts. Example : 2026-06-03T00:00:00Z",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Optional RFC3339 upper bound (exclusive) on event.ts. Example : 2026-06-03T00:00:00Z",
+              "maxLength": 40,
+              "type": "string"
+            }
           }
         ],
         "responses": {

@@ -22,6 +22,15 @@
   let filterAction = $state('');
   let filterResult = $state<'' | 'ok' | 'error'>('');
   let filterSubject = $state('');
+  // datetime-local emits "2026-06-02T13:42" (no seconds, no zone).
+  // We append :00Z to land an RFC3339 the backend accepts.
+  let filterSince = $state('');
+  let filterUntil = $state('');
+
+  function rfc3339(local: string): string | undefined {
+    if (!local) return undefined;
+    return local + ':00Z';
+  }
   let limit = $state(200);
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -33,6 +42,8 @@
         action: filterAction || undefined,
         result: filterResult || undefined,
         subject: filterSubject || undefined,
+        since: rfc3339(filterSince),
+        until: rfc3339(filterUntil),
       });
       events = r.events;
       enabled = r.enabled;
@@ -54,6 +65,8 @@
     void filterAction;
     void filterResult;
     void filterSubject;
+    void filterSince;
+    void filterUntil;
     void limit;
     refresh();
   });
@@ -132,6 +145,16 @@
       <span class="label-text mb-1 text-xs">Subject contains</span>
       <input class="input input-bordered input-sm w-48" placeholder="alice@... or oidc sub"
         bind:value={filterSubject}/>
+    </label>
+    <label class="form-control">
+      <span class="label-text mb-1 text-xs">Since (UTC)</span>
+      <input type="datetime-local" class="input input-bordered input-sm"
+        bind:value={filterSince}/>
+    </label>
+    <label class="form-control">
+      <span class="label-text mb-1 text-xs">Until (UTC)</span>
+      <input type="datetime-local" class="input input-bordered input-sm"
+        bind:value={filterUntil}/>
     </label>
     <label class="form-control">
       <span class="label-text mb-1 text-xs">Tail size</span>

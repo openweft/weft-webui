@@ -42,6 +42,8 @@ type auditTailInput struct {
 	Action  string `query:"action" doc:"Optional substring filter on event.action (e.g. \"auth.\", \"az.\")" maxLength:"64"`
 	Result  string `query:"result" doc:"Optional exact-match filter on event.result (\"ok\", \"error\")" enum:",ok,error"`
 	Subject string `query:"subject" doc:"Optional substring filter on event.subject (the OIDC sub / email of the actor)" maxLength:"128"`
+	Since   string `query:"since" doc:"Optional RFC3339 lower bound (inclusive) on event.ts. Example : 2026-06-02T00:00:00Z" maxLength:"40"`
+	Until   string `query:"until" doc:"Optional RFC3339 upper bound (exclusive) on event.ts. Example : 2026-06-03T00:00:00Z" maxLength:"40"`
 }
 
 // AuditEventDTO mirrors audit.Event but with JSON-friendly defaults
@@ -117,8 +119,32 @@ func mountAuditAPI(api huma.API, scope Scope) {
 		// filter can drop the count below the limit. Cap the
 		// pre-filter window at 10x the limit so a tenant with very
 		// little activity doesn't pin the reader on a huge log.
+		// Parse the time bounds once before iterating. Bad input is
+		// a 400 — we don't silently ignore a malformed RFC3339 string.
+		var sinceT, untilT time.Time
+		if in.Since != "" {
+			t, err := time.Parse(time.RFC3339, in.Since)
+			if err != nil {
+				return nil, huma.Error400BadRequest("since: invalid RFC3339 timestamp: " + err.Error())
+			}
+			sinceT = t
+		}
+		if in.Until != "" {
+			t, err := time.Parse(time.RFC3339, in.Until)
+			if err != nil {
+				return nil, huma.Error400BadRequest("until: invalid RFC3339 timestamp: " + err.Error())
+			}
+			untilT = t
+		}
+		if !sinceT.IsZero() && !untilT.IsZero() && !untilT.After(sinceT) {
+			return nil, huma.Error400BadRequest("until must be after since")
+		}
+
 		fetch := limit
-		if tenantFilter != "" || in.Action != "" || in.Result != "" || in.Subject != "" {
+		hasFilter := tenantFilter != "" || in.Action != "" ||
+			in.Result != "" || in.Subject != "" ||
+			!sinceT.IsZero() || !untilT.IsZero()
+		if hasFilter {
 			fetch = limit * 10
 			if fetch > 10000 {
 				fetch = 10000
@@ -141,6 +167,12 @@ func mountAuditAPI(api huma.API, scope Scope) {
 				continue
 			}
 			if tenantFilter != "" && ev.Tenant != tenantFilter {
+				continue
+			}
+			if !sinceT.IsZero() && ev.Timestamp.Before(sinceT) {
+				continue
+			}
+			if !untilT.IsZero() && !ev.Timestamp.Before(untilT) {
 				continue
 			}
 			out.Body.Events = append(out.Body.Events, AuditEventDTO{
