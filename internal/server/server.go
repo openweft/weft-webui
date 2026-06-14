@@ -286,6 +286,13 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	}
 	mux.HandleFunc("POST /api/session/scope", d.Auth.SetScopeHandler)
 
+	// Audit-log CSV export — same scope rule as the JSON tail
+	// endpoint (Tenant or Admin). Mounted as a stdlib handler
+	// because huma's body model is JSON-only.
+	if scope.Has(ScopeTenant) || scope.Has(ScopeAdmin) {
+		mountAuditCSVExport(mux)
+	}
+
 	// (/api/resources, /api/resources/{id}, /api/summary,
 	// /api/registry/upload moved to huma — see api_misc.go.)
 
