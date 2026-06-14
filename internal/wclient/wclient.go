@@ -646,6 +646,12 @@ func (c *Client) VMLogs(ctx context.Context, name, project string, tailBytes int
 type CreateNetworkOpts struct {
 	Project, Name, CIDR, Gateway, Type string
 	DNSServers                         []string
+	// Edge-attachment knobs for floating IPs ; see weft-proto
+	// NetworkInfo.external_mode for the semantics. Empty
+	// ExternalMode defaults to "bgp" on the server side.
+	ExternalMode    string
+	VLAN            int32
+	ParentInterface string
 }
 
 func (c *Client) CreateNetwork(ctx context.Context, o CreateNetworkOpts) (retErr error) {
@@ -658,7 +664,11 @@ func (c *Client) CreateNetwork(ctx context.Context, o CreateNetworkOpts) (retErr
 	defer cancel()
 	_, err = rpc.CreateNetwork(cctx, &weftv1.CreateNetworkRequest{
 		Project: o.Project, Name: o.Name, Cidr: o.CIDR, Gateway: o.Gateway,
-		DnsServers: o.DNSServers, Type: o.Type,
+		DnsServers:      o.DNSServers,
+		Type:            o.Type,
+		ExternalMode:    o.ExternalMode,
+		Vlan:            o.VLAN,
+		ParentInterface: o.ParentInterface,
 	})
 	return err
 }

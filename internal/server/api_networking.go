@@ -77,6 +77,9 @@ func mountNetworksAPI(api huma.API) {
 		if cerr := live.CreateNetwork(ctx, wclient.CreateNetworkOpts{
 			Project: project, Name: in.Body.Name, CIDR: in.Body.CIDR,
 			Gateway: in.Body.Gateway, Type: in.Body.Type, DNSServers: in.Body.DNSServers,
+			ExternalMode:    in.Body.ExternalMode,
+			VLAN:            in.Body.VLAN,
+			ParentInterface: in.Body.ParentInterface,
 		}); cerr != nil {
 			return nil, huma.Error502BadGateway("live: " + cerr.Error())
 		}
@@ -1469,8 +1472,12 @@ type createNetworkInput struct {
 		Name       string   `json:"name" minLength:"1" maxLength:"128"`
 		CIDR       string   `json:"cidr" example:"10.0.0.0/24"`
 		Gateway    string   `json:"gateway,omitempty"`
-		Type       string   `json:"type,omitempty" doc:"e.g. 'wireguard' / 'flat'"`
+		Type       string   `json:"type,omitempty" doc:"e.g. 'wireguard' / 'flat' / 'mesh' / 'bridged'"`
 		DNSServers []string `json:"dns_servers,omitempty"`
+		// Edge-attachment for floating IPs.
+		ExternalMode    string `json:"external_mode,omitempty" enum:"bgp,vlan" doc:"'bgp' (default) or 'vlan' for L2-attached subnets"`
+		VLAN            int32  `json:"vlan,omitempty" minimum:"0" maximum:"4094" doc:"802.1Q tag when external_mode == 'vlan' ; 0 = untagged trunk"`
+		ParentInterface string `json:"parent_interface,omitempty" doc:"Host NIC name for the macvlan when external_mode == 'vlan'"`
 	}
 }
 
