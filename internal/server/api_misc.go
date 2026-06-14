@@ -23,6 +23,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -60,6 +62,33 @@ func mountHealthAPI(api huma.API) {
 		Tags:        []string{"health"},
 	}, func(_ context.Context, _ *struct{}) (*versionOutput, error) {
 		return &versionOutput{Body: versionBody{Version: serverVersion}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "build-info",
+		Method:      "GET",
+		Path:        "/api/build-info",
+		Summary:     "Detailed build identifier : version + go runtime + commit + build time",
+		Description: "Strictly more detail than /api/version. Reads runtime/debug.BuildInfo for go_version + VCS commit + VCS time (populated automatically by `go build` on a clean checkout). Operators verifying a rolling deploy can cross-check the commit hash against what's expected, not just the human-friendly version tag.",
+		Tags:        []string{"health"},
+	}, func(_ context.Context, _ *struct{}) (*buildInfoOutput, error) {
+		info := buildInfoBody{
+			Version:   serverVersion,
+			GoVersion: runtime.Version(),
+		}
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range bi.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					info.Commit = s.Value
+				case "vcs.time":
+					info.BuildTime = s.Value
+				case "vcs.modified":
+					info.Dirty = s.Value == "true"
+				}
+			}
+		}
+		return &buildInfoOutput{Body: info}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -339,6 +368,18 @@ type versionBody struct {
 
 type versionOutput struct {
 	Body versionBody
+}
+
+type buildInfoBody struct {
+	Version   string `json:"version" example:"v0.4.7"`
+	GoVersion string `json:"go_version" example:"go1.26.4"`
+	Commit    string `json:"commit,omitempty" example:"a1b2c3d…" doc:"Git revision the binary was built from. Empty when built outside a VCS checkout (e.g. tarball + go install)."`
+	BuildTime string `json:"build_time,omitempty" example:"2026-06-02T14:30:00Z" doc:"RFC3339 commit time of the source the binary was built from. Empty in non-VCS builds."`
+	Dirty     bool   `json:"dirty,omitempty" doc:"True when the working tree was dirty at build time (uncommitted changes)."`
+}
+
+type buildInfoOutput struct {
+	Body buildInfoBody
 }
 
 type listResourcesOutput struct {

@@ -250,6 +250,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/build-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detailed build identifier : version + go runtime + commit + build time
+         * @description Strictly more detail than /api/version. Reads runtime/debug.BuildInfo for go_version + VCS commit + VCS time (populated automatically by `go build` on a clean checkout). Operators verifying a rolling deploy can cross-check the commit hash against what's expected, not just the human-friendly version tag.
+         */
+        get: operations["build-info"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagnoses": {
         parameters: {
             query?: never;
@@ -2809,6 +2829,30 @@ export interface components {
             statements: components["schemas"]["PolicyStatement"][] | null;
             version: string;
         };
+        BuildInfoBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BuildInfoBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description RFC3339 commit time of the source the binary was built from. Empty in non-VCS builds.
+             * @example 2026-06-02T14:30:00Z
+             */
+            build_time?: string;
+            /**
+             * @description Git revision the binary was built from. Empty when built outside a VCS checkout (e.g. tarball + go install).
+             * @example a1b2c3d…
+             */
+            commit?: string;
+            /** @description True when the working tree was dirty at build time (uncommitted changes). */
+            dirty?: boolean;
+            /** @example go1.26.4 */
+            go_version: string;
+            /** @example v0.4.7 */
+            version: string;
+        };
         CascadeStruct: {
             /** Format: int64 */
             hosts?: number;
@@ -5134,6 +5178,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BucketPolicy"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "build-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildInfoBody"];
                 };
             };
             /** @description Error */

@@ -7,6 +7,7 @@ package server
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,46 @@ func TestVersion_ExposedOnEveryPortal(t *testing.T) {
 				t.Errorf("status = %d, want 200 on every portal", c)
 			}
 			if body.Version == "" {
+				t.Errorf("version blank on this portal")
+			}
+		})
+	}
+}
+
+func TestBuildInfo_HasVersionAndGo(t *testing.T) {
+	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
+	t.Cleanup(srv.Close)
+
+	var body struct {
+		Version   string `json:"version"`
+		GoVersion string `json:"go_version"`
+	}
+	if c := hit(t, srv, "GET", "/api/build-info", nil, &body); c != 200 {
+		t.Fatalf("status = %d", c)
+	}
+	if body.Version != "dev" {
+		t.Errorf("version = %q, want \"dev\" (newE2EHandler fallback)", body.Version)
+	}
+	// Go version always populated via runtime.Version().
+	if body.GoVersion == "" {
+		t.Errorf("go_version blank ; runtime.Version() should always return a non-empty string")
+	}
+	if !strings.HasPrefix(body.GoVersion, "go") {
+		t.Errorf("go_version = %q, want a string starting with \"go\"", body.GoVersion)
+	}
+}
+
+func TestBuildInfo_ExposedOnEveryPortal(t *testing.T) {
+	for _, sc := range []Scope{ScopeUser, ScopeUser | ScopeTenant, ScopeAdmin} {
+		t.Run(scopeName(sc), func(t *testing.T) {
+			srv := httptest.NewServer(newE2EHandler(t, sc))
+			t.Cleanup(srv.Close)
+
+			var body map[string]any
+			if c := hit(t, srv, "GET", "/api/build-info", nil, &body); c != 200 {
+				t.Errorf("status = %d, want 200", c)
+			}
+			if body["version"] == "" {
 				t.Errorf("version blank on this portal")
 			}
 		})
