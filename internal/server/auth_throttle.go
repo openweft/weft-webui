@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/openweft/weft-webui/internal/audit"
 )
 
 // authThrottle is a tiny per-IP failure ring. The state is package-
@@ -128,6 +130,22 @@ func withAuthCallbackThrottle(next http.Handler) http.Handler {
 		if locked, retry := authThrottle.gate(ip); locked {
 			w.Header().Set("Retry-After", itoaSeconds(retry))
 			http.Error(w, "too many auth failures from this IP", http.StatusTooManyRequests)
+			// Tell the audit layer the IP just bounced off the
+			// throttle so a SOC analyst grepping for "callback"
+			// sees the *blocked* attempts too, not only the
+			// underlying OIDC failures (which never run for
+			// these requests). Tagged auth.callback.throttled so
+			// the dashboard can highlight them distinctly.
+			ev := audit.Event{
+				Timestamp:    time.Now().UTC(),
+				Action:       "auth.callback.throttled",
+				ResourceKind: "session",
+				Result:       "error",
+				ErrorMessage: "rate-limited",
+				RemoteIP:     ip,
+				Extra:        map[string]string{"retry_after_s": itoaSeconds(retry)},
+			}
+			auditLogger.Log(r.Context(), ev)
 			return
 		}
 
