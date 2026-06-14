@@ -7,7 +7,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/nats-io/nats.go v1.52.0
 	github.com/openweft/weft-client v0.2.2
-	github.com/openweft/weft-network-proto v0.1.0
+	github.com/openweft/weft-network-proto v0.1.1
 	github.com/openweft/weft-proto v0.9.0
 	github.com/prometheus/client_golang v1.20.5
 	go.etcd.io/etcd/client/v3 v3.6.12
@@ -31,6 +31,7 @@ require (
 	github.com/grpc-transports/ssh v0.2.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect

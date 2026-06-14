@@ -24,6 +24,13 @@
   let backend = $state('wireguard');
   let external = $state('');
   let selectedNets = $state<string[]>([]);
+  // Egress-only knobs : the CIDRs the router announces upstream
+  // (BGP /32 for FIPs is automatic via floatingipnat ; this is
+  // for the operator-typed announce set, e.g. tenant-owned space).
+  let prefixesInput = $state(''); // comma-separated, parsed on submit
+  // Replicas drives HA : > 1 spawns N weft-router microVMs that
+  // all advertise the same prefixes ; upstream ECMP balances.
+  let replicas = $state(1);
 
   let networks = $state<Row[]>([]);
   let error = $state('');
@@ -38,9 +45,11 @@
     }
   });
 
-  // Track kind → default backend.
+  // Track kind → default backend. Egress defaults to gobgp now
+  // (Go-native, HA-capable via Replicas) ; VyOS / FRR remain as
+  // escape-hatch picks for tenants who need multi-protocol routing.
   $effect(() => {
-    backend = kind === 'peer' ? 'wireguard' : 'vyos';
+    backend = kind === 'peer' ? 'wireguard' : 'gobgp';
   });
 
   function toggleNet(n: string) {
@@ -57,11 +66,24 @@
       error = 'a peer router needs at least two networks';
       return;
     }
+    if (kind === 'egress' && replicas < 1) {
+      error = 'replicas must be ≥ 1';
+      return;
+    }
+    if (kind === 'egress' && replicas > 10) {
+      error = 'replicas capped at 10 by the orchestrator';
+      return;
+    }
     busy = true;
     try {
+      const prefixes = kind === 'egress'
+        ? prefixesInput.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined;
       await createRouter({
         name: name.trim(), kind, backend,
         networks: selectedNets, external: external.trim(),
+        prefixes,
+        replicas: kind === 'egress' ? replicas : undefined,
       });
       onCreated();
       reset();
@@ -73,6 +95,7 @@
   function reset() {
     name = ''; external = ''; selectedNets = [];
     kind = 'peer'; backend = 'wireguard'; error = '';
+    prefixesInput = ''; replicas = 1;
   }
   function cancel() { open = false; reset(); }
 </script>
@@ -101,6 +124,7 @@
         <span class="label-text text-xs">Backend</span>
         <select class="select select-sm select-bordered" bind:value={backend}>
           <option value="wireguard">wireguard</option>
+          <option value="gobgp">gobgp</option>
           <option value="vyos">vyos</option>
           <option value="frr">frr</option>
         </select>
@@ -128,8 +152,37 @@
 
     {#if kind === 'egress'}
       <label class="form-control mt-3">
-        <span class="label-text text-xs">External (e.g. AS number, upstream peer)</span>
-        <input class="input input-sm input-bordered font-mono" placeholder="AS65010" bind:value={external} />
+        <span class="label-text text-xs">External (AS number or "ASN:peer-ip")</span>
+        <input class="input input-sm input-bordered font-mono"
+          placeholder="65512:198.51.100.1" bind:value={external} />
+      </label>
+
+      <label class="form-control mt-3">
+        <span class="label-text text-xs">Prefixes (CIDRs to announce, comma-separated)</span>
+        <input class="input input-sm input-bordered font-mono"
+          placeholder="203.0.113.0/24, 2001:db8::/48" bind:value={prefixesInput} />
+        <span class="label-text-alt mt-1 text-base-content/50">
+          Per-FIP /32 + /128 are added automatically by floatingipnat ;
+          this list is for operator-typed announce ranges (tenant-owned space).
+        </span>
+      </label>
+
+      <label class="form-control mt-3">
+        <span class="label-text text-xs">
+          Replicas (HA)
+          {#if replicas > 1}<span class="badge badge-success badge-xs ml-1">active-active</span>{/if}
+        </span>
+        <div class="flex items-center gap-2">
+          <input type="range" min="1" max="10" step="1"
+            class="range range-sm range-primary flex-1"
+            bind:value={replicas} />
+          <span class="font-mono text-sm w-8 text-right">{replicas}</span>
+        </div>
+        <span class="label-text-alt mt-1 text-base-content/50">
+          1 = single weft-router microVM (no HA). 2-3 spreads across DCs ;
+          all replicas advertise the same prefixes ; upstream BGP
+          multipath / ECMP balances inbound traffic.
+        </span>
       </label>
     {/if}
 

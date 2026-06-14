@@ -973,6 +973,13 @@ export interface CreateRouterBody {
   backend?: string;
   networks?: string[];
   external?: string;
+  /** CIDRs the router advertises ; only meaningful for
+   *  kind=egress + backend=gobgp. One entry per prefix. */
+  prefixes?: string[];
+  /** Number of weft-router microVMs spawned for HA. Default 1 ;
+   *  2-3 spreads BGP sessions across DCs (active-active ECMP).
+   *  Capped at 10 by the orchestrator. */
+  replicas?: number;
 }
 
 export const createRouter = async (b: CreateRouterBody) => {

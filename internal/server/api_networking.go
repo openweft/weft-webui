@@ -474,6 +474,7 @@ func mountRoutersAPI(api huma.API) {
 		uuid, err := liveNet.CreateRouter(ctx, wclient.CreateRouterOpts{
 			Project: project, Name: in.Body.Name, Kind: in.Body.Kind,
 			Backend: in.Body.Backend, Networks: in.Body.Networks, External: in.Body.External,
+			Prefixes: in.Body.Prefixes, Replicas: in.Body.Replicas,
 		})
 		if err != nil {
 			return nil, huma.Error502BadGateway("net: " + err.Error())
@@ -1518,6 +1519,8 @@ type createRouterInput struct {
 		Backend  string   `json:"backend,omitempty"`
 		External string   `json:"external,omitempty"`
 		Networks []string `json:"networks,omitempty"`
+		Prefixes []string `json:"prefixes,omitempty" doc:"CIDRs the router advertises (kind=egress + backend=gobgp)"`
+		Replicas int32    `json:"replicas,omitempty" minimum:"0" maximum:"10" doc:"Number of weft-router microVMs (HA). 0 = server default (1)."`
 	}
 }
 
