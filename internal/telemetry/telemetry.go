@@ -42,6 +42,7 @@ type Recorder struct {
 	Logins         *prometheus.CounterVec
 	ActiveSessions prometheus.Gauge
 	UserActions    *prometheus.CounterVec
+	AuditEvents    *prometheus.CounterVec
 	BuildInfo      *prometheus.GaugeVec
 }
 
@@ -102,6 +103,11 @@ func New(version string) *Recorder {
 		Help: "User-initiated actions (uploads, mutations) by OIDC subject + action.",
 	}, []string{"sub", "action"})
 
+	r.AuditEvents = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "weft_webui", Subsystem: "audit", Name: "events_total",
+		Help: "Audit events emitted, by action prefix (\"auth.\", \"az.\", …) and result. Surge on auth.callback.failed or auth.callback.throttled is the canonical brute-force signal.",
+	}, []string{"action", "result"})
+
 	r.BuildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "weft_webui", Subsystem: "build", Name: "info",
 		Help: "1 ; labels carry build version.",
@@ -112,6 +118,7 @@ func New(version string) *Recorder {
 		r.HTTPRequests, r.HTTPDuration, r.HTTPInflight,
 		r.GRPCCalls, r.GRPCDuration,
 		r.Logins, r.ActiveSessions, r.UserActions,
+		r.AuditEvents,
 		r.BuildInfo,
 	)
 	return r
