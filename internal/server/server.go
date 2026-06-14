@@ -220,6 +220,12 @@ func buildHandler(d Deps, scope Scope, persona string, exposeMetrics bool) http.
 	liveNet = d.LiveNet
 	diagCache = d.DiagnosesCache
 	metrics = d.Metrics
+	if d.Metrics != nil && d.Metrics.Registry != nil {
+		// Register the per-IP throttle gauges once across the process.
+		// Multi-portal buildHandler calls are idempotent via the
+		// sync.Once inside RegisterAuthThrottleMetrics.
+		RegisterAuthThrottleMetrics(d.Metrics.Registry)
+	}
 	if d.Audit != nil {
 		auditLogger = d.Audit
 	} else {
