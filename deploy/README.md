@@ -172,40 +172,6 @@ overrides ; `weft-webui --help` enumerates them.
   rotation on 503 — its mutations would succeed in memory but vanish
   on restart.
 
-## Kubernetes
-
-`deploy/k8s/deployment.yaml.example` is a single-replica starter
-that bundles every k8s object an operator needs : Namespace,
-ConfigMap (matching the systemd EnvironmentFile knobs), Secret
-(session key + OIDC client secret), 5 GiB PVC for state, the
-Deployment with health + readiness + startup probes, and three
-Services (user / tenant / infra).
-
-```sh
-# Edit the image tag, hostnames, OIDC issuer, then :
-kubectl apply -f deploy/k8s/deployment.yaml.example
-```
-
-Notes on the defaults :
-
-- **Single replica + `Recreate` strategy**. The JSON persistence
-  layer is per-pod (audit log + inventory / dns / security /
-  scripts under the PVC), so two pods would diverge. Bump
-  `replicas` after the weft-network swap-out lands and the state
-  lives in etcd.
-- **Probes hit /api/healthz + /api/readyz**. Readiness flips to
-  503 when a configured `WEBUI_*_PATH` state file isn't writable
-  — k8s takes the pod out of the Service backend automatically.
-- **PVC ReadWriteOnce**. The pod owns the state ; restoring from
-  the backup script means `kubectl scale deploy weft-webui --replicas 0`
-  before unpacking the tarball.
-- **`readOnlyRootFilesystem: true`** — everything writeable lives
-  under the mounted PVC. The audit + state files all land in
-  `/var/lib/weft-webui/`.
-- Front with **Ingress NGINX / Traefik / Cilium Gateway**. The
-  Caddyfile snippet a few sections down shows the `X-Forwarded-Proto`
-  + `Host` headers weft-webui expects from the L7 proxy.
-
 ## Reverse proxy & TLS via Caddy
 
 Operators using Caddy (the canonical weft front-proxy ; the agent
