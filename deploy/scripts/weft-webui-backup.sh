@@ -1,32 +1,29 @@
 #!/usr/bin/env -S pkgx bash
 # weft-webui-backup.sh — bundle every persistence path + its rotation
-# history into one tar.gz an operator can drop into S3 / Restic / etc.
+# history into one tar.gz that drops cleanly into a weft-block
+# backup target (or any external store).
 #
-# Reads the env from /etc/default/weft-webui by default so the same
-# variables that drive the daemon decide what to back up. Each path
-# is optional ; the script silently skips paths that aren't set.
+# CANONICAL DR : weft-block volume snapshots. This script is the
+# escape hatch when you want a portable tarball decoupled from
+# weft-block — e.g. seeding a fresh cluster from a peer, archiving
+# to S3, or feeding into a borg / Restic store.
 #
-#   sudo /usr/local/bin/weft-webui-backup.sh /var/backups/weft-webui-$(date +%F).tar.gz
+# Run INSIDE the weft-webui microVM via :
 #
-# Pairs with the recovery recipe in deploy/README.md : un-tar into
-# /var/lib/weft-webui/, restart the daemon, and the dashboard
-# rehydrates the in-memory state from the JSON snapshots.
+#   weft microvm exec weft-webui -- /usr/local/bin/weft-webui-backup.sh \
+#       /var/lib/weft-webui/backup.tar.gz
+#
+# Then pull the file out with `weft microvm cp`.
+#
+# The script reads WEBUI_* env vars from the current shell ; the
+# microVM already has them set from cluster.hcl's weft-webui block.
 
 set -euo pipefail
 
-ENV_FILE="${WEFT_WEBUI_ENV:-/etc/default/weft-webui}"
 OUTPUT="${1:-}"
 if [[ -z "$OUTPUT" ]]; then
   printf 'usage : %s <output.tar.gz>\n' "$0" >&2
   exit 1
-fi
-
-# Read the configured paths from the env file when it exists. The
-# defaults match deploy/systemd/weft-webui.service so a bare-systemd
-# install backs up the right files even without /etc/default override.
-if [[ -f "$ENV_FILE" ]]; then
-  # shellcheck disable=SC1090
-  set -a; source "$ENV_FILE"; set +a
 fi
 
 INVENTORY_PATH="${WEBUI_INVENTORY_PATH:-/var/lib/weft-webui/inventory.json}"
@@ -35,13 +32,12 @@ SECURITY_PATH="${WEBUI_SECURITY_PATH:-/var/lib/weft-webui/security.json}"
 SCRIPTS_PATH="${WEBUI_SCRIPTS_PATH:-/var/lib/weft-webui/scripts.json}"
 AUDIT_PATH="${WEBUI_AUDIT_LOG_PATH:-/var/lib/weft-webui/audit.log}"
 
-# Collect existing paths + their sibling .history/ dirs.
 STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT
 
 # strip the leading slash so $STAGING/$rel writes inside the staging
-# dir even when $p is an absolute path. Works on both macOS (BSD)
-# and Linux without relying on realpath's --relative-to flag.
+# dir even when $p is an absolute path. Works on both BSD + GNU
+# without realpath's --relative-to flag.
 relpath() {
   printf '%s\n' "${1#/}"
 }
@@ -80,9 +76,6 @@ scripts     : $SCRIPTS_PATH
 audit       : $AUDIT_PATH
 EOF
 
-# Build the archive. --auto-compress picks gzip from the .tar.gz
-# suffix ; we use the GNU long-options form so this works under
-# bash 5.x but doesn't depend on /usr/bin/tar quirks.
 tar --create --gzip --file="$OUTPUT" \
     --directory="$STAGING" \
     --owner=0 --group=0 .

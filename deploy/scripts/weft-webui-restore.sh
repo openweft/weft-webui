@@ -1,21 +1,26 @@
 #!/usr/bin/env -S pkgx bash
 # weft-webui-restore.sh — replay a tarball produced by
-# weft-webui-backup.sh into /var/lib/weft-webui/.
+# weft-webui-backup.sh into /var/lib/weft-webui/ from inside the
+# microVM.
 #
-# Usage :
-#   sudo weft-webui-restore.sh <backup.tar.gz>          # restore
-#   sudo weft-webui-restore.sh --dry-run <backup.tar.gz> # list only
+# CANONICAL DR : weft-block volume snapshots / restore. This
+# script is the escape hatch when you have a tarball decoupled
+# from weft-block — e.g. a backup pulled from S3, a borg restore,
+# or seeding a fresh cluster from a peer's tarball.
 #
-# The restore is destructive : every persistence path the backup
-# captured overwrites the running file in-place. The script :
-#   1. unpacks the archive to a temp directory.
-#   2. reads MANIFEST + compares the saved hostname to the running
-#      one ; mismatch is a HARD fail unless --force is passed.
-#   3. moves each captured file into place ; stops weft-webui
-#      first so a restart isn't racing the JSON re-hydration.
+# Run INSIDE the weft-webui microVM via :
 #
-# Pair with weft-webui-backup.sh (deploy/scripts/) — same envs,
-# same on-disk layout.
+#   weft microvm cp local-backup.tar.gz weft-webui:/tmp/
+#   weft microvm exec weft-webui -- /usr/local/bin/weft-webui-restore.sh \
+#       --dry-run /tmp/local-backup.tar.gz       # preview
+#   weft microvm exec weft-webui -- /usr/local/bin/weft-webui-restore.sh \
+#       /tmp/local-backup.tar.gz                  # apply
+#
+# The script unpacks + the MANIFEST hostname check refuses
+# cross-cluster restores unless --force is passed. It does NOT
+# restart the weft-webui process ; the caller drives that with :
+#
+#   weft microvm restart weft-webui
 
 set -euo pipefail
 
@@ -91,16 +96,6 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   exit 0
 fi
 
-# Stop the daemon so the JSON files settle before the next start.
-# If systemd isn't present (container deploys), the operator runs
-# the script while the binary is offline ; warn but continue.
-if command -v systemctl >/dev/null 2>&1; then
-  if systemctl is-active --quiet weft-webui; then
-    systemctl stop weft-webui
-    RESTART_AFTER=1
-  fi
-fi
-
 while IFS= read -r f; do
   rel="${f#$STAGING}"
   mkdir -p "$(dirname "$rel")"
@@ -108,7 +103,4 @@ while IFS= read -r f; do
   printf 'restored %s\n' "$rel"
 done < <(walk_files)
 
-if [[ "${RESTART_AFTER:-0}" -eq 1 ]]; then
-  systemctl start weft-webui
-  printf 'weft-webui-restore : daemon restarted\n'
-fi
+printf 'weft-webui-restore : done — `weft microvm restart weft-webui` to apply.\n'
