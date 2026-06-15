@@ -1,39 +1,11 @@
 # Deploying weft-webui
 
-Two supported patterns. Pick whichever fits the host topology.
-
-## Container (Docker / Podman / Kubernetes)
-
-The Dockerfile at the repo root assembles the binary in three stages :
-
-1. **node** — builds the Svelte SPA into `web/dist/`.
-2. **go** — compiles the Go binary with `//go:embed all:web/dist`.
-3. **distroless/static** — runtime, ~18 MB, runs as `nonroot`.
-
-```sh
-docker build \
-  --build-arg VERSION=$(git describe --tags --always --dirty) \
-  -t ghcr.io/openweft/weft-webui:dev .
-```
-
-Run :
-
-```sh
-docker run --rm \
-  -p 8080:8080 \
-  -e WEBUI_WEFT_SOCKET=tcp:weft-agent:7700 \
-  -e WEBUI_WEFT_NETWORK_SOCKET=tcp:weft-network:7700 \
-  -e WEBUI_AUTH_MODE=oidc \
-  -e WEBUI_OIDC_ISSUER=https://dex.example.com \
-  -e WEBUI_OIDC_CLIENT_ID=weft-webui \
-  -e WEBUI_OIDC_CLIENT_SECRET=… \
-  -e WEBUI_PUBLIC_URL=https://weft.example.com \
-  ghcr.io/openweft/weft-webui:dev
-```
-
-The admin listener (port 8088) is bound to localhost by default for
-defence in depth ; reach it from inside the cluster via the WireGuard
-overlay or expose it explicitly when running standalone.
+weft-webui is part of the openweft control plane. It runs on the
+same hosts as weft-agent, either directly under systemd on the host
+or inside an infra microVM managed by weft itself (the canonical
+dog-food pattern). Docker / Kubernetes are competitor platforms ;
+the goal of openweft is to be what you deploy **to**, not what you
+deploy weft-webui under.
 
 ## systemd (bare metal / weft infra microVM)
 
@@ -164,7 +136,9 @@ overrides ; `weft-webui --help` enumerates them.
 ## Health probes
 
 - `GET /api/healthz` — liveness (200 + `{ok:true}` while the process
-  is up). Wire to `k8s.io/livenessProbe`.
+  is up). Used by `weft up`'s post-bring-up readiness check + by
+  any L7 health monitor (Caddy `health_uri`, an external uptime
+  watcher).
 - `GET /api/readyz` — readiness. 200 + `{ok:true,mode:live|mock}` in
   the happy path ; 503 + `{ok:false,degraded:[…]}` when a configured
   `WEBUI_*_PATH` state file isn't writable (probe creates a sibling
@@ -201,12 +175,12 @@ hostname rather than `127.0.0.1`. HSTS is stamped at the edge.
 For mTLS / internal-CA, swap the auto-Let's-Encrypt with the
 commented `tls` directive at the bottom of the example.
 
-## Reverse proxy & TLS
-
-The unit does **not** terminate TLS — front it with Caddy / nginx
-on the host, or rely on the weft-agent's embedded Caddy
-([see `weft/agent/proxy/`](https://github.com/openweft/weft/tree/main/agent/proxy))
-when the dashboard is reached through a `loadbalancer` resource. The
+The binary doesn't terminate TLS itself. Either front it with the
+standalone Caddy install above, or — preferred in a live cluster —
+expose the dashboard through a weft `loadbalancer` resource so
+weft-agent's embedded Caddy
+([weft/agent/proxy/](https://github.com/openweft/weft/tree/main/agent/proxy))
+handles certs + routing as part of the regular L7 plane. The
 `WEBUI_PUBLIC_URL` env var is what the OIDC redirect builder uses ;
 keep it aligned with whatever the front proxy presents.
 
