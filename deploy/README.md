@@ -1,199 +1,125 @@
 # Deploying weft-webui
 
-weft-webui is part of the openweft control plane. It runs on the
-same hosts as weft-agent, either directly under systemd on the host
-or inside an infra microVM managed by weft itself (the canonical
-dog-food pattern). Docker / Kubernetes are competitor platforms ;
-the goal of openweft is to be what you deploy **to**, not what you
-deploy weft-webui under.
+weft-webui is part of the openweft control plane. The canonical
+shape is **OCI image → infra microVM**, managed by weft itself :
 
-## systemd (bare metal / weft infra microVM)
+1. CI publishes a 4-arch (amd64 / arm64 / riscv64 / loong64)
+   image to `ghcr.io/openweft/weft-webui:vX.Y.Z` via the
+   release.yml tag-gated workflow.
+2. `weft up` (day-0 planner, see [weft/cluster/](https://github.com/openweft/weft/tree/main/cluster))
+   pulls the image + boots it as an infra microVM next to the
+   etcd / NATS / dex / coredns / zot stack.
+3. State (audit log + inventory / dns / security / scripts JSON
+   files) lives on a weft-block volume attached to the microVM,
+   so snapshots + replication come for free.
+4. The dashboard surfaces through a weft `loadbalancer` resource ;
+   weft-agent's embedded Caddy ([weft/agent/proxy/](https://github.com/openweft/weft/tree/main/agent/proxy))
+   handles TLS termination + Let's Encrypt + the WireGuard-only
+   admin port routing as part of the regular L7 plane.
 
-`deploy/systemd/weft-webui.service` is the unit file. Same hardening
-baseline as `weft-network.service` (NoNewPrivileges, ProtectSystem=
-strict, seccomp `@system-service`).
+Docker / Kubernetes are competitor platforms — the goal of
+openweft is to be what you deploy *to*, not what you deploy
+weft-webui under.
 
-```sh
-sudo install -m 0755 ./weft-webui /usr/local/bin/weft-webui
-sudo install -m 0644 ./deploy/systemd/weft-webui.service \
-                     /etc/systemd/system/weft-webui.service
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin weft
-sudo systemctl daemon-reload
-sudo systemctl enable --now weft-webui
-```
+## Bring-up via `weft up`
 
-Configure via `/etc/default/weft-webui` :
-
-```
-WEBUI_WEFT_SOCKET=unix:///run/weft-agent/weft.sock
-WEBUI_WEFT_NETWORK_SOCKET=unix:///run/weft-network/weft-network.sock
-WEBUI_AUTH_MODE=oidc
-WEBUI_OIDC_ISSUER=https://dex.weft.internal
-WEBUI_OIDC_CLIENT_ID=weft-webui
-WEBUI_OIDC_CLIENT_SECRET=…
-WEBUI_PUBLIC_URL=https://weft.example.com
-WEBUI_AUDIT_LOG_PATH=/var/lib/weft-webui/audit.log
-```
-
-The audit log writes through `ReadWritePaths=/var/lib/weft-webui`
-even with the strict filesystem hardening ; rotates at 100 MB by
-default (override `WEBUI_AUDIT_ROTATE_BYTES`).
-
-## Mock-layer state persistence
-
-While the live weft-network controller is in mid-rollout, the
-dashboard's inventory / DNS / security-group / scripts surface is
-served by an in-process mock that flushes to JSON files. Production
-deployments should opt-in to disk persistence so operator changes
-survive a restart :
-
-```
-WEBUI_INVENTORY_PATH=/var/lib/weft-webui/inventory.json
-WEBUI_DNS_PATH=/var/lib/weft-webui/dns.json
-WEBUI_SECURITY_PATH=/var/lib/weft-webui/security.json
-WEBUI_SCRIPTS_PATH=/var/lib/weft-webui/scripts.json
-WEBUI_STATE_HISTORY_KEEP=20
-```
-
-Every successful flush atomically renames the previous file under
-`<path>.history/<RFC3339>.json` and prunes the dir down to
-`WEBUI_STATE_HISTORY_KEEP` snapshots. One-step rollback :
+Once your `cluster.hcl` includes a `weft-webui` infra stanza,
+day-0 brings the dashboard up alongside every other control-plane
+service :
 
 ```sh
-sudo cp /var/lib/weft-webui/inventory.json.history/2026-06-02T12-37-42Z.json \
-        /var/lib/weft-webui/inventory.json
-sudo systemctl restart weft-webui
+weft up --cluster cluster.hcl --apply
 ```
 
-Once weft-network exposes the matching gRPC RPCs (`RegisterAZ`,
-`RegisterRack`, `RegisterHost`, …) the mock fallback goes inert and
-the source of truth shifts to etcd. The JSON layer stays around as
-the in-process cache so the dashboard works through brief controller
-outages.
+The planner pulls the OCI image, sizes the microVM (defaults
+1 vCPU / 256 MiB / 5 GiB volume), boots it, and adds the
+loadbalancer rules. The infra microVM uses the same hardening
+posture as every other tenant microVM : weft-microvm-init as PID
+1, virtio-fs rootfs from the OCI image, WireGuard mesh peer for
+control-plane chatter.
 
-### Backup
+## Configuring the dashboard
 
-`deploy/scripts/weft-webui-backup.sh` packages every persistence
-path declared in `/etc/default/weft-webui` (or the env vars in the
-current shell) plus the sibling `<path>.history/` rotation
-directories plus the audit log into one timestamped tarball :
+Per-cluster knobs live in `cluster.hcl`'s `weft-webui {}` block.
+Every flag the binary accepts has an env-var equivalent ; the
+infra microVM is configured by stamping environment into its
+boot config, NOT by editing files on a host. See `weft up`'s
+catalogue entry for the full schema.
 
-```sh
-sudo install -m 0755 deploy/scripts/weft-webui-backup.sh \
-  /usr/local/bin/weft-webui-backup.sh
-sudo /usr/local/bin/weft-webui-backup.sh \
-  /var/backups/weft-webui-$(date +%F).tar.gz
-```
+Common knobs :
 
-A MANIFEST file inside the tarball records hostname + timestamp +
-the source paths so a cross-cluster restore can refuse mismatched
-metadata. Drop the script into cron / a borg pre-hook / Restic
-pre-exec and the dashboard's persisted state survives a
-node-reimage.
-
-### Restore
-
-`deploy/scripts/weft-webui-restore.sh` is the companion. It reads
-the tarball, checks the MANIFEST hostname against the running box
-(refuses cross-cluster restores unless `--force`), stops the
-weft-webui systemd unit, drops every captured file into place,
-then restarts the daemon.
-
-```sh
-sudo install -m 0755 deploy/scripts/weft-webui-restore.sh \
-  /usr/local/bin/weft-webui-restore.sh
-
-# Dry-run first : prints the file list without writing.
-sudo /usr/local/bin/weft-webui-restore.sh --dry-run \
-  /var/backups/weft-webui-2026-06-02.tar.gz
-
-# Real restore.
-sudo /usr/local/bin/weft-webui-restore.sh \
-  /var/backups/weft-webui-2026-06-02.tar.gz
-```
-
-Pass `--force` only for a deliberate cross-cluster restore (e.g.
-seeding a fresh box from a peer). Without it the MANIFEST hostname
-check guards against accidentally cross-pollinating one cluster's
-sessions / audit trails into another.
-
-## Operational tunables
-
-| env                                | default        | purpose                                              |
+| key                                | default        | purpose                                              |
 | ---------------------------------- | -------------- | ---------------------------------------------------- |
-| `WEBUI_MAX_REQUEST_BODY_BYTES`     | 1048576 (1 MiB)| Per-request body cap (DoS guard) on `/api/*`         |
+| `WEBUI_AUTH_MODE`                  | oidc           | "oidc" (prod) or "none" (dev only)                   |
+| `WEBUI_OIDC_ISSUER`                | (required)     | Dex / Keycloak / Authentik issuer URL                |
+| `WEBUI_PUBLIC_URL`                 | (required)     | Public URL the OIDC redirect builder uses            |
+| `WEBUI_MAX_REQUEST_BODY_BYTES`     | 1048576 (1MiB) | Per-request body cap (DoS guard) on `/api/*`         |
 | `WEBUI_SHUTDOWN_TIMEOUT`           | 10s            | Grace window for in-flight handlers on SIGTERM       |
 | `WEBUI_TLS_MIN_VERSION`            | 1.2            | TLS handshake floor (`1.2` / `1.3`)                  |
 | `WEBUI_ALLOWED_ORIGINS`            | (empty)        | CSV of cross-origin clients allowed to mutate (terraform-provider-weft, ops dashboards) |
 | `WEBUI_STATE_HISTORY_KEEP`         | 0 (off)        | Snapshot retention per state file ; production = 20  |
 | `WEBUI_AUDIT_LOG_PATH`             | (empty=off)    | JSONL audit trail ; production = on                  |
 | `WEBUI_AUDIT_ROTATE_BYTES`         | 104857600      | Audit log rotation threshold (100 MiB)               |
-| `WEBUI_AUDIT_RETENTION_DAYS`       | 0 (off)        | Delete rotated audit log siblings older than N days ; sweep at boot + every 6h |
+| `WEBUI_AUDIT_RETENTION_DAYS`       | 0 (off)        | Delete rotated audit log siblings older than N days  |
 
-Every `WEBUI_*` env var has a matching `--*` flag for one-off
-overrides ; `weft-webui --help` enumerates them.
+## State + persistence
+
+While the live weft-network controller is in mid-rollout, the
+inventory / DNS / security-group / scripts surface flushes to
+JSON files at `/var/lib/weft-webui/` (mounted from the weft-block
+volume). Every successful flush atomically renames the previous
+file under `<path>.history/<RFC3339>.json` and prunes the dir
+down to `WEBUI_STATE_HISTORY_KEEP` snapshots.
+
+One-step rollback from inside the microVM :
+
+```sh
+weft microvm exec weft-webui -- \
+  cp /var/lib/weft-webui/inventory.json.history/2026-06-02T12-37-42Z.json \
+     /var/lib/weft-webui/inventory.json
+weft microvm restart weft-webui
+```
+
+Once weft-network exposes the matching gRPC RPCs (`RegisterAZ`,
+`RegisterRack`, `RegisterHost`, …) the mock fallback goes inert
+and the source of truth shifts to etcd. The JSON layer stays
+around as the in-process cache so the dashboard works through
+brief controller outages.
+
+### Disaster recovery
+
+The canonical path is weft-block volume snapshots — managed by
+the same `volume backup` / `volume restore` flow every tenant
+microVM uses. The standalone shell scripts under `deploy/scripts/`
+(`weft-webui-backup.sh` + `weft-webui-restore.sh`) are an escape
+hatch you can run from inside the microVM via `weft microvm exec`
+when you want a portable tarball decoupled from weft-block ; the
+README inside each script documents the flags.
 
 ## Health probes
 
-- `GET /api/healthz` — liveness (200 + `{ok:true}` while the process
-  is up). Used by `weft up`'s post-bring-up readiness check + by
-  any L7 health monitor (Caddy `health_uri`, an external uptime
-  watcher).
-- `GET /api/readyz` — readiness. 200 + `{ok:true,mode:live|mock}` in
-  the happy path ; 503 + `{ok:false,degraded:[…]}` when a configured
-  `WEBUI_*_PATH` state file isn't writable (probe creates a sibling
-  `.readyz-probe-*` dir and rolls it back). Take the replica out of
-  rotation on 503 — its mutations would succeed in memory but vanish
-  on restart.
-
-## Reverse proxy & TLS via Caddy
-
-Operators using Caddy (the canonical weft front-proxy ; the agent
-embeds it for L7 routing — see
-[project_reverse_proxy_caddy](https://github.com/openweft/weft/blob/main/agent/proxy/))
-get a ready-to-edit `deploy/caddy/Caddyfile.example` :
-
-```sh
-sudo install -m 0644 deploy/caddy/Caddyfile.example \
-  /etc/caddy/sites-enabled/weft-webui.caddy
-
-# Edit the hostnames + binds, then :
-sudo systemctl reload caddy
-```
-
-The example covers the three-portal split :
-
-- `weft.example.com` → user portal (`:8080`), public, Let's Encrypt auto.
-- `tenant.weft.example.com` → tenant portal (`:8082`), public + OIDC.
-- `infra.weft.example.com` → infra portal (`:8088`), bound to a
-  WireGuard listener IP so it never reaches the public Internet.
-
-The blocks forward `X-Forwarded-Proto: https` + `Host:` so weft-
-webui's CSRF Origin check + OIDC redirect builder see the public
-hostname rather than `127.0.0.1`. HSTS is stamped at the edge.
-
-For mTLS / internal-CA, swap the auto-Let's-Encrypt with the
-commented `tls` directive at the bottom of the example.
-
-The binary doesn't terminate TLS itself. Either front it with the
-standalone Caddy install above, or — preferred in a live cluster —
-expose the dashboard through a weft `loadbalancer` resource so
-weft-agent's embedded Caddy
-([weft/agent/proxy/](https://github.com/openweft/weft/tree/main/agent/proxy))
-handles certs + routing as part of the regular L7 plane. The
-`WEBUI_PUBLIC_URL` env var is what the OIDC redirect builder uses ;
-keep it aligned with whatever the front proxy presents.
+- `GET /api/healthz` — liveness (200 + `{ok:true}` while the
+  process is up). Used by `weft up`'s post-bring-up readiness
+  check + by the embedded Caddy's upstream health monitor.
+- `GET /api/readyz` — readiness. 200 + `{ok:true,mode:live|mock}`
+  in the happy path ; 503 + `{ok:false,degraded:[…]}` when a
+  configured `WEBUI_*_PATH` state file isn't writable (probe
+  creates a sibling `.readyz-probe-*` dir and rolls it back).
+  Caddy pulls the microVM out of the LB backend on 503.
 
 ## Pointing the dashboard at the daemons
 
-- `--weft-socket <addr>` (or `WEBUI_WEFT_SOCKET`) — required for live
-  microVM / volume / share / etc. data. Empty falls back to mock mode
-  (dev only).
-- `--weft-network-socket <addr>` (or `WEBUI_WEFT_NETWORK_SOCKET`) —
-  optional. When set the Networking panels (routers, LBs, DNS,
-  scheduling rules) route through the
-  [weft-network daemon](https://github.com/openweft/weft-network).
+- `WEBUI_WEFT_SOCKET` — required for live microVM / volume /
+  share data. Empty falls back to mock mode (dev only). Typical
+  shape inside the infra microVM : `tcp:weft-agent.weft.internal:7700`.
+- `WEBUI_WEFT_NETWORK_SOCKET` — optional. When set the Networking
+  panels (routers, LBs, DNS, scheduling rules) route through
+  [weft-network](https://github.com/openweft/weft-network).
   Unreachable daemon → transparent mock fallback, no hard error.
 
-`<addr>` is the same shape both flags accept : `unix:///path/to/sock`
-or `tcp:host:port`.
+## Local dev (outside the microVM)
+
+For iterating on the binary without round-tripping through `weft
+microvm pull`, `task dev` boots the binary on the host with
+`WEBUI_DEV_MODE=true` (no auth, mock data, insecure cookies, dev
+banner on stderr). See the top-level `Taskfile.yml`.
