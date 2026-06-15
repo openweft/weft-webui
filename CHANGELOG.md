@@ -7,6 +7,28 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- **MapFloatingIPModal rate-limit slider** : 0..100k pps cap on
+  inbound traffic to a floating IP, wired through the new
+  weft-proto `rate_limit_pps` field down to the host-side NAT
+  reconciler.
+- **MicroVMDrawer Network tab** : aggregates networks in scope,
+  floating IPs mapped to the VM, and (new) per-NIC ports surfaced
+  via the new `ListPortsForVM` RPC. Surfaces MAC/IP/security-groups
+  + portqos Mbps caps. Read-only mirror of `weft network diag <vm>`.
+- **NetworksPage DHCPv4 info card** : appears when the selected
+  network's `type=bridged` ; surfaces CIDR/gateway/DNS/lease-range
+  hint. The host-side `weft-agent` auto-runs a DHCPv4 server on the
+  bridge.
+
+### Fixed
+
+- **CreateNetworkModal type picker** : was `nat`/`overlay`/`wireguard`
+  (legacy names that no longer matched the data plane) ; now
+  `nat`/`bridged`/`isolated`/`mesh`, with descriptions in the tooltip
+  and a bridged-mode hint about the DHCP auto-managed server.
+
 ## [0.3.1] - 2026-06-14
 
 ### Added
