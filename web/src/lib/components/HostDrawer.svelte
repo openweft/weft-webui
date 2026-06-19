@@ -6,7 +6,7 @@
   //   closes · ✕ button in the header.
   //
   // Surfaces every field the dispatcher row carries (typed columns +
-  // free-form labels / capabilities / network_types / volume_backends
+  // free-form properties / capabilities / network_types / volume_backends
   // when present). Lifecycle action buttons (cordon / uncordon / remove)
   // live in the footer and call back into the parent so the table
   // refresh + row removal stay in HostsPage.
