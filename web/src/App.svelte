@@ -20,6 +20,7 @@
   import InventoryMapPage from './lib/components/InventoryMapPage.svelte';
   import GroupsTreePage from './lib/components/GroupsTreePage.svelte';
   import InventoryTreePage from './lib/components/InventoryTreePage.svelte';
+  import HostsPage from './lib/components/HostsPage.svelte';
   import AuditLogPage from './lib/components/AuditLogPage.svelte';
   import Overview from './lib/components/Overview.svelte';
   import ActivityPage from './lib/components/ActivityPage.svelte';
@@ -148,6 +149,10 @@
       {:else if active === 'inventory-tree'}
         {#key active}
           <InventoryTreePage meta={byId.get(active)!} />
+        {/key}
+      {:else if active === 'hosts'}
+        {#key active}
+          <HostsPage meta={byId.get(active)!} />
         {/key}
       {:else if active === 'audit-log'}
         {#key active}

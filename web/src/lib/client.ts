@@ -164,6 +164,13 @@ export type APIEditableMetadata = components['schemas']['EditableMetadata'];
 // Subnets — per-network sub-resource.
 export type APISubnet = components['schemas']['Subnet'];
 
+// Inventory rows : AZ / Rack / Host. The Host entry is the wire
+// shape behind /api/hosts (POST/PUT) ; the dashboard's HostsPage
+// reuses it for the master list + drawer detail.
+export type APIHost = components['schemas']['APIHost'];
+export type APIRack = components['schemas']['APIRack'];
+export type APIAvailabilityZone = components['schemas']['APIAZ'];
+
 // Per-VM authorized groups + the derived effective key set.
 export type APIAuthorizedGroup = components['schemas']['AuthorizedGroup'];
 export type APIEffectiveKey    = components['schemas']['EffectiveKey'];
