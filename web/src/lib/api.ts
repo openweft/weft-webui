@@ -39,6 +39,7 @@ import {
   type APISubnet,
   type APIAuthorizedGroup, type APIEffectiveKey,
   type APIDiagnosis, type APIDiagnosisExample,
+  type APIHost,
   type paths,
 } from './client';
 
@@ -244,6 +245,102 @@ export const deleteHost = async (uuid: string): Promise<void> => {
   const { error } = await client.DELETE('/api/hosts/{uuid}', { params: { path: { uuid } } });
   if (error) throwErr(error);
 };
+
+// ---- Hosts : list / show / cordon / uncordon / remove --------------
+//
+// The huma surface exposes /api/hosts only for POST/PUT/DELETE — the
+// list + show paths go through the polymorphic resource dispatcher
+// (`/api/resources/hosts` + the cached row state). Cordon/uncordon are
+// NOT separate endpoints today : they're a `status` flip via PUT
+// /api/hosts/{uuid} ('draining' or 'active'). When a dedicated
+// /cordon endpoint lands in api.gen.ts, swap the implementation here
+// without touching the SPA.
+
+export type Host = APIHost;
+
+// HostRow is the polymorphic dispatcher's shape (mirrors what the
+// generic ResourcePage table renders). Columns are denormalised
+// strings — match what the server's row-projector emits for the
+// 'hosts' resource (host_uuid, hostname, az, rack, hypervisor, arch,
+// status, connected, last_seen, gpu, position_u, height_u).
+export interface HostRow {
+  uuid: string;
+  name: string;
+  az: string;
+  rack: string;
+  hypervisor: string;
+  arch: string;
+  status: string;
+  gpu: string;
+  position_u: number;
+  height_u: number;
+  connected?: boolean;
+  last_seen?: string;
+  // Free-form passthrough for fields not yet surfaced as typed columns
+  // (labels, capabilities, volume_backends, network_types) ; the
+  // drawer renders whatever the server projects.
+  [k: string]: unknown;
+}
+
+// listHosts uses the resource dispatcher so the wire shape matches
+// the existing ResourcePage rendering (same columns, same paging).
+// 1 000-row cap is enough for any cluster we ship today ; large
+// fleets would paginate via getRowsPage('hosts', { pageToken }).
+export const listHosts = async (): Promise<HostRow[]> => {
+  const rows = await getRows('hosts');
+  return rows as unknown as HostRow[];
+};
+
+// showHost returns the single row matching `uuid`. The huma surface
+// has no /api/hosts/{uuid} GET ; we filter the list cheaply. If the
+// dataset outgrows the in-memory filter, add a dedicated GET on the
+// Go side.
+export const showHost = async (uuid: string): Promise<HostRow | null> => {
+  const rows = await listHosts();
+  return rows.find((r) => String(r.uuid) === uuid) ?? null;
+};
+
+// cordonHost flips status → 'draining' via the existing PUT endpoint.
+// We round-trip through the row to preserve the other fields (PUT
+// /api/hosts/{uuid} is a full replace, not a patch). Pass the row
+// already in hand to skip the extra GET.
+export const cordonHost = async (uuid: string, current?: HostRow): Promise<void> => {
+  const row = current ?? (await showHost(uuid));
+  if (!row) throw new Error(`host ${uuid} not found`);
+  await updateHost(uuid, hostBodyFromRow(row, 'draining'));
+};
+
+// uncordonHost flips status → 'active' the same way.
+export const uncordonHost = async (uuid: string, current?: HostRow): Promise<void> => {
+  const row = current ?? (await showHost(uuid));
+  if (!row) throw new Error(`host ${uuid} not found`);
+  await updateHost(uuid, hostBodyFromRow(row, 'active'));
+};
+
+// removeHost is the operator-facing name for the lifecycle action ;
+// it dispatches to the existing DELETE endpoint. Re-exported so the
+// HostsPage doesn't have to import both names.
+export const removeHost = deleteHost;
+
+// hostBodyFromRow projects the dispatcher row back onto the APIHost
+// shape PUT /api/hosts/{uuid} expects. The row carries denormalised
+// strings ; the typed body needs proper enum values. Server-side
+// validators reject anything outside the enums so the cast is safe
+// (status is set by the caller to one of the two values the wire
+// schema allows).
+function hostBodyFromRow(row: HostRow, status: 'active' | 'draining'): HostBody {
+  return {
+    name: row.name,
+    az: row.az,
+    rack: row.rack,
+    arch: (row.arch || 'amd64') as 'amd64' | 'arm64' | 'riscv64' | 'loong64',
+    hypervisor: (row.hypervisor || 'qemu-kvm') as 'qemu-kvm' | 'apple-vz',
+    gpu: row.gpu ?? '',
+    position_u: Number(row.position_u ?? 0),
+    height_u: Number(row.height_u ?? 1),
+    status,
+  };
+}
 
 // ---- Audit log read ------------------------------------------------
 
