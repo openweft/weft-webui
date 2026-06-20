@@ -1142,6 +1142,61 @@
         },
         "type": "object"
       },
+      "CleanImagesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CleanImagesInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "config_dir": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dry_run"
+        ],
+        "type": "object"
+      },
+      "CleanImagesResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CleanImagesResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "deleted": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "dry_run"
+        ],
+        "type": "object"
+      },
       "ClearThrottleResp": {
         "additionalProperties": false,
         "properties": {
@@ -2467,6 +2522,33 @@
         },
         "type": "object"
       },
+      "EventFrame": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "project": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
       "FederationPeer": {
         "additionalProperties": false,
         "properties": {
@@ -2565,6 +2647,34 @@
         "required": [
           "email",
           "role"
+        ],
+        "type": "object"
+      },
+      "ImageListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ImageListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "images"
         ],
         "type": "object"
       },
@@ -3652,6 +3762,31 @@
         ],
         "type": "object"
       },
+      "PullImageInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PullImageInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "checksum": {
+            "type": "string"
+          },
+          "url": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
       "Quota": {
         "additionalProperties": false,
         "properties": {
@@ -3992,6 +4127,54 @@
         },
         "required": [
           "name"
+        ],
+        "type": "object"
+      },
+      "RenameUUIDInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameUUIDInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_name"
+        ],
+        "type": "object"
+      },
+      "RenameUUIDResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RenameUUIDResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_name": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "new_name"
         ],
         "type": "object"
       },
@@ -4440,6 +4623,109 @@
         ],
         "type": "object"
       },
+      "SetHostPropertiesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetHostPropertiesInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "properties"
+        ],
+        "type": "object"
+      },
+      "SetHostPropertiesResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetHostPropertiesResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "properties"
+        ],
+        "type": "object"
+      },
+      "SetHostStateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetHostStateInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "draining",
+              "down"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "SetHostStateResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetHostStateResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "state"
+        ],
+        "type": "object"
+      },
       "SetLBBackendsResp": {
         "additionalProperties": false,
         "properties": {
@@ -4560,6 +4846,58 @@
         },
         "required": [
           "names"
+        ],
+        "type": "object"
+      },
+      "SetVMPropertiesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetVMPropertiesInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "properties"
+        ],
+        "type": "object"
+      },
+      "SetVMPropertiesResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetVMPropertiesResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "properties"
         ],
         "type": "object"
       },
@@ -5831,6 +6169,78 @@
           "created"
         ],
         "type": "object"
+      },
+      "WaitVMResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/WaitVMResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ip"
+        ],
+        "type": "object"
+      },
+      "ZombieReportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ZombieReportBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "by_kind": {
+            "additionalProperties": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "deleted_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_sweep_unix_ns": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "zombies": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "zombies",
+          "deleted_total",
+          "last_sweep_unix_ns",
+          "by_kind"
+        ],
+        "type": "object"
       }
     }
   },
@@ -5840,6 +6250,185 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/images": {
+      "get": {
+        "operationId": "list-images",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List images in the agent cache (cluster-admin)",
+        "tags": [
+          "admin",
+          "images"
+        ]
+      }
+    },
+    "/api/admin/images/clean": {
+      "post": {
+        "description": "dry_run=true returns the list of candidates without deleting.",
+        "operationId": "clean-images",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanImagesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanImagesResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "GC unused images from the agent cache (cluster-admin)",
+        "tags": [
+          "admin",
+          "images"
+        ]
+      }
+    },
+    "/api/admin/images/pull": {
+      "post": {
+        "operationId": "pull-image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullImageInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Pull one image into the agent cache (cluster-admin)",
+        "tags": [
+          "admin",
+          "images"
+        ]
+      }
+    },
+    "/api/admin/zombies": {
+      "get": {
+        "operationId": "get-zombie-report",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZombieReportBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the zombie GC report (cluster-admin)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/zombies/sweep": {
+      "post": {
+        "operationId": "trigger-zombie-sweep",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZombieReportBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Trigger an immediate zombie GC sweep (cluster-admin)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/audit-log": {
       "get": {
         "description": "Returns the most recent N events from the audit JSONL file (newest first). The tenant portal narrows the view to events tagged with the caller's own tenant ; the infra portal sees every event. Without --audit-log-path the endpoint returns enabled=false + an empty list, so the dashboard can show a friendly \"audit log not enabled\" panel instead of 503.",
@@ -6161,6 +6750,52 @@
           }
         },
         "summary": "Update an availability zone (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/azs/{uuid}/detail": {
+      "get": {
+        "operationId": "get-az-detail",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single AZ's full detail (cluster-admin)",
         "tags": [
           "inventory"
         ]
@@ -7140,6 +7775,102 @@
         ]
       }
     },
+    "/api/events/stream": {
+      "get": {
+        "description": "Bridges the agent's WatchEvents gRPC stream. Consumers : `new EventSource('/api/events/stream?kind_prefix=vm.')`. Reconnect via the browser's default backoff ; missed events should trigger a re-list.",
+        "operationId": "watch-events-sse",
+        "parameters": [
+          {
+            "description": "Optional comma-separated kind prefixes filter (e.g. 'vm.,host.').",
+            "explode": false,
+            "in": "query",
+            "name": "kind_prefix",
+            "schema": {
+              "description": "Optional comma-separated kind prefixes filter (e.g. 'vm.,host.').",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional project UUID filter.",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Optional project UUID filter.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional subject filter (e.g. a VM UUID).",
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "description": "Optional subject filter (e.g. a VM UUID).",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "description": "Each oneOf object in the array represents one possible Server Sent Events (SSE) message, serialized as UTF-8 text according to the SSE specification.",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/EventFrame"
+                          },
+                          "event": {
+                            "const": "event",
+                            "description": "The event name.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "The event ID.",
+                            "type": "integer"
+                          },
+                          "retry": {
+                            "description": "The retry time in milliseconds.",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "data",
+                          "event"
+                        ],
+                        "title": "Event event",
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "title": "Server Sent Events",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Server-Sent Events stream of platform events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/federation/peers": {
       "get": {
         "description": "Surfaces the same rows the operator sees from `weft federation list`. Status is one of 'live' (recent successful poll), 'stale' (last poll older than the stale TTL, default 5 minutes) or 'unreachable' (no successful poll on record or current poll failed).",
@@ -7810,6 +8541,204 @@
           }
         },
         "summary": "Cordon or uncordon a host",
+        "tags": [
+          "inventory",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/hosts/{uuid}/detail": {
+      "get": {
+        "operationId": "get-host",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single host's full detail",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/hosts/{uuid}/live": {
+      "delete": {
+        "description": "Replaces the local-only DELETE /api/hosts/{uuid} stub. Operator should drain + stop VMs first ; the server doesn't migrate them automatically.",
+        "operationId": "delete-host-live",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a host via the live RPC (cluster-admin)",
+        "tags": [
+          "inventory",
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/hosts/{uuid}/properties": {
+      "put": {
+        "description": "Atomic replace. Empty map clears every property.",
+        "operationId": "set-host-properties",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHostPropertiesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetHostPropertiesResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace a host's properties map (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/hosts/{uuid}/state": {
+      "post": {
+        "description": "States : active | draining | down. Drain via state=draining stops accepting placements + lets existing VMs finish ; down marks the host as permanently out (operator should DeleteHost after).",
+        "operationId": "set-host-state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHostStateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetHostStateResp"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a host's lifecycle state (cluster-admin)",
         "tags": [
           "inventory",
           "lifecycle"
@@ -8938,6 +9867,63 @@
           "microvms",
           "properties"
         ]
+      },
+      "put": {
+        "operationId": "set-vm-properties",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetVMPropertiesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetVMPropertiesResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace a VM's properties map (project-scoped)",
+        "tags": [
+          "microvms"
+        ]
       }
     },
     "/api/microvms/{name}/properties/{key}": {
@@ -9503,6 +10489,68 @@
         ]
       }
     },
+    "/api/microvms/{name}/wait": {
+      "get": {
+        "description": "Long-poll. Returns the VM's IP once it transitions to running, or 504 on timeout.",
+        "operationId": "wait-vm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Long-poll deadline ; 0 = server default (60)",
+            "explode": false,
+            "in": "query",
+            "name": "timeout_seconds",
+            "schema": {
+              "description": "Long-poll deadline ; 0 = server default (60)",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitVMResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Block until a VM reaches running (project-scoped)",
+        "tags": [
+          "microvms",
+          "lifecycle"
+        ]
+      }
+    },
     "/api/monitors": {
       "get": {
         "description": "Reads /weft/coord/hosts/\u003chost_uuid\u003e from etcd — one entry per healthy weft-agent in the cluster. A drop in count vs expected_count is the canonical signal of a DC partition or rack outage. expected_count defaults to the etcd member count ; pin a static value via WEFT_WEBUI_EXPECTED_MONITORS for clusters where the static topology should drive the badge regardless of etcd roster churn.",
@@ -9622,7 +10670,7 @@
     },
     "/api/networks/{key}": {
       "put": {
-        "description": "Updates the human-readable name. Attached VMs keep referencing by uuid.",
+        "description": "Updates the human-readable name. Attached VMs keep referencing by uuid. Calls the live RenameNetwork RPC ; the key path arg must be the network UUID.",
         "operationId": "rename-network",
         "parameters": [
           {
@@ -10706,6 +11754,52 @@
           }
         },
         "summary": "Update a rack (cluster-admin)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/racks/{uuid}/detail": {
+      "get": {
+        "operationId": "get-rack-detail",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single rack's full detail (cluster-admin)",
         "tags": [
           "inventory"
         ]
@@ -12140,6 +13234,57 @@
         ]
       }
     },
+    "/api/security-groups/{uuid}/rename": {
+      "put": {
+        "operationId": "rename-security-group-live",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameUUIDInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameUUIDResp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Rename a security group via the live RPC (admin)",
+        "tags": [
+          "security"
+        ]
+      }
+    },
     "/api/security-groups/{uuid}/rules": {
       "get": {
         "description": "Live-first ; on Unimplemented OR no daemon, falls back to the mock 'security-rules' resource (matched by group name) so the dashboard stays explorable before weft-agent's SG-rule embedding lands.",
@@ -13359,6 +14504,144 @@
         "tags": [
           "tenants",
           "quotas"
+        ]
+      }
+    },
+    "/api/tenants/{uuid}/live": {
+      "delete": {
+        "description": "Cluster-wide delete. Refused server-side when projects still reference the tenant (cascade safety).",
+        "operationId": "delete-tenant-live",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a tenant via the live RPC (cluster-admin)",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/api/users/{uuid}": {
+      "delete": {
+        "description": "Idempotent. Removes the user from every project + tenant they were a member of as a side-effect.",
+        "operationId": "delete-user",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutputBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a user (cluster-admin)",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/users/{uuid}/detail": {
+      "get": {
+        "operationId": "get-user-detail",
+        "parameters": [
+          {
+            "description": "Row uuid",
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "description": "Row uuid",
+              "maxLength": 64,
+              "minLength": 4,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single user's full detail (cluster-admin)",
+        "tags": [
+          "identity"
         ]
       }
     },

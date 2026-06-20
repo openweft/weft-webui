@@ -152,20 +152,22 @@ func mountNetworksAPI(api huma.API) {
 		Method:        "PUT",
 		Path:          "/api/networks/{key}",
 		Summary:       "Rename a network (admin)",
-		Description:   "Updates the human-readable name. Attached VMs keep referencing by uuid.",
+		Description:   "Updates the human-readable name. Attached VMs keep referencing by uuid. Calls the live RenameNetwork RPC ; the key path arg must be the network UUID.",
 		Tags:          []string{"networks"},
 		DefaultStatus: 200,
-	}, func(_ context.Context, in *renameNetworkInput) (*renameNetworkOutput, error) {
+	}, func(ctx context.Context, in *renameNetworkInput) (*renameNetworkOutput, error) {
 		newName := strings.TrimSpace(in.Body.NewName)
 		if newName == "" {
 			return nil, huma.Error400BadRequest("new_name is required")
 		}
-		if newName == in.Key {
-			return &renameNetworkOutput{Body: renameNetworkResp{Name: newName}}, nil
+		if err := requireLiveCtx(); err != nil {
+			return nil, err
 		}
-		if !renameNetworkRow(in.Key, newName) {
-			return nil, huma.Error404NotFound("network not found")
+		if err := live.RenameNetwork(ctx, in.Key, newName); err != nil {
+			Audit(ctx, auditLogger, "network.rename", "network", in.Key, "", err, map[string]string{"new_name": newName})
+			return nil, huma.Error502BadGateway("live: " + err.Error())
 		}
+		Audit(ctx, auditLogger, "network.rename", "network", in.Key, "", nil, map[string]string{"new_name": newName})
 		return &renameNetworkOutput{Body: renameNetworkResp{Name: newName}}, nil
 	})
 }

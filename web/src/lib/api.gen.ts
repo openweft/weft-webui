@@ -4,6 +4,94 @@
  */
 
 export interface paths {
+    "/api/admin/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List images in the agent cache (cluster-admin) */
+        get: operations["list-images"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/images/clean": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * GC unused images from the agent cache (cluster-admin)
+         * @description dry_run=true returns the list of candidates without deleting.
+         */
+        post: operations["clean-images"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/images/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull one image into the agent cache (cluster-admin) */
+        post: operations["pull-image"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/zombies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the zombie GC report (cluster-admin) */
+        get: operations["get-zombie-report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/zombies/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger an immediate zombie GC sweep (cluster-admin) */
+        post: operations["trigger-zombie-sweep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit-log": {
         parameters: {
             query?: never;
@@ -97,6 +185,23 @@ export interface paths {
          * @description Cascade-deletes every rack and host whose `az` column matches the AZ code. Use with care.
          */
         delete: operations["delete-az"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/azs/{uuid}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single AZ's full detail (cluster-admin) */
+        get: operations["get-az-detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -378,6 +483,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-Sent Events stream of platform events
+         * @description Bridges the agent's WatchEvents gRPC stream. Consumers : `new EventSource('/api/events/stream?kind_prefix=vm.')`. Reconnect via the browser's default backoff ; missed events should trigger a re-list.
+         */
+        get: operations["watch-events-sse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/federation/peers": {
         parameters: {
             query?: never;
@@ -607,6 +732,83 @@ export interface paths {
          * @description Cordoned hosts stop accepting new VM placements ; existing VMs keep running. Pass `cordoned=false` to uncordon. Idempotent.
          */
         post: operations["cordon-host"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{uuid}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single host's full detail */
+        get: operations["get-host"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{uuid}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a host via the live RPC (cluster-admin)
+         * @description Replaces the local-only DELETE /api/hosts/{uuid} stub. Operator should drain + stop VMs first ; the server doesn't migrate them automatically.
+         */
+        delete: operations["delete-host-live"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{uuid}/properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a host's properties map (cluster-admin)
+         * @description Atomic replace. Empty map clears every property.
+         */
+        put: operations["set-host-properties"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{uuid}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a host's lifecycle state (cluster-admin)
+         * @description States : active | draining | down. Drain via state=draining stops accepting placements + lets existing VMs finish ; down marks the host as permanently out (operator should DeleteHost after).
+         */
+        post: operations["set-host-state"];
         delete?: never;
         options?: never;
         head?: never;
@@ -897,7 +1099,8 @@ export interface paths {
         };
         /** List per-VM application-level properties */
         get: operations["list-vm-properties"];
-        put?: never;
+        /** Replace a VM's properties map (project-scoped) */
+        put: operations["set-vm-properties"];
         /** Create or replace a per-VM property (upsert) */
         post: operations["set-vm-property"];
         delete?: never;
@@ -1049,6 +1252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/microvms/{name}/wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Block until a VM reaches running (project-scoped)
+         * @description Long-poll. Returns the VM's IP once it transitions to running, or 504 on timeout.
+         */
+        get: operations["wait-vm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitors": {
         parameters: {
             query?: never;
@@ -1116,7 +1339,7 @@ export interface paths {
         get?: never;
         /**
          * Rename a network (admin)
-         * @description Updates the human-readable name. Attached VMs keep referencing by uuid.
+         * @description Updates the human-readable name. Attached VMs keep referencing by uuid. Calls the live RenameNetwork RPC ; the key path arg must be the network UUID.
          */
         put: operations["rename-network"];
         post?: never;
@@ -1461,6 +1684,23 @@ export interface paths {
         post?: never;
         /** Delete a rack + cascade its hosts (cluster-admin) */
         delete: operations["delete-rack"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/racks/{uuid}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single rack's full detail (cluster-admin) */
+        get: operations["get-rack-detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1879,6 +2119,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/security-groups/{uuid}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a security group via the live RPC (admin) */
+        put: operations["rename-security-group-live"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/security-groups/{uuid}/rules": {
         parameters: {
             query?: never;
@@ -2248,6 +2505,63 @@ export interface paths {
          * @description Aggregates rows across the microvm + volume registries, keyed on the tenant a project belongs to. Quotas live on the tenant ; usage is computed here so the dashboard renders bars against the cap without a second round-trip. Non-members get 404 (don't-acknowledge).
          */
         get: operations["get-tenant-usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tenants/{uuid}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a tenant via the live RPC (cluster-admin)
+         * @description Cluster-wide delete. Refused server-side when projects still reference the tenant (cascade safety).
+         */
+        delete: operations["delete-tenant-live"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a user (cluster-admin)
+         * @description Idempotent. Removes the user from every project + tenant they were a member of as a side-effect.
+         */
+        delete: operations["delete-user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{uuid}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single user's full detail (cluster-admin) */
+        get: operations["get-user-detail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2985,6 +3299,26 @@ export interface components {
             /** Format: int64 */
             racks?: number;
         };
+        CleanImagesInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CleanImagesInputBody.json
+             */
+            readonly $schema?: string;
+            config_dir?: string;
+            dry_run: boolean;
+        };
+        CleanImagesResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CleanImagesResp.json
+             */
+            readonly $schema?: string;
+            deleted: string[] | null;
+            dry_run: boolean;
+        };
         ClearThrottleResp: {
             /**
              * Format: uri
@@ -3506,6 +3840,15 @@ export interface components {
              */
             type: string;
         };
+        EventFrame: {
+            kind: string;
+            meta?: {
+                [key: string]: string;
+            };
+            project?: string;
+            subject?: string;
+            ts?: string;
+        };
         FederationPeer: {
             /** @description Most recent poll error, empty when healthy */
             last_error?: string;
@@ -3547,6 +3890,17 @@ export interface components {
             readonly $schema?: string;
             email: string;
             role: string;
+        };
+        ImageListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ImageListBody.json
+             */
+            readonly $schema?: string;
+            images: {
+                [key: string]: unknown;
+            }[] | null;
         };
         ImportResult: {
             /**
@@ -3972,6 +4326,16 @@ export interface components {
             source_ref?: string;
             source_url: string;
         };
+        PullImageInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PullImageInputBody.json
+             */
+            readonly $schema?: string;
+            checksum?: string;
+            url: string;
+        };
         Quota: {
             icon: string;
             id: string;
@@ -4107,6 +4471,25 @@ export interface components {
              */
             readonly $schema?: string;
             name: string;
+        };
+        RenameUUIDInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameUUIDInputBody.json
+             */
+            readonly $schema?: string;
+            new_name: string;
+        };
+        RenameUUIDResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RenameUUIDResp.json
+             */
+            readonly $schema?: string;
+            new_name: string;
+            uuid: string;
         };
         RenameVolumeInputBody: {
             /**
@@ -4277,6 +4660,49 @@ export interface components {
             remote_cidr: string;
             remote_group_uuid: string;
         };
+        SetHostPropertiesInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetHostPropertiesInputBody.json
+             */
+            readonly $schema?: string;
+            properties: {
+                [key: string]: string;
+            };
+        };
+        SetHostPropertiesResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetHostPropertiesResp.json
+             */
+            readonly $schema?: string;
+            properties: {
+                [key: string]: string;
+            };
+            uuid: string;
+        };
+        SetHostStateInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetHostStateInputBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            state: "active" | "draining" | "down";
+        };
+        SetHostStateResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetHostStateResp.json
+             */
+            readonly $schema?: string;
+            state: string;
+            uuid: string;
+        };
         SetLBBackendsResp: {
             /**
              * Format: uri
@@ -4327,6 +4753,29 @@ export interface components {
             readonly $schema?: string;
             /** @description The exact set of catalogue names to assign (replace-set) */
             names: string[] | null;
+        };
+        SetVMPropertiesInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetVMPropertiesInputBody.json
+             */
+            readonly $schema?: string;
+            properties: {
+                [key: string]: string;
+            };
+        };
+        SetVMPropertiesResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetVMPropertiesResp.json
+             */
+            readonly $schema?: string;
+            name: string;
+            properties: {
+                [key: string]: string;
+            };
         };
         Subnet: {
             /**
@@ -4811,6 +5260,34 @@ export interface components {
             uuid: string;
             volume_uuid: string;
         };
+        WaitVMResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/WaitVMResp.json
+             */
+            readonly $schema?: string;
+            ip: string;
+            name: string;
+        };
+        ZombieReportBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ZombieReportBody.json
+             */
+            readonly $schema?: string;
+            by_kind: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            deleted_total: number;
+            /** Format: int64 */
+            last_sweep_unix_ns: number;
+            zombies: {
+                [key: string]: unknown;
+            }[] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -4820,6 +5297,159 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "list-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "clean-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanImagesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanImagesResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "pull-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PullImageInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-zombie-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZombieReportBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "trigger-zombie-sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZombieReportBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "tail-audit-log": {
         parameters: {
             query?: {
@@ -5011,6 +5641,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-az-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Error */
@@ -5695,6 +6359,53 @@ export interface operations {
             };
         };
     };
+    "watch-events-sse": {
+        parameters: {
+            query?: {
+                /** @description Optional comma-separated kind prefixes filter (e.g. 'vm.,host.'). */
+                kind_prefix?: string;
+                /** @description Optional project UUID filter. */
+                project?: string;
+                /** @description Optional subject filter (e.g. a VM UUID). */
+                subject?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": {
+                        data: components["schemas"]["EventFrame"];
+                        /**
+                         * @description The event name.
+                         * @constant
+                         */
+                        event: "event";
+                        /** @description The event ID. */
+                        id?: number;
+                        /** @description The retry time in milliseconds. */
+                        retry?: number;
+                    }[];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-federation-peers": {
         parameters: {
             query?: never;
@@ -6172,6 +6883,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CordonBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-host-live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-host-properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetHostPropertiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetHostPropertiesResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-host-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetHostStateInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetHostStateResp"];
                 };
             };
             /** @description Error */
@@ -6839,6 +7686,43 @@ export interface operations {
             };
         };
     };
+    "set-vm-properties": {
+        parameters: {
+            query?: {
+                project?: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetVMPropertiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetVMPropertiesResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "set-vm-property": {
         parameters: {
             query?: {
@@ -7190,6 +8074,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RemovedOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "wait-vm": {
+        parameters: {
+            query?: {
+                project?: string;
+                /** @description Long-poll deadline ; 0 = server default (60) */
+                timeout_seconds?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitVMResp"];
                 };
             };
             /** @description Error */
@@ -8038,6 +8957,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-rack-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Error */
@@ -9024,6 +9977,41 @@ export interface operations {
             };
         };
     };
+    "rename-security-group-live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameUUIDInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameUUIDResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-security-group-rules": {
         parameters: {
             query?: never;
@@ -9842,6 +10830,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantUsageView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-tenant-live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-user-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Row uuid */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Error */
