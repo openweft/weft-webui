@@ -26,6 +26,7 @@ github.com/danielgtaylor/huma/v2/adapters/humago
 github.com/danielgtaylor/huma/v2/casing
 github.com/danielgtaylor/huma/v2/negotiation
 github.com/danielgtaylor/huma/v2/queryparam
+github.com/danielgtaylor/huma/v2/sse
 github.com/danielgtaylor/huma/v2/validation
 github.com/danielgtaylor/huma/v2/yaml
 # github.com/go-jose/go-jose/v4 v4.1.4
@@ -101,7 +102,7 @@ github.com/openweft/weft-client
 # github.com/openweft/weft-network-proto v0.1.1
 ## explicit; go 1.26
 github.com/openweft/weft-network-proto
-# github.com/openweft/weft-proto v0.12.0 => ../weft-proto
+# github.com/openweft/weft-proto v0.14.0 => ../weft-proto
 ## explicit; go 1.25.0
 github.com/openweft/weft-proto
 # github.com/prometheus/client_golang v1.20.5
