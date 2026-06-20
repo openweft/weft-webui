@@ -836,6 +836,14 @@ func handleResourceRows(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Production path : the mock seed rows have been stripped from
+	// the registry (resources.go), so res.Rows starts empty for any
+	// resource without a backing store. Operator-mutated stores
+	// (inventory_mock, dns_mock, security_mock) write into res.Rows
+	// directly, so the read path here serves them after a POST. For
+	// resources with no store AND no live RPC, this returns an empty
+	// array — the dashboard renders an empty table rather than
+	// pretend data.
 	rows := res.Rows
 	if rows == nil {
 		rows = []map[string]any{}

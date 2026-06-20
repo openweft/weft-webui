@@ -6,28 +6,20 @@ import (
 	"sync"
 )
 
-// OCI registry artifacts live in their own little store rather than the
-// static registry, because the dashboard can push to it (upload). Seeded
-// with mock artifacts ; wiring to the real registry (zot) means replacing
-// registryAdd / registryList with oras/containerd calls — the HTTP shapes
-// stay the same.
+// OCI registry artifacts. Operator-uploaded blobs are stored here ;
+// the dashboard's upload flow appends via registryAdd. The list is
+// served read-only via registryList. The mock seed has been removed
+// for production use — the dashboard shows an empty table until
+// operators push real artifacts. The full migration to a real OCI
+// registry backend (zot, weft-network reconciler) replaces this
+// in-memory store with oras/containerd calls — the HTTP shapes stay
+// the same.
 //
 // "artifact" rather than "image" : container images, raw multi-arch
 // disks, Helm charts, model weights — all OCI-wrapped blobs.
 var (
 	registryMu        sync.Mutex
-	registryArtifacts = []map[string]any{
-		row("repository", "library/alpine", "tag", "3.21", "type", "container",
-			"arch", "amd64, arm64", "registry", "zot.dc-a", "size", "7.8 MiB", "pushed", "3d ago"),
-		row("repository", "team-alpha/web", "tag", "v1.4.2", "type", "container",
-			"arch", "amd64, arm64", "registry", "zot.dc-a", "size", "52 MiB", "pushed", "5h ago"),
-		row("repository", "weft/cloud-boot", "tag", "uefi", "type", "raw",
-			"arch", "amd64, arm64, riscv64, loongarch64", "registry", "zot.dc-a", "size", "18 MiB", "pushed", "1d ago"),
-		row("repository", "research/jupyter", "tag", "latest", "type", "container",
-			"arch", "amd64, arm64", "registry", "zot.dc-c", "size", "1.1 GiB", "pushed", "2d ago"),
-		row("repository", "images/debian-12", "tag", "raw", "type", "raw",
-			"arch", "amd64, arm64", "registry", "zot.dc-b", "size", "1.9 GiB", "pushed", "1w ago"),
-	}
+	registryArtifacts = []map[string]any{}
 )
 
 func registryList() []map[string]any {

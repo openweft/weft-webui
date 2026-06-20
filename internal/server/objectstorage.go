@@ -209,28 +209,13 @@ func resourceMatch(rule, key string) bool {
 // (requirePolicy moved to api_storage.go as requirePolicyCtx ; this
 // file keeps just the policy data + evaluator.)
 
+// seedBuckets returns an empty bucket store. The mock seed has been
+// removed for production use ; operators see no buckets until they
+// register real ones via CreateBucket. The full live wire-up replaces
+// this in-memory slice with a CubeFS objectnode (or versitygw)
+// projection driven by the agent's bucket registry.
 func seedBuckets() []*bucket {
-	bs := []*bucket{
-		{Name: "team-data", Created: "2026-03-02", Objects: []s3object{
-			obj("README.md", "# team-data\n\nShared datasets and models for team-alpha.\nServed by CubeFS over its S3 endpoint.\n"),
-			obj("datasets/2026/jan/report.csv", "date,region,requests,errors\n2026-01-01,dc-a,18422,3\n2026-01-02,dc-b,21044,0\n2026-01-03,dc-c,17310,5\n"),
-			obj("datasets/2026/jan/notes.md", "# January\n\n- Backfilled the dc-c gap on the 3rd.\n- Errors correlate with the rack-2 drain.\n"),
-			obj("models/model-v1.bin", ""),
-		}},
-		{Name: "notebooks", Created: "2026-04-11", Objects: []s3object{
-			obj("users/yann/analysis.ipynb", "{\n  \"cells\": [],\n  \"metadata\": { \"kernel\": \"python3\" },\n  \"nbformat\": 4\n}\n"),
-			obj("users/alice/scratch.py", "import weft\n\nc = weft.connect()\nfor vm in c.microvms():\n    print(vm.name, vm.status)\n"),
-			obj("shared/data.parquet", ""),
-		}},
-		{Name: "backups", Created: "2026-05-01", Objects: []s3object{
-			obj("db/2026-05-01.dump", ""),
-			obj("db/2026-05-02.dump", ""),
-		}},
-	}
-	for _, b := range bs {
-		b.UUID = mockUUID("bucket", b.Name)
-	}
-	return bs
+	return []*bucket{}
 }
 
 func obj(key, content string) s3object {

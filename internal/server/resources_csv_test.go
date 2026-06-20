@@ -15,6 +15,20 @@ func TestResourceCSV_ExportsRowsWithHeader(t *testing.T) {
 	srv := httptest.NewServer(newE2EHandler(t, ScopeAdmin))
 	t.Cleanup(srv.Close)
 
+	// Seed one AZ via the live API : the mock seed has been removed
+	// for production builds, so the registry starts empty and the
+	// test must populate it before exporting.
+	prev := append([]map[string]any(nil), resourceByID["azs"].Rows...)
+	resourceByID["azs"].Rows = []map[string]any{}
+	t.Cleanup(func() { resourceByID["azs"].Rows = prev })
+	body := map[string]any{
+		"code": "DC-A", "name": "DC-A", "region": "test",
+		"status": "active", "uuid": "",
+	}
+	if got := hit(t, srv, "POST", "/api/azs", body, nil); got != 200 {
+		t.Fatalf("POST DC-A: status %d", got)
+	}
+
 	resp, err := srv.Client().Get(srv.URL + "/api/resources/azs/export.csv")
 	if err != nil {
 		t.Fatal(err)
