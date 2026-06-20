@@ -651,6 +651,49 @@ func mountHostAPI(api huma.API) {
 		Audit(ctx, auditLogger, "host.delete", "host", in.UUID, "", nil, nil)
 		return out, nil
 	})
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "cordon-host",
+		Method:        "POST",
+		Path:          "/api/hosts/{uuid}/cordon",
+		Summary:       "Cordon or uncordon a host",
+		Description:   "Cordoned hosts stop accepting new VM placements ; existing VMs keep running. Pass `cordoned=false` to uncordon. Idempotent.",
+		Tags:          []string{"inventory", "lifecycle"},
+		DefaultStatus: 202,
+	}, func(ctx context.Context, in *cordonInput) (*cordonOutput, error) {
+		if err := requireLiveCtx(); err != nil {
+			return nil, err
+		}
+		if cerr := live.SetHostCordoned(ctx, in.UUID, in.Body.Cordoned); cerr != nil {
+			Audit(ctx, auditLogger, "host.cordon", "host", in.UUID, "", cerr, nil)
+			return nil, huma.Error502BadGateway("live: " + cerr.Error())
+		}
+		Audit(ctx, auditLogger, "host.cordon", "host", in.UUID, "", nil, map[string]string{"cordoned": boolStr(in.Body.Cordoned)})
+		return &cordonOutput{Body: cordonBody{UUID: in.UUID, Cordoned: in.Body.Cordoned}}, nil
+	})
+}
+
+type cordonInput struct {
+	UUID string `path:"uuid"`
+	Body struct {
+		Cordoned bool `json:"cordoned"`
+	}
+}
+
+type cordonBody struct {
+	UUID     string `json:"uuid"`
+	Cordoned bool   `json:"cordoned"`
+}
+
+type cordonOutput struct {
+	Body cordonBody
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func normaliseHost(in APIHost) APIHost {

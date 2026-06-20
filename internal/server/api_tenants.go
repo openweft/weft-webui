@@ -398,6 +398,34 @@ func mountTenantsReadAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "set-project-tenant",
+		Method:        "POST",
+		Path:          "/api/projects/{name}/tenant",
+		Summary:       "Bind a project to a parent tenant (cluster admin)",
+		Description:   "Powers tenant-scoped quota aggregation. Pass tenant_uuid=\"\" to unbind. Idempotent.",
+		Tags:          []string{"projects", "tenants"},
+		DefaultStatus: 202,
+	}, func(ctx context.Context, in *setProjectTenantInput) (*setProjectTenantOutput, error) {
+		u := auth.UserFromContext(ctx)
+		if !isClusterAdmin(u) {
+			return nil, huma.Error403Forbidden("cluster admin required")
+		}
+		if err := requireLiveCtx(); err != nil {
+			return nil, err
+		}
+		uuid, lerr := live.ProjectUUIDByName(ctx, in.Name)
+		if lerr != nil {
+			return nil, huma.Error404NotFound("project not found: " + lerr.Error())
+		}
+		if err := live.SetProjectTenant(ctx, uuid, in.Body.TenantUUID); err != nil {
+			Audit(ctx, auditLogger, "project.set-tenant", "project", in.Name, "", err, map[string]string{"tenant_uuid": in.Body.TenantUUID})
+			return nil, huma.Error502BadGateway("live: " + err.Error())
+		}
+		Audit(ctx, auditLogger, "project.set-tenant", "project", in.Name, "", nil, map[string]string{"tenant_uuid": in.Body.TenantUUID})
+		return &setProjectTenantOutput{Body: setProjectTenantResp{Project: in.Name, TenantUUID: in.Body.TenantUUID}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "set-project-quota",
 		Method:      "PUT",
 		Path:        "/api/projects/{name}/quota",
@@ -630,4 +658,20 @@ type setProjectQuotaInput struct {
 
 type quotasInput struct {
 	Tenant string `query:"tenant" doc:"Override the session tenant"`
+}
+
+type setProjectTenantInput struct {
+	Name string `path:"name" minLength:"1" maxLength:"128"`
+	Body struct {
+		TenantUUID string `json:"tenant_uuid" doc:"Tenant UUID ; empty unbinds"`
+	}
+}
+
+type setProjectTenantResp struct {
+	Project    string `json:"project"`
+	TenantUUID string `json:"tenant_uuid"`
+}
+
+type setProjectTenantOutput struct {
+	Body setProjectTenantResp
 }
