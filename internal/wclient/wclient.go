@@ -1453,19 +1453,81 @@ type MicroVMMetrics struct {
 	UptimeSeconds uint64
 }
 
-// GetMicroVMMetrics returns the latest sample for one VM. Until
-// weft-proto ships the RPC this always reports Unimplemented ; the
-// caller's IsUnimplemented check then triggers the synthetic fallback
-// in the webui.
+// GetMicroVMMetrics returns the latest sample for one VM. Wired in
+// weft-proto v0.15.0 ; the agent currently returns the zero shape
+// until the hypervisor-driver sampling pipeline lands. Callers no
+// longer need the IsUnimplemented fallback — sampled_at_unix_ns == 0
+// signals "no sample taken yet" cleanly, the webui Metrics tab
+// renders the empty fields natively.
 func (c *Client) GetMicroVMMetrics(ctx context.Context, name, project string) (m *MicroVMMetrics, retErr error) {
 	defer c.measured("GetMicroVMMetrics", &retErr)()
-	// We deliberately don't dial here ; the call has no underlying
-	// RPC yet. Returning Unimplemented immediately keeps the synth
-	// path zero-cost and signals "future work" cleanly.
-	_ = ctx
-	_ = name
-	_ = project
-	return nil, status.Error(codes.Unimplemented, "GetMicroVMMetrics : weft-proto RPC not yet defined")
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetMicroVMMetrics(cctx, &weftv1.GetMicroVMMetricsRequest{
+		Name:    name,
+		Project: project,
+	})
+	if err != nil {
+		return nil, err
+	}
+	sampled := resp.GetSampledAtUnixNs()
+	return &MicroVMMetrics{
+		// MetricsSnapshot's SampledAtUnix is wall-clock seconds ; the
+		// RPC carries nanos for parity with the rest of the wire surface.
+		SampledAtUnix: sampled / 1_000_000_000,
+		CPUPercent:    resp.GetCpuPercent(),
+		MemUsedMiB:    resp.GetMemUsedMib(),
+		MemTotalMiB:   resp.GetMemTotalMib(),
+		NetRxBps:      resp.GetNetRxBps(),
+		NetTxBps:      resp.GetNetTxBps(),
+		DiskReadBps:   resp.GetDiskReadBps(),
+		DiskWriteBps:  resp.GetDiskWriteBps(),
+		UptimeSeconds: resp.GetUptimeMs() / 1_000,
+	}, nil
+}
+
+// SetPodSpec publishes a protojson-encoded guestv1.PodSpec to the
+// agent for the given pod_id. Mirrors `weft pod set-spec` on the CLI ;
+// the webui calls this from its (future) Pod editor view. The agent
+// decodes, stores in-memory, and persists to <stateDir>/podspecs.hcl.
+func (c *Client) SetPodSpec(ctx context.Context, podID string, specJSON []byte) (retErr error) {
+	defer c.measured("SetPodSpec", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetPodSpec(cctx, &weftv1.SetPodSpecRequest{
+		PodId:    podID,
+		SpecJson: specJSON,
+	})
+	return err
+}
+
+// GetPodSpec returns the currently-published PodSpec (as protojson)
+// for the given pod_id, or (nil, false, nil) when no spec has been
+// published.
+func (c *Client) GetPodSpec(ctx context.Context, podID string) (specJSON []byte, found bool, retErr error) {
+	defer c.measured("GetPodSpec", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, false, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetPodSpec(cctx, &weftv1.GetPodSpecRequest{PodId: podID})
+	if err != nil {
+		return nil, false, err
+	}
+	if !resp.GetFound() {
+		return nil, false, nil
+	}
+	return resp.GetSpecJson(), true, nil
 }
 
 // ---- Flavors --------------------------------------------------------
