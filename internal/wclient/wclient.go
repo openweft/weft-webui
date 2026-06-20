@@ -539,6 +539,95 @@ func (c *Client) StopVM(ctx context.Context, name, project string) (retErr error
 	return err
 }
 
+// RestartVM is the atomic Stop+Start RPC the agent serves as one
+// transaction (weft-proto v0.12.0+). The dashboard's restart button
+// uses this over a client-side stop+start dance — the agent rolls
+// back when the start half fails.
+func (c *Client) RestartVM(ctx context.Context, name, project string) (retErr error) {
+	defer c.measured("RestartVM", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.RestartVM(cctx, &weftv1.RestartVMRequest{Name: name, Project: project})
+	return err
+}
+
+// SetHostCordoned cordons (true) or uncordons (false) a host. Cordoned
+// hosts stop accepting new VM placements ; existing VMs keep running.
+// Idempotent : re-cordoning a cordoned host is a no-op success.
+func (c *Client) SetHostCordoned(ctx context.Context, hostUUID string, cordoned bool) (retErr error) {
+	defer c.measured("SetHostCordoned", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetHostCordoned(cctx, &weftv1.SetHostCordonedRequest{Uuid: hostUUID, Cordoned: cordoned})
+	return err
+}
+
+// SetProjectTenant binds (or unbinds when tenantUUID == "") a project
+// to a parent Tenant. Powers the GetProjectQuota.tenant_cap +
+// siblings_total aggregation (weft-proto v0.13.0).
+func (c *Client) SetProjectTenant(ctx context.Context, projectUUID, tenantUUID string) (retErr error) {
+	defer c.measured("SetProjectTenant", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.SetProjectTenant(cctx, &weftv1.SetProjectTenantRequest{ProjectUuid: projectUUID, TenantUuid: tenantUUID})
+	return err
+}
+
+// ResizeVolume grows (or shrinks if the backend permits) a volume.
+// newSizeGiB must be > current ; shrink semantics depend on the backend
+// (block / file / cubefs).
+func (c *Client) ResizeVolume(ctx context.Context, volumeUUID string, newSizeGiB int) (retErr error) {
+	defer c.measured("ResizeVolume", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	_, err = rpc.ResizeVolume(cctx, &weftv1.ResizeVolumeRequest{Uuid: volumeUUID, NewSizeGib: int64(newSizeGiB)})
+	return err
+}
+
+// GetProjectQuota returns the project's own quota + (when the project
+// is tenant-bound) the parent tenant_cap + siblings_total aggregation.
+// Pairs with the existing SetProjectQuota.
+type ProjectQuotaView struct {
+	Project       *weftv1.Quotas
+	TenantCap     *weftv1.Quotas
+	SiblingsTotal *weftv1.Quotas
+}
+
+func (c *Client) GetProjectQuota(ctx context.Context, projectUUID string) (view *ProjectQuotaView, retErr error) {
+	defer c.measured("GetProjectQuota", &retErr)()
+	rpc, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := rpcCtx(withBearer(ctx))
+	defer cancel()
+	resp, err := rpc.GetProjectQuota(cctx, &weftv1.GetProjectQuotaRequest{ProjectUuid: projectUUID})
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectQuotaView{
+		Project:       resp.Project,
+		TenantCap:     resp.TenantCap,
+		SiblingsTotal: resp.SiblingsTotal,
+	}, nil
+}
+
 func (c *Client) DeleteVM(ctx context.Context, name, project string) (retErr error) {
 	defer c.measured("DeleteVM", &retErr)()
 	rpc, err := c.dial()

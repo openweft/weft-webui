@@ -593,6 +593,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hosts/{uuid}/cordon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cordon or uncordon a host
+         * @description Cordoned hosts stop accepting new VM placements ; existing VMs keep running. Pass `cordoned=false` to uncordon. Idempotent.
+         */
+        post: operations["cordon-host"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/loadbalancers": {
         parameters: {
             query?: never;
@@ -898,6 +918,23 @@ export interface paths {
         post?: never;
         /** Delete a per-VM property */
         delete: operations["delete-vm-property"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/microvms/{name}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart a VM atomically (server-side stop+start, rolls back on start failure) */
+        post: operations["restart-vm"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1348,6 +1385,26 @@ export interface paths {
          * @description The role string is webui-side metadata for now (weft-agent has membership but no per-project role enum yet) ; we mirror it on the store and also call AddProjectMember so weft-agent sees the membership.
          */
         post: operations["grant-project-role"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{name}/tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a project to a parent tenant (cluster admin)
+         * @description Powers tenant-scoped quota aggregation. Pass tenant_uuid="" to unbind. Idempotent.
+         */
+        post: operations["set-project-tenant"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2318,6 +2375,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/volumes/{key}/resize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resize a volume (admin)
+         * @description Grow the volume to new_size_gib. Shrink behaviour depends on the backend (block / file / cubefs) ; some refuse to shrink without explicit force.
+         */
+        post: operations["resize-volume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/volumes/{uuid}": {
         parameters: {
             query?: never;
@@ -2922,6 +2999,25 @@ export interface components {
         Column: {
             key: string;
             label: string;
+        };
+        CordonBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CordonBody.json
+             */
+            readonly $schema?: string;
+            cordoned: boolean;
+            uuid: string;
+        };
+        CordonInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CordonInputBody.json
+             */
+            readonly $schema?: string;
+            cordoned: boolean;
         };
         CreateBucketInputBody: {
             /**
@@ -4058,6 +4154,30 @@ export interface components {
             /** Format: int64 */
             size_gb: number;
         };
+        ResizeVolumeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResizeVolumeInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Target size in GiB ; must be > current to grow
+             */
+            new_size_gib: number;
+        };
+        ResizeVolumeResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResizeVolumeResp.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            new_size_gib: number;
+            uuid: string;
+        };
         ResourceMeta: {
             columns: components["schemas"]["Column"][] | null;
             /** Format: int64 */
@@ -4166,6 +4286,26 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             backends: number;
+        };
+        SetProjectTenantInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetProjectTenantInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Tenant UUID ; empty unbinds */
+            tenant_uuid: string;
+        };
+        SetProjectTenantResp: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetProjectTenantResp.json
+             */
+            readonly $schema?: string;
+            project: string;
+            tenant_uuid: string;
         };
         SetSGRulesResp: {
             /**
@@ -6010,6 +6150,41 @@ export interface operations {
             };
         };
     };
+    "cordon-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CordonInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CordonBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "create-loadbalancer": {
         parameters: {
             query?: {
@@ -6727,6 +6902,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RemovedOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restart-vm": {
+        parameters: {
+            query?: {
+                /** @description Override the session project */
+                project?: string;
+            };
+            header?: never;
+            path: {
+                /** @description VM name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmStateBody"];
                 };
             };
             /** @description Error */
@@ -7660,6 +7870,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleResp"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-project-tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetProjectTenantInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetProjectTenantResp"];
                 };
             };
             /** @description Error */
@@ -9868,6 +10113,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteVolumePropertyOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resize-volume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume UUID (preferred) or name */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResizeVolumeInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResizeVolumeResp"];
                 };
             };
             /** @description Error */

@@ -103,6 +103,30 @@ func mountMicroVMLifecycleAPI(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "restart-vm",
+		Method:        "POST",
+		Path:          "/api/microvms/{name}/restart",
+		Summary:       "Restart a VM atomically (server-side stop+start, rolls back on start failure)",
+		Tags:          []string{"microvms", "lifecycle"},
+		DefaultStatus: 202,
+	}, func(ctx context.Context, in *vmProjectInput) (*vmStateOutput, error) {
+		if err := requireLiveCtx(); err != nil {
+			return nil, err
+		}
+		project, err := resolveVMProjectCtx(ctx, in.Project)
+		if err != nil {
+			return nil, err
+		}
+		cerr := live.RestartVM(ctx, in.Name, project)
+		Audit(ctx, auditLogger, "microvm.restart", "microvm", in.Name, "", cerr, map[string]string{"project": project})
+		if cerr != nil {
+			return nil, huma.Error502BadGateway("live: " + cerr.Error())
+		}
+		userActionCtx(ctx, "microvm.restart")
+		return &vmStateOutput{Body: vmStateBody{Name: in.Name, State: "restarting"}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "delete-vm",
 		Method:        "DELETE",
 		Path:          "/api/microvms/{name}",

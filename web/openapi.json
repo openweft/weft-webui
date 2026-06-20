@@ -1184,6 +1184,52 @@
         ],
         "type": "object"
       },
+      "CordonBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CordonBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cordoned": {
+            "type": "boolean"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "cordoned"
+        ],
+        "type": "object"
+      },
+      "CordonInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CordonInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cordoned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cordoned"
+        ],
+        "type": "object"
+      },
       "CreateBucketInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -4052,6 +4098,56 @@
         ],
         "type": "object"
       },
+      "ResizeVolumeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ResizeVolumeInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_size_gib": {
+            "description": "Target size in GiB ; must be \u003e current to grow",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new_size_gib"
+        ],
+        "type": "object"
+      },
+      "ResizeVolumeResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ResizeVolumeResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "new_size_gib": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "new_size_gib"
+        ],
+        "type": "object"
+      },
       "ResourceMeta": {
         "additionalProperties": false,
         "properties": {
@@ -4363,6 +4459,53 @@
         },
         "required": [
           "backends"
+        ],
+        "type": "object"
+      },
+      "SetProjectTenantInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetProjectTenantInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "tenant_uuid": {
+            "description": "Tenant UUID ; empty unbinds",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_uuid"
+        ],
+        "type": "object"
+      },
+      "SetProjectTenantResp": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetProjectTenantResp.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "tenant_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "tenant_uuid"
         ],
         "type": "object"
       },
@@ -7620,6 +7763,59 @@
         ]
       }
     },
+    "/api/hosts/{uuid}/cordon": {
+      "post": {
+        "description": "Cordoned hosts stop accepting new VM placements ; existing VMs keep running. Pass `cordoned=false` to uncordon. Idempotent.",
+        "operationId": "cordon-host",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CordonInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CordonBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Cordon or uncordon a host",
+        "tags": [
+          "inventory",
+          "lifecycle"
+        ]
+      }
+    },
     "/api/loadbalancers": {
       "post": {
         "description": "Live-first against weft-agent's CreateLoadBalancer (proto v0.8.0) ; the local catalogue row gets mirrored on success so the dashboard tree + map see the new LB without a re-list. On Unimplemented (or no live wiring) the existing weft-network controller path takes over.",
@@ -8809,6 +9005,62 @@
         "tags": [
           "microvms",
           "properties"
+        ]
+      }
+    },
+    "/api/microvms/{name}/restart": {
+      "post": {
+        "operationId": "restart-vm",
+        "parameters": [
+          {
+            "description": "VM name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "VM name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Override the session project",
+            "explode": false,
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "description": "Override the session project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmStateBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Restart a VM atomically (server-side stop+start, rolls back on start failure)",
+        "tags": [
+          "microvms",
+          "lifecycle"
         ]
       }
     },
@@ -10212,6 +10464,61 @@
         "summary": "Grant a per-project role to a user (tenant admin)",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/projects/{name}/tenant": {
+      "post": {
+        "description": "Powers tenant-scoped quota aggregation. Pass tenant_uuid=\"\" to unbind. Idempotent.",
+        "operationId": "set-project-tenant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProjectTenantInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetProjectTenantResp"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Bind a project to a parent tenant (cluster admin)",
+        "tags": [
+          "projects",
+          "tenants"
         ]
       }
     },
@@ -13453,6 +13760,62 @@
           }
         },
         "summary": "Delete one property on a volume (admin) — idempotent",
+        "tags": [
+          "volumes"
+        ]
+      }
+    },
+    "/api/volumes/{key}/resize": {
+      "post": {
+        "description": "Grow the volume to new_size_gib. Shrink behaviour depends on the backend (block / file / cubefs) ; some refuse to shrink without explicit force.",
+        "operationId": "resize-volume",
+        "parameters": [
+          {
+            "description": "Volume UUID (preferred) or name",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "Volume UUID (preferred) or name",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResizeVolumeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResizeVolumeResp"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Resize a volume (admin)",
         "tags": [
           "volumes"
         ]

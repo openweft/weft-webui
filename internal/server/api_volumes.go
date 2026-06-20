@@ -31,6 +31,29 @@ import (
 func mountVolumeMetadataAPI(api huma.API, scope Scope) {
 	if scope.Has(ScopeAdmin) {
 		huma.Register(api, huma.Operation{
+			OperationID:   "resize-volume",
+			Method:        "POST",
+			Path:          "/api/volumes/{key}/resize",
+			Summary:       "Resize a volume (admin)",
+			Description:   "Grow the volume to new_size_gib. Shrink behaviour depends on the backend (block / file / cubefs) ; some refuse to shrink without explicit force.",
+			Tags:          []string{"volumes"},
+			DefaultStatus: 202,
+		}, func(ctx context.Context, in *resizeVolumeInput) (*resizeVolumeOutput, error) {
+			if err := requireLiveCtx(); err != nil {
+				return nil, err
+			}
+			if in.Body.NewSizeGiB <= 0 {
+				return nil, huma.Error400BadRequest("new_size_gib must be > 0")
+			}
+			if err := live.ResizeVolume(ctx, in.Key, in.Body.NewSizeGiB); err != nil {
+				Audit(ctx, auditLogger, "volume.resize", "volume", in.Key, "", err, nil)
+				return nil, huma.Error502BadGateway("live: " + err.Error())
+			}
+			Audit(ctx, auditLogger, "volume.resize", "volume", in.Key, "", nil, nil)
+			return &resizeVolumeOutput{Body: resizeVolumeResp{UUID: in.Key, NewSizeGiB: in.Body.NewSizeGiB}}, nil
+		})
+
+		huma.Register(api, huma.Operation{
 			OperationID:   "rename-volume",
 			Method:        "PUT",
 			Path:          "/api/volumes/{key}",
@@ -235,4 +258,20 @@ type renameVolumeResp struct {
 
 type renameVolumeOutput struct {
 	Body renameVolumeResp
+}
+
+type resizeVolumeInput struct {
+	Key  string `path:"key" doc:"Volume UUID (preferred) or name" minLength:"1" maxLength:"128"`
+	Body struct {
+		NewSizeGiB int `json:"new_size_gib" doc:"Target size in GiB ; must be > current to grow" minimum:"1"`
+	}
+}
+
+type resizeVolumeResp struct {
+	UUID       string `json:"uuid"`
+	NewSizeGiB int    `json:"new_size_gib"`
+}
+
+type resizeVolumeOutput struct {
+	Body resizeVolumeResp
 }
