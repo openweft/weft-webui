@@ -26,6 +26,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/sse"
+	"github.com/openweft/weft-webui/internal/auth"
 )
 
 // EventFrame is the over-the-wire SSE payload — the flat shape the
@@ -61,11 +62,35 @@ func mountWatchEventsSSE(api huma.API, _ Scope) {
 			_ = send.Data(&EventFrame{Kind: "control.unavailable", Subject: "no live wclient wired"})
 			return
 		}
+		// Project-scope guard : non-admin users may only subscribe to
+		// events for projects they're a member of. A blank project
+		// query is downgraded to "your own projects" for non-admins ;
+		// the gRPC stream already enforces RBAC via the bearer token,
+		// this just refuses bogus query strings up front so we don't
+		// open a stream we'll have to discard.
+		u := auth.UserFromContext(ctx)
+		project := in.Project
+		if !isClusterAdmin(u) {
+			if project == "" {
+				// Without admin scope a blank project is ambiguous —
+				// surface the error rather than silently broadening.
+				_ = send.Data(&EventFrame{Kind: "control.forbidden", Subject: "non-admin must specify ?project="})
+				return
+			}
+			// Map project → tenant via the local store, then verify
+			// membership. Same indirection the project-quota path
+			// uses (see api_tenants.go's get-project-quota handler).
+			tenant, ok := tenantsDB.projectTenant(project)
+			if !ok || !tenantsDB.isMember(u, tenant) {
+				_ = send.Data(&EventFrame{Kind: "control.forbidden", Subject: "not a member of project " + project})
+				return
+			}
+		}
 		var prefixes []string
 		if in.KindPrefix != "" {
 			prefixes = splitCSV(in.KindPrefix)
 		}
-		stream, err := live.WatchEvents(ctx, prefixes, in.Project, in.Subject)
+		stream, err := live.WatchEvents(ctx, prefixes, project, in.Subject)
 		if err != nil {
 			_ = send.Data(&EventFrame{Kind: "control.error", Subject: fmt.Sprintf("watch: %v", err)})
 			return
