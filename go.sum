@@ -61,6 +61,8 @@ github.com/openweft/weft-client v0.2.2 h1:i9IHnQ+EhBhboSzrBScPJTy3MsV9xZrk65Fobf
 github.com/openweft/weft-client v0.2.2/go.mod h1:TXOcSOFQ/8qoI0xEhCFV2F0Yi0tbDt9rAC/uDs80f5g=
 github.com/openweft/weft-network-proto v0.1.1 h1:iFnjbcC0SsoGh7jhMdF5nU6xqz1pf9FDz5I/HVqdG5I=
 github.com/openweft/weft-network-proto v0.1.1/go.mod h1:MYBAbFpNLPseEjnJllBPtaiSCK9JM/Pu/9SeaU+7B7Q=
+github.com/openweft/weft-proto v0.16.0 h1:69c/2kmzhrMR1QeMm5rZZELQNsbV8W/P+74Rm1LMoII=
+github.com/openweft/weft-proto v0.16.0/go.mod h1:IDUDY/DyFdN7zmKKQuiJQYeT+Nt/jzbpgxXaApkraDk=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prometheus/client_golang v1.20.5 h1:cxppBPuYhUnsO6yo/aoRol4L7q7UFfdm+bR9r+8l63Y=
