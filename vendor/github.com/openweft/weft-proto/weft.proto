@@ -11,6 +11,21 @@ enum VMState {
   VM_STATE_STOPPED    = 2;
   VM_STATE_RUNNING    = 3;
   VM_STATE_ERROR      = 4;
+  // VM_STATE_CREATED — vmDir provisioned + registered, StartVM
+  // not yet called (e.g. fresh `weft microvm register` output).
+  VM_STATE_CREATED    = 5;
+  // VM_STATE_STARTING — StartVM accepted, qemu/vz launching ;
+  // visible until the guest sends its first heartbeat.
+  VM_STATE_STARTING   = 6;
+  // VM_STATE_STOPPING — StopVM accepted, qemu/vz draining.
+  VM_STATE_STOPPING   = 7;
+  // VM_STATE_ZOMBIE — process died without going through StopVM
+  // (kernel panic, OOM, host crash mid-shutdown). zombiegc'll
+  // surface it as `weft_vm_zombies` + clean up after CIGracePeriod.
+  VM_STATE_ZOMBIE     = 8;
+  // VM_STATE_DELETING — DeleteVM accepted ; entry survives long
+  // enough for the operator-visible event to flush.
+  VM_STATE_DELETING   = 9;
 }
 
 // VMInfo describes a single VM.
@@ -1216,6 +1231,40 @@ message MicroVMMetricsResponse {
   uint64 uptime_ms           = 10;
 }
 
+// --- Cluster identity ----------------------------------------------
+//
+// Operators give a federated cluster a human-readable name (e.g.
+// "prod-eu", "dc1-prod", "staging") that surfaces in the TUI title
+// bar, in webui chrome, and in audit log entries. The name is
+// persisted at /weft/cluster/name in etcd ; an unset key returns
+// the empty string (the TUI / webui then hide the suffix).
+//
+// SetClusterName is admin-gated ; GetClusterInfo is open to every
+// authenticated caller because the chrome / log decoration needs
+// it at every operator session start.
+
+message GetClusterInfoRequest  {}
+message GetClusterInfoResponse {
+  // ClusterName is the operator-set name. "" when never set ;
+  // the client typically falls back to a flag or env override.
+  string cluster_name = 1;
+  // LocalHostUuid is the UUID of the agent serving this RPC —
+  // saves the client one extra roundtrip when it wants to label
+  // "you're connected to host X of cluster Y" in the chrome.
+  string local_host_uuid = 2;
+  // ControlPlaneHostUuids is the set of hosts that are MEMBERS
+  // of the etcd quorum backing this cluster. On a 3-DC HA setup
+  // all 3 hosts appear ; on hub-spoke (1 CP + N workers) only
+  // the CP appears. Server-side : matches each etcd MemberList
+  // peer URL's IP against each registered host's resolved IP.
+  // Empty when etcd isn't reachable from the serving agent or
+  // when no host resolves to a member peer URL.
+  repeated string control_plane_host_uuids = 3;
+}
+
+message SetClusterNameRequest  { string cluster_name = 1; }
+message SetClusterNameResponse { string cluster_name = 1; }
+
 // WeftService is the gRPC API exposed by weft.
 service WeftAgent {
   rpc ListVMs       (ListVMsRequest)       returns (ListVMsResponse);
@@ -1557,6 +1606,11 @@ service WeftAgent {
   // the fields stay zero ; the webui renders the empty shape natively
   // rather than falling back to synthetic mock data.
   rpc GetMicroVMMetrics (GetMicroVMMetricsRequest) returns (MicroVMMetricsResponse);
+
+  // Cluster identity. GetClusterInfo is open to every authed caller
+  // (chrome decoration) ; SetClusterName is admin-only.
+  rpc GetClusterInfo (GetClusterInfoRequest) returns (GetClusterInfoResponse);
+  rpc SetClusterName (SetClusterNameRequest) returns (SetClusterNameResponse);
 }
 
 // --- Hosts -------------------------------------------------------
@@ -1586,6 +1640,96 @@ message HostInfo {
   // work. Implements the upgrade-runbook primitive previously
   // documented as proposed.
   bool   cordoned             = 14;
+  // agent_version is the build version of the weft agent process
+  // currently serving this host. Operator-visible in the TUI's
+  // Hosts tab. Set at RegisterHost time by the agent itself
+  // (compile-time main.version stamp). "" → unknown (pre-
+  // v0.4.55 agent or build without -X main.version).
+  string agent_version        = 15;
+  // driver_versions maps each loaded driver plugin's kind
+  // (e.g. "qemu", "vz", "block") to its compile-time version
+  // (e.g. "v0.5.1"). Collected by the agent at RegisterHost
+  // time by calling each driver's HostInfo() RPC (driverpb
+  // v0.5.0+ added a `version` field). Empty when no drivers
+  // are loaded or when every loaded driver is on an older
+  // driverpb that didn't report version.
+  map<string, string> driver_versions = 16;
+  // os_id is the machine-readable os-release ID field ("debian",
+  // "ubuntu", "alpine", "rhel" ; "darwin" / "openbsd" on non-Linux
+  // hosts). Empty when /etc/os-release isn't available (Linux dev
+  // images stripped) or on platforms with no equivalent (mac dev).
+  string os_id            = 17;
+  // os_version is os-release VERSION_ID ("12", "24.04", "3.20").
+  // Empty when os_id is empty.
+  string os_version       = 18;
+  // os_pretty is os-release PRETTY_NAME ("Debian GNU/Linux 12
+  // (bookworm)", "Ubuntu 24.04.1 LTS"). Human-friendly fallback
+  // when (os_id, os_version) isn't expressive enough.
+  string os_pretty        = 19;
+  // kernel_version is the running kernel release ("6.1.0-23-arm64",
+  // "Darwin 25.3.0"). uname -r on Linux ; `sysctl kern.osrelease`
+  // on Darwin. Empty when collection failed.
+  string kernel_version   = 20;
+  // network_interfaces lists every IP-bearing nic the agent saw at
+  // register time. Operator-facing : the TUI's host detail drawer
+  // renders mac/ipv4/ipv6/mtu/link-speed/state for each. Collected
+  // via /sys/class/net + netlink (Linux only) ; empty on darwin /
+  // other platforms today.
+  repeated NetworkInterface network_interfaces = 21;
+  // storage_mounts lists the local filesystems the agent saw at
+  // register time. Operator-facing : the TUI shows mountpoint +
+  // fstype + free/total bytes. Filters to ext*/xfs/btrfs/zfs/9p
+  // and skips tmpfs/proc/sysfs/cgroup at collection time.
+  repeated StorageMount storage_mounts = 22;
+  // cpu_count is the number of logical CPUs the host exposes
+  // (runtime.NumCPU on the host agent's side). Empty / 0 on the
+  // wire means "unknown" (legacy agent or collection failure).
+  int32 cpu_count = 23;
+  // memory_mib is the host's total RAM in MiB, as read from
+  // /proc/meminfo (MemTotal) on Linux. 0 means "unknown".
+  int64 memory_mib = 24;
+  // gpus is the host's physical accelerator inventory ; one entry
+  // per device. Vendor + Model identify the SKU ; memory_gib +
+  // mig_capable carry the per-card details schedulers need to
+  // match ScheduleRequest.RequestedGPUs.
+  repeated GPU gpus = 25;
+}
+
+// GPU is one accelerator on a host. Mirrors weft.GPU. Empty
+// vendor / model values are valid for the "unknown SKU" branch ;
+// memory_gib == 0 means "unknown" or non-applicable (integrated).
+message GPU {
+  string vendor      = 1;  // "NVIDIA" / "AMD" / "Intel"
+  string model       = 2;  // "H200" / "RTX-6000-Ada" / "MI300X"
+  int32  memory_gib  = 3;  // VRAM in GiB ; 0 when unknown
+  bool   mig_capable = 4;  // datacenter SKUs that support MIG slicing
+}
+
+// NetworkInterface mirrors weft.NetworkInterface — one IP-bearing
+// NIC the agent saw at register time. Address strings are CIDR
+// notation ("192.168.105.21/24" / "fe80::dead/64"). link_speed_mbps
+// is 0 when the driver doesn't expose ETHTOOL_GSET (loopback, lo
+// always 0 ; physical NICs typically 1000 / 10000 / 25000).
+message NetworkInterface {
+  string   name             = 1;  // "eth0" / "ens3"
+  string   mac              = 2;  // "00:1a:2b:3c:4d:5e"
+  repeated string ipv4_cidrs = 3;
+  repeated string ipv6_cidrs = 4;
+  int64    link_speed_mbps  = 5;  // 0 when unknown
+  int32    mtu              = 6;
+  string   operstate        = 7;  // "up" / "down" / "unknown" / "lowerlayerdown"
+}
+
+// StorageMount mirrors weft.StorageMount — one filesystem mount
+// the agent saw at register time. total_bytes / free_bytes are
+// snapshot values, not live ; the agent re-collects on heartbeat
+// to keep them within 30s of reality.
+message StorageMount {
+  string mountpoint  = 1;  // "/" / "/var/lib/weft"
+  string device      = 2;  // "/dev/vda1" / "tank/data"
+  string fstype      = 3;  // "ext4" / "btrfs" / "zfs"
+  int64  total_bytes = 4;
+  int64  free_bytes  = 5;
 }
 
 // RegisterHost adds a new host or refreshes an existing one
@@ -1604,6 +1748,17 @@ message RegisterHostRequest {
   repeated string network_types   = 8;
   repeated string volume_backends = 9;
   map<string, string> properties = 10;
+  string agent_version            = 11;
+  map<string, string> driver_versions = 12;
+  string os_id                    = 13;
+  string os_version               = 14;
+  string os_pretty                = 15;
+  string kernel_version           = 16;
+  repeated NetworkInterface network_interfaces = 17;
+  repeated StorageMount storage_mounts = 18;
+  int32  cpu_count                = 19;
+  int64  memory_mib               = 20;
+  repeated GPU gpus               = 21;
 }
 message RegisterHostResponse { HostInfo host = 1; }
 
