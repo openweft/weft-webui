@@ -7,7 +7,9 @@ import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
-  plugins: [svelte({ hot: false })],
+  // vite-plugin-svelte 7 dropped the "hot" option; vitest never starts an HMR
+  // server, so there is nothing left to switch off here.
+  plugins: [svelte()],
   test: {
     environment: 'jsdom',
     globals: true,
