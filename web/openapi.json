@@ -2598,31 +2598,6 @@
         ],
         "type": "object"
       },
-      "FormFile": {
-        "additionalProperties": false,
-        "properties": {
-          "ContentType": {
-            "type": "string"
-          },
-          "Filename": {
-            "type": "string"
-          },
-          "IsSet": {
-            "type": "boolean"
-          },
-          "Size": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "ContentType",
-          "IsSet",
-          "Size",
-          "Filename"
-        ],
-        "type": "object"
-      },
       "GrantProjectRoleInputBody": {
         "additionalProperties": false,
         "properties": {
