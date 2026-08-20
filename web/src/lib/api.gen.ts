@@ -3874,13 +3874,6 @@ export interface components {
              */
             weight: number;
         };
-        FormFile: {
-            ContentType: string;
-            Filename: string;
-            IsSet: boolean;
-            /** Format: int64 */
-            Size: number;
-        };
         GrantProjectRoleInputBody: {
             /**
              * Format: uri
