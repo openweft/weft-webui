@@ -4,11 +4,12 @@
 // that by treating each GET /api/events as a fresh stream.
 //
 // Query params :
-//   kind=microvm.   one or more `kind=` repetitions become the
-//                   kindPrefix filter on the gRPC side. Same any-match
-//                   semantics — no kind= = no filter.
-//   project=<n>     restrict to a project (name OR uuid)
-//   subject=<s>     restrict to a subject (typically a VM name)
+//
+//	kind=microvm.   one or more `kind=` repetitions become the
+//	                kindPrefix filter on the gRPC side. Same any-match
+//	                semantics — no kind= = no filter.
+//	project=<n>     restrict to a project (name OR uuid)
+//	subject=<s>     restrict to a subject (typically a VM name)
 //
 // In mock mode the endpoint synthesises a tiny demo heartbeat so the
 // SPA's toast bar still proves the wiring works.

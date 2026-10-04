@@ -277,4 +277,3 @@ func TestAuthThrottle_NonCallbackRoutePassesThrough(t *testing.T) {
 		}
 	}
 }
-

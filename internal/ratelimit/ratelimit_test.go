@@ -63,8 +63,8 @@ func TestAllowDenyUnderRate(t *testing.T) {
 	defer l.Stop()
 
 	cases := []struct {
-		name    string
-		wantOK  bool
+		name   string
+		wantOK bool
 	}{
 		{"first request consumes a token", true},
 		{"second request consumes the last burst token", true},

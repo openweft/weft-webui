@@ -5,11 +5,12 @@
 // rendering, but live in-process instead of as GitHub issue bodies.
 //
 // Lifecycle :
-//   cache := diagnoses.NewCache(opts)
-//   defer cache.Close()                      // drains NATS, closes streams
-//   cache.Snapshot()                         // current sorted slice
-//   cache.Subscribe()                        // returns chan<-Diagnosis for SSE
-//   cache.Unsubscribe(ch)
+//
+//	cache := diagnoses.NewCache(opts)
+//	defer cache.Close()                      // drains NATS, closes streams
+//	cache.Snapshot()                         // current sorted slice
+//	cache.Subscribe()                        // returns chan<-Diagnosis for SSE
+//	cache.Unsubscribe(ch)
 package diagnoses
 
 import (

@@ -139,11 +139,12 @@ func tryLiveMetrics(ctx context.Context, c *wclient.Client, name, project string
 // SPA's chart looks alive, not random.
 //
 // Shape per channel :
-//   cpu       : 25% baseline + 30% slow sine (period 60 s) + per-VM offset → 5..85
-//   mem_used  : 60% of mem_total baseline + 15% slow drift
-//   net_rx/tx : 200..2_500_000 bytes/s, anti-correlated sine + phase offset
-//   disk      : 100..800_000 bytes/s, decoupled from net so the curves don't overlap
-//   uptime    : modulo a day so the badge cycles without sitting at 0
+//
+//	cpu       : 25% baseline + 30% slow sine (period 60 s) + per-VM offset → 5..85
+//	mem_used  : 60% of mem_total baseline + 15% slow drift
+//	net_rx/tx : 200..2_500_000 bytes/s, anti-correlated sine + phase offset
+//	disk      : 100..800_000 bytes/s, decoupled from net so the curves don't overlap
+//	uptime    : modulo a day so the badge cycles without sitting at 0
 //
 // The per-VM offset hashes the name through FNV-32 — different VMs
 // open in different drawer tabs show different curves at the same

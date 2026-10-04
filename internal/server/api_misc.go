@@ -1,10 +1,10 @@
 // api_misc.go — the long tail of typed endpoints :
 //
-//   * /api/healthz, /api/readyz             — liveness + readiness
-//   * /api/resources                        — catalogue listing (scope-filtered)
-//   * /api/resources/{id}                   — paginated rows per resource
-//   * /api/summary                          — scope-aware row counts
-//   * /api/registry/upload                  — OCI artifact upload (mock)
+//   - /api/healthz, /api/readyz             — liveness + readiness
+//   - /api/resources                        — catalogue listing (scope-filtered)
+//   - /api/resources/{id}                   — paginated rows per resource
+//   - /api/summary                          — scope-aware row counts
+//   - /api/registry/upload                  — OCI artifact upload (mock)
 //
 // /api/resources/{id} is the dispatcher behind the SPA's generic
 // ResourceTable. Because the response shape is polymorphic across

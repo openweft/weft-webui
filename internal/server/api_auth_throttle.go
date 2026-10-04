@@ -41,12 +41,12 @@ func mountAuthThrottleAPI(api huma.API, scope Scope) {
 		out.Body.Entries = make([]ThrottledIP, 0, len(snap))
 		for ip, e := range snap {
 			out.Body.Entries = append(out.Body.Entries, ThrottledIP{
-				IP:          ip,
-				Failures:    e.count,
-				FirstHit:    e.firstHit.UTC().Format(time.RFC3339Nano),
-				Locked:      e.count >= authThrottle.threshold,
-				WindowEnds:  e.firstHit.Add(authThrottle.window).UTC().Format(time.RFC3339Nano),
-				ExpiresIn:   int((authThrottle.window - now.Sub(e.firstHit)).Seconds()),
+				IP:         ip,
+				Failures:   e.count,
+				FirstHit:   e.firstHit.UTC().Format(time.RFC3339Nano),
+				Locked:     e.count >= authThrottle.threshold,
+				WindowEnds: e.firstHit.Add(authThrottle.window).UTC().Format(time.RFC3339Nano),
+				ExpiresIn:  int((authThrottle.window - now.Sub(e.firstHit)).Seconds()),
 			})
 		}
 		return out, nil

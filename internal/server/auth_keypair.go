@@ -7,12 +7,12 @@
 //
 // On a successful POST the handler :
 //
-//   1. Verifies the JWS body via auth.VerifyAssertion (signature, aud,
-//      exp/iat, allowlist).
-//   2. Mints a session cookie via the existing session store so the
-//      SPA's subsequent /api/* calls authenticate normally.
-//   3. Returns {id_token, kind:"keypair", expires_at_unix} to the
-//      desktop client so it can cache the bearer in macOS Keychain.
+//  1. Verifies the JWS body via auth.VerifyAssertion (signature, aud,
+//     exp/iat, allowlist).
+//  2. Mints a session cookie via the existing session store so the
+//     SPA's subsequent /api/* calls authenticate normally.
+//  3. Returns {id_token, kind:"keypair", expires_at_unix} to the
+//     desktop client so it can cache the bearer in macOS Keychain.
 //
 // Trust boundary : the allowlist lookup is the single trust decision.
 // A well-formed JWS signed by a key that ISN'T in the allowlist gets

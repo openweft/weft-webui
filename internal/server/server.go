@@ -84,7 +84,7 @@ type Deps struct {
 	// falls back to SharedAssets when a request misses the
 	// per-portal FS. Nil collapses to Static (legacy flat layout).
 	SharedAssets fs.FS
-	Live    *wclient.Client
+	Live         *wclient.Client
 	// LiveNet is the optional sibling controller client (Routers /
 	// LBs / DNS / Scheduling Rules). nil = fall back to mock stores
 	// for those resources.
@@ -551,11 +551,11 @@ func rowCount(res *Resource) int {
 // empty :
 //
 //   - tenant="" project=""    cluster-wide / no filter (cluster admin
-//                             only when the listener serves it)
+//     only when the listener serves it)
 //   - tenant="acme" project="" tenant-aggregate : sum every project of
-//                             the tenant. The mock filters by tenant
-//                             membership ; the live gRPC path will
-//                             accept this when weft-agent adds the param.
+//     the tenant. The mock filters by tenant
+//     membership ; the live gRPC path will
+//     accept this when weft-agent adds the param.
 //   - tenant="acme" project="X" project-scoped : full filter.
 //
 // Query params (?tenant= / ?project=) override the session for
@@ -916,7 +916,7 @@ func cmpStr(a, b string) int {
 //
 //   - project set     → exact match on row["project"]
 //   - project empty   → row["project"] must belong to the selected
-//                       tenant (mock aggregate view).
+//     tenant (mock aggregate view).
 //   - tenant empty    → no narrowing — cluster admin's "(all)" choice.
 //
 // Live-mode handlers don't go through this path : weft-agent applies its own
@@ -964,14 +964,13 @@ func applyScopeFilter(rows []map[string]any, r *http.Request) []map[string]any {
 // the SPA uses to gate affordances and pick a topbar badge :
 //
 //   - cluster_admin : OIDC group claim is "admin"/"admins" (the
-//                     auth.MeHandler equivalent of "superadmin")
+//     auth.MeHandler equivalent of "superadmin")
 //   - tenant_admin  : the email is in at least one Tenant.Admins set,
-//                     even when cluster_admin is false. Cluster admins
-//                     pass the implicit check elsewhere ; here we
-//                     report the *raw* state so the SPA can render a
-//                     distinct "ADMIN" badge for delegated tenant
-//                     admins who are not cluster admins.
-//
+//     even when cluster_admin is false. Cluster admins
+//     pass the implicit check elsewhere ; here we
+//     report the *raw* state so the SPA can render a
+//     distinct "ADMIN" badge for delegated tenant
+//     admins who are not cluster admins.
 func devLogin(w http.ResponseWriter, r *http.Request) {
 	rt := r.URL.Query().Get("return_to")
 	if rt == "" {

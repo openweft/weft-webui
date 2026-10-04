@@ -37,9 +37,9 @@ func SetSecurityPath(p string) {
 }
 
 type securitySnapshot struct {
-	Version int                                `json:"version"`
-	Groups  []map[string]any                   `json:"groups"`
-	Rules   map[string][]wclient.SecurityRule  `json:"rules"`
+	Version int                               `json:"version"`
+	Groups  []map[string]any                  `json:"groups"`
+	Rules   map[string][]wclient.SecurityRule `json:"rules"`
 }
 
 func loadSecurityFromDiskLocked() error {

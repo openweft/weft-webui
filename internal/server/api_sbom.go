@@ -103,10 +103,10 @@ type CDXMetadata struct {
 }
 
 type CDXComponent struct {
-	Type    string `json:"type"`              // "application" | "library"
-	Name    string `json:"name"`              // module path
-	Version string `json:"version"`           // module version ("(devel)" for main on a non-VCS build)
-	Purl    string `json:"purl,omitempty"`    // package URL — what cyclonedx-cli matches against
+	Type    string `json:"type"`           // "application" | "library"
+	Name    string `json:"name"`           // module path
+	Version string `json:"version"`        // module version ("(devel)" for main on a non-VCS build)
+	Purl    string `json:"purl,omitempty"` // package URL — what cyclonedx-cli matches against
 }
 
 type sbomOutput struct {

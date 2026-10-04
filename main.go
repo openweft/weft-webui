@@ -5,15 +5,15 @@
 // app from up to three listeners (the three-portal split) :
 //
 //   - user-portal   (--addr,        default :8080) — public Internet,
-//                                                    own-scope only
+//     own-scope only
 //   - tenant-portal (--tenant-addr, default empty) — tenant VLAN ;
-//                                                    tenant-admin +
-//                                                    regular users
+//     tenant-admin +
+//     regular users
 //   - infra-portal  (--infra-addr,  default empty) — WireGuard mesh
-//                                                    only ; cluster-
-//                                                    wide ops, plugins,
-//                                                    federation,
-//                                                    /metrics
+//     only ; cluster-
+//     wide ops, plugins,
+//     federation,
+//     /metrics
 //
 // Each listener exposes a DIFFERENT set of registered endpoints (see
 // internal/server/portals.go). A user who hits :8080 cannot reach
@@ -31,9 +31,9 @@
 // Two operating modes :
 //
 //   - prod (default)            OIDC auth, signed-cookie sessions,
-//                               --weft-socket required
+//     --weft-socket required
 //   - dev  (WEBUI_DEV_MODE=true) no auth, mock data fallback, insecure
-//                               cookies, dev banner printed to stderr
+//     cookies, dev banner printed to stderr
 package main
 
 import (
@@ -158,7 +158,11 @@ func run() error {
 			}
 			sweep() // initial sweep — catches accumulated rotation backlog at restart
 			t := time.NewTicker(6 * time.Hour)
-			go func() { for range t.C { sweep() } }()
+			go func() {
+				for range t.C {
+					sweep()
+				}
+			}()
 			logger.Info("audit retention armed", "days", cfg.AuditRetentionDays)
 		}
 	}
@@ -324,20 +328,20 @@ func run() error {
 	}
 
 	deps := server.Deps{
-		Logger:       logger,
-		Static:       static,
-		Live:         live,
-		LiveNet:      liveNet,
-		Auth:         mw,
-		OIDC:         oidcAuth,
-		Metrics:      metrics,
-		Audit:        auditLog,
-		RateLimit:    rl,
-		DevMode:             cfg.DevMode,
-		AllowedOrigins:      cfg.AllowedOrigins,
-		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
-		PolicyStrict: cfg.PolicyStrict,
-		Version:      version,
+		Logger:                  logger,
+		Static:                  static,
+		Live:                    live,
+		LiveNet:                 liveNet,
+		Auth:                    mw,
+		OIDC:                    oidcAuth,
+		Metrics:                 metrics,
+		Audit:                   auditLog,
+		RateLimit:               rl,
+		DevMode:                 cfg.DevMode,
+		AllowedOrigins:          cfg.AllowedOrigins,
+		MaxRequestBodyBytes:     cfg.MaxRequestBodyBytes,
+		PolicyStrict:            cfg.PolicyStrict,
+		Version:                 version,
 		KeypairAllowlist:        keypairAllow,
 		KeypairAudience:         keypairAudience,
 		SessionStoreForKeypair:  keypairSessions,

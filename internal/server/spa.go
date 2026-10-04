@@ -15,9 +15,9 @@ import (
 //
 //   - static : per-portal subtree (dist/<portal>/) — owns index.html.
 //   - shared : the dist/ root that backs the shared /assets/* pool
-//              Vite emits across portals (entry chunks + dynamic
-//              chunks + CSS). Nil collapses to static (legacy flat
-//              layout — pre-split builds, dev mode).
+//     Vite emits across portals (entry chunks + dynamic
+//     chunks + CSS). Nil collapses to static (legacy flat
+//     layout — pre-split builds, dev mode).
 func spaHandler(static, shared fs.FS) http.Handler {
 	if shared == nil {
 		shared = static

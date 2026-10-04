@@ -41,10 +41,10 @@ type SSHKey struct {
 	Name          string `json:"name"`
 	PublicKey     string `json:"public_key"`
 	Description   string `json:"description"`
-	Source        string `json:"source"`              // "manual" | "github" | "gitlab" | "forgejo"
-	SourceAccount string `json:"source_account"`      // upstream login, when imported
-	Fingerprint   string `json:"fingerprint"`         // "SHA256:<b64>"
-	Owner         string `json:"owner,omitempty"`     // email of the user who owns the key (drives group-based authz)
+	Source        string `json:"source"`          // "manual" | "github" | "gitlab" | "forgejo"
+	SourceAccount string `json:"source_account"`  // upstream login, when imported
+	Fingerprint   string `json:"fingerprint"`     // "SHA256:<b64>"
+	Owner         string `json:"owner,omitempty"` // email of the user who owns the key (drives group-based authz)
 	UpdatedAt     string `json:"updated_at"`
 	UpdatedBy     string `json:"updated_by"`
 }

@@ -1,11 +1,11 @@
 // sshkeys_import.go — bulk-import SSH keys from a forge account's
 // public ".keys" endpoint.
 //
-//   GitHub  : https://github.com/<account>.keys
-//   GitLab  : https://gitlab.com/<account>.keys
-//   Forgejo : <base>/<account>.keys  (any Gitea / Forgejo instance ;
-//             the base URL is operator-provided since there's no
-//             central instance to default to)
+//	GitHub  : https://github.com/<account>.keys
+//	GitLab  : https://gitlab.com/<account>.keys
+//	Forgejo : <base>/<account>.keys  (any Gitea / Forgejo instance ;
+//	          the base URL is operator-provided since there's no
+//	          central instance to default to)
 //
 // Each provider returns plain text, one OpenSSH-format line per
 // public key. We dedupe by fingerprint against the existing
@@ -42,9 +42,9 @@ var importClient = &http.Client{
 
 // importBody is the JSON shape POSTed by the SPA's Import modal.
 type importBody struct {
-	Provider     string `json:"provider"`      // "github" | "gitlab" | "forgejo"
-	Account      string `json:"account"`       // upstream login
-	ForgejoBase  string `json:"forgejo_base"`  // required when provider == "forgejo"
+	Provider    string `json:"provider"`     // "github" | "gitlab" | "forgejo"
+	Account     string `json:"account"`      // upstream login
+	ForgejoBase string `json:"forgejo_base"` // required when provider == "forgejo"
 }
 
 // ImportResult is the wire shape returned to the SPA — small summary

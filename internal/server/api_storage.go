@@ -829,7 +829,7 @@ type CreateShareResp struct {
 
 type createVolumeOutput struct{ Body CreateVolumeResp }
 type attachVolumeOutput struct{ Body AttachVolumeResp }
-type createShareOutput  struct{ Body CreateShareResp }
+type createShareOutput struct{ Body CreateShareResp }
 
 // BucketNameResp is the create-bucket ack. UUID is empty on the
 // mock-fallback path (the mock mints a stable mockUUID either way ;
@@ -860,5 +860,5 @@ type deletedNameOutput struct{ Body DeletedNameResp }
 // (the Go side differentiates with the optional Bucket / Share
 // fields ; the SPA already keys on the URL).
 type objectListingOutput struct{ Body ObjectListing }
-type objectDetailOutput  struct{ Body ObjectDetail }
-type bucketPolicyOutput  struct{ Body BucketPolicy }
+type objectDetailOutput struct{ Body ObjectDetail }
+type bucketPolicyOutput struct{ Body BucketPolicy }

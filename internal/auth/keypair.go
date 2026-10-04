@@ -174,8 +174,8 @@ const MaxClockSkew = 30 * time.Second
 //   - ErrKPFutureIat         401 (iat too far in the future)
 //   - ErrKPKeyNotAllowed     401 (sig OK but pubkey not in allowlist)
 //   - ErrKPAllowlistEmpty    503 (file loaded but no entries — handler
-//                            should not even be registered in this
-//                            case ; surfaced for completeness)
+//     should not even be registered in this
+//     case ; surfaced for completeness)
 var (
 	ErrKPMalformed        = errors.New("keypair: malformed assertion")
 	ErrKPBadSignature     = errors.New("keypair: bad signature")

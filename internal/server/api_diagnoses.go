@@ -26,16 +26,16 @@ import (
 // with omitempty discipline already on the struct tags ; we just
 // re-publish for the openapi.json so the TS client sees it.
 type diagnosisOutput struct {
-	PatternHash     string                `json:"pattern_hash"`
-	Severity        string                `json:"severity"`
-	Title           string                `json:"title"`
-	RootCause       string                `json:"root_cause,omitempty"`
-	SuggestedAction string                `json:"suggested_action,omitempty"`
-	FileLocation    string                `json:"file_location,omitempty"`
-	Occurrences     int                   `json:"occurrences"`
-	FirstSeen       string                `json:"first_seen,omitempty"`
-	LastSeen        string                `json:"last_seen,omitempty"`
-	Examples        []logEventOutput      `json:"examples,omitempty"`
+	PatternHash     string           `json:"pattern_hash"`
+	Severity        string           `json:"severity"`
+	Title           string           `json:"title"`
+	RootCause       string           `json:"root_cause,omitempty"`
+	SuggestedAction string           `json:"suggested_action,omitempty"`
+	FileLocation    string           `json:"file_location,omitempty"`
+	Occurrences     int              `json:"occurrences"`
+	FirstSeen       string           `json:"first_seen,omitempty"`
+	LastSeen        string           `json:"last_seen,omitempty"`
+	Examples        []logEventOutput `json:"examples,omitempty"`
 }
 
 type logEventOutput struct {

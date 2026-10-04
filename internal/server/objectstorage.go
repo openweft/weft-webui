@@ -76,7 +76,7 @@ type PolicyStatement struct {
 	Effect    string `json:"effect" enum:"Allow,Deny"`
 	Principal string `json:"principal"` // OIDC sub OR "*"
 	Action    string `json:"action" enum:"s3:GetObject,s3:PutObject,s3:DeleteObject,s3:ListBucket"`
-	Resource  string `json:"resource"`  // "*" | "prefix/*" | exact key
+	Resource  string `json:"resource"` // "*" | "prefix/*" | exact key
 }
 
 // seedPolicies — start with one demonstrative policy on team-data so
@@ -121,7 +121,7 @@ type policyDecision struct {
 //
 //   - no policy on the bucket           → allow (uncontrolled object)
 //   - cluster/tenant admin              → allow (S3-root bypass, same
-//                                         shortcut Shares uses)
+//     shortcut Shares uses)
 //   - explicit Deny match               → deny (always wins)
 //   - explicit Allow match              → allow
 //   - no statement matches              → policyStrict ? deny : allow

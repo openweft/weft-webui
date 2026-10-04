@@ -18,9 +18,9 @@ import (
 	"context"
 
 	"github.com/danielgtaylor/huma/v2"
+	weftv1 "github.com/openweft/weft-proto"
 	"github.com/openweft/weft-webui/internal/auth"
 	"github.com/openweft/weft-webui/internal/wclient"
-	weftv1 "github.com/openweft/weft-proto"
 )
 
 func mountBacklogAPI(api huma.API, scope Scope) {

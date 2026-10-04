@@ -7,14 +7,14 @@
 //
 //  1. GET <webui>/api/auth/login           — expect 302 to Dex authorize URL
 //  2. GET that authorize URL on Dex        — expect 200 with the mock-connector
-//                                            login form (or 302 to it)
+//     login form (or 302 to it)
 //  3. POST the form with the mock creds    — Dex redirects back to webui's
-//                                            /api/auth/callback?code=...&state=...
+//     /api/auth/callback?code=...&state=...
 //  4. GET the callback URL                 — webui exchanges the code, mints a
-//                                            session cookie, redirects to "/"
+//     session cookie, redirects to "/"
 //  5. GET <webui>/api/me with the cookie   — expect 200 + a JSON body whose
-//                                            "email" field matches the user we
-//                                            logged in as
+//     "email" field matches the user we
+//     logged in as
 //
 // Env vars (all optional except DEX_ISSUER for clarity in logs) :
 //

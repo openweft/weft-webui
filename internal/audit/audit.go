@@ -12,10 +12,10 @@
 // Two implementations ship :
 //
 //   - FileLogger : JSONL on disk, mutex-guarded writes, size-based
-//                  rotation (renames the current file to
-//                  <path>.<RFC3339> on threshold).
+//     rotation (renames the current file to
+//     <path>.<RFC3339> on threshold).
 //   - NopLogger  : drops everything ; the package default and the
-//                  test/dev sentinel.
+//     test/dev sentinel.
 //
 // The Logger interface is the one boundary the rest of the codebase
 // depends on so handlers can call audit.Log unconditionally without

@@ -1,7 +1,7 @@
 // api_monitors.go — cross-host respawn HA topology surface for the
 // dashboard.
 //
-//   GET /api/monitors  — current set of live weft-agent monitors
+//	GET /api/monitors  — current set of live weft-agent monitors
 //
 // Background. weft v0.4.1 ships respawn V0.1.3 : every weft-agent
 // runs an in-process monitor + lease on etcd at
@@ -174,11 +174,11 @@ func listMonitors(ctx context.Context) MonitorsBody {
 // the client can render "n/a" rather than 1970-01-01.
 func DecodeMonitorHost(raw []byte) (MonitorHost, error) {
 	var wire struct {
-		HostUUID         string `json:"host_uuid"`
-		Hostname         string `json:"hostname"`
-		Hypervisor       string `json:"hypervisor"`
-		Version          string `json:"version"`
-		StartedAtUnixNS  int64  `json:"started_at_unix_ns"`
+		HostUUID        string `json:"host_uuid"`
+		Hostname        string `json:"hostname"`
+		Hypervisor      string `json:"hypervisor"`
+		Version         string `json:"version"`
+		StartedAtUnixNS int64  `json:"started_at_unix_ns"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return MonitorHost{}, err
