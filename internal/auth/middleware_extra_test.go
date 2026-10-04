@@ -399,14 +399,14 @@ func TestWrap_NonAPIPassthrough(t *testing.T) {
 
 func TestPublicPath(t *testing.T) {
 	cases := map[string]bool{
-		"/api/healthz":         true,
-		"/api/readyz":          true,
-		"/api/auth/login":      true,
-		"/api/auth/callback":   true,
-		"/api/auth/logout":     true,
-		"/api/me":              false,
-		"/api/vms":             false,
-		"/api/session/scope":   false,
+		"/api/healthz":       true,
+		"/api/readyz":        true,
+		"/api/auth/login":    true,
+		"/api/auth/callback": true,
+		"/api/auth/logout":   true,
+		"/api/me":            false,
+		"/api/vms":           false,
+		"/api/session/scope": false,
 	}
 	for p, want := range cases {
 		if got := publicPath(p); got != want {

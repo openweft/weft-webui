@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	netv1 "github.com/openweft/weft-network-proto"
 	weftclient "github.com/openweft/weft-client"
+	netv1 "github.com/openweft/weft-network-proto"
 	"google.golang.org/grpc"
 )
 
@@ -127,7 +127,7 @@ func (c *NetworkClient) ListRouters(ctx context.Context, project string, opts Li
 		out = append(out, map[string]any{
 			"uuid":       r.Uuid,
 			"name":       r.Name,
-			"type":       r.Kind,      // table column is "type"
+			"type":       r.Kind, // table column is "type"
 			"backend":    r.Backend,
 			"networks":   joinStrings(r.Networks),
 			"external":   r.External,

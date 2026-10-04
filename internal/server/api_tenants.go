@@ -5,7 +5,7 @@
 //
 //   - cluster admin    creates tenants and elects tenant admins
 //   - tenant admin     within their tenants : add projects, members,
-//                      grant per-project roles, set project quotas
+//     grant per-project roles, set project quotas
 //   - everyone else    read-only ; non-members get 404 (don't-acknowledge)
 //
 // Live-first across the board ; on Unimplemented we fall back to the
@@ -463,7 +463,7 @@ func mountTenantsReadAPI(api huma.API) {
 // tenantDetailOutput / tenantQuotaOutput / projectQuotaOutput surface
 // the typed views from tenants.go in the OpenAPI.
 type tenantDetailOutput struct{ Body TenantDetail }
-type tenantQuotaOutput  struct{ Body TenantQuotaView }
+type tenantQuotaOutput struct{ Body TenantQuotaView }
 type projectQuotaOutput struct{ Body ProjectQuotaView }
 
 // TenantUsageView is the live roll-up returned by /api/tenants/{name}/usage.

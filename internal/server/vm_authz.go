@@ -23,14 +23,14 @@ import "sync"
 // carried so the resolver can look the group up in the correct
 // tenant (group names are namespaced by tenant).
 type AuthorizedGroup struct {
-	Tenant string `json:"tenant" doc:"Tenant the group lives in" minLength:"1" maxLength:"128"`
-	Group  string `json:"group"  doc:"Group name within the tenant"  minLength:"1" maxLength:"128"`
+	Tenant  string `json:"tenant" doc:"Tenant the group lives in" minLength:"1" maxLength:"128"`
+	Group   string `json:"group"  doc:"Group name within the tenant"  minLength:"1" maxLength:"128"`
 	AddedAt string `json:"added_at" doc:"RFC-3339, server-stamped" readOnly:"true"`
 }
 
 var (
-	vmAuthzMu     sync.Mutex
-	vmAuthorized  = seedVMAuthorizedGroups()
+	vmAuthzMu    sync.Mutex
+	vmAuthorized = seedVMAuthorizedGroups()
 )
 
 func seedVMAuthorizedGroups() map[string][]AuthorizedGroup {

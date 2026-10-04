@@ -41,10 +41,10 @@ func TestLegacySingleListener(t *testing.T) {
 		c    Config
 		want bool
 	}{
-		"only --addr":                  {Config{UserAddr: ":8080"}, true},
-		"--addr + --tenant-addr":       {Config{UserAddr: ":8080", TenantAddr: ":8088"}, false},
-		"--addr + --infra-addr":        {Config{UserAddr: ":8080", InfraAddr: ":8089"}, false},
-		"--addr + --tenant + --infra":  {Config{UserAddr: ":8080", TenantAddr: ":8088", InfraAddr: ":8089"}, false},
+		"only --addr":                 {Config{UserAddr: ":8080"}, true},
+		"--addr + --tenant-addr":      {Config{UserAddr: ":8080", TenantAddr: ":8088"}, false},
+		"--addr + --infra-addr":       {Config{UserAddr: ":8080", InfraAddr: ":8089"}, false},
+		"--addr + --tenant + --infra": {Config{UserAddr: ":8080", TenantAddr: ":8088", InfraAddr: ":8089"}, false},
 	}
 	for name, tc := range cases {
 		got := tc.c.LegacySingleListener()

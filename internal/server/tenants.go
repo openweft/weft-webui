@@ -11,10 +11,10 @@
 // enforced here for the API) :
 //
 //   - "cluster admin"  — group "admin" in the user's claims. Can create
-//                        tenants and add users to a tenant's admin group.
+//     tenants and add users to a tenant's admin group.
 //   - "tenant admin"   — listed in the tenant's `admins` set. Can add
-//                        projects, add members, grant roles within
-//                        THAT tenant. Delegated administration.
+//     projects, add members, grant roles within
+//     THAT tenant. Delegated administration.
 //   - regular member   — read-only on their tenants.
 //
 // Concurrency : one mutex guards the whole store. Read paths take a
@@ -38,12 +38,15 @@ import (
 // project level — keep that in mind when summing.
 //
 // Counts (no Unit) :     vcpu, volumes, shares, buckets,
-//                        floating_ips, projects (tenant-only)
+//
+//	floating_ips, projects (tenant-only)
+//
 // Capacities (GiB) :     ram_gib, volumes_gib, shares_gib,
-//                        buckets_gib, registry_gib
+//
+//	buckets_gib, registry_gib
 type Quotas struct {
-	VCPU        int `json:"vcpu"`
-	RAMGiB      int `json:"ram_gib"`
+	VCPU   int `json:"vcpu"`
+	RAMGiB int `json:"ram_gib"`
 	// GPUs counted in physical cards (e.g. 1×A100-40G consumes 1).
 	// Matches the notation in the Flavors + Hosts tables.
 	GPUs        int `json:"gpus"`
@@ -140,10 +143,10 @@ type tenantStore struct {
 }
 
 type userIdentity struct {
-	Email       string
-	Name        string
-	Issuer      string
-	LastSeen    string
+	Email    string
+	Name     string
+	Issuer   string
+	LastSeen string
 	// Memberships are derived from tenants[*].Members on every read so
 	// the source of truth stays the tenant struct.
 }
@@ -282,9 +285,9 @@ func (s *tenantStore) listTenants(forEmail string) []map[string]any {
 // the tenant column.
 //
 //   - forEmail != ""  → filter to projects whose tenant the user
-//                       belongs to (user-UI view of "their" projects).
+//     belongs to (user-UI view of "their" projects).
 //   - tenantFilter != "" → only projects of that tenant (cascading
-//                       topbar selection). Combines with forEmail.
+//     topbar selection). Combines with forEmail.
 func (s *tenantStore) listProjects(forEmail, tenantFilter string) []map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -541,8 +544,8 @@ func (s *tenantStore) addProject(tenant, projectName string) (*projectInfo, erro
 		return nil, errConflict("project already exists")
 	}
 	p := &projectInfo{
-		Name: projectName,
-		UUID: pseudoUUID(projectName),
+		Name:    projectName,
+		UUID:    pseudoUUID(projectName),
 		Created: today(),
 		Tenant:  tenant,
 		Roles:   map[string]string{},
@@ -981,10 +984,10 @@ type httpErr struct {
 	msg  string
 }
 
-func (e *httpErr) Error() string { return e.msg }
-func errBadReq(m string) error   { return &httpErr{http.StatusBadRequest, m} }
-func errNotFound(m string) error { return &httpErr{http.StatusNotFound, m + " not found"} }
-func errConflict(m string) error { return &httpErr{http.StatusConflict, m} }
+func (e *httpErr) Error() string  { return e.msg }
+func errBadReq(m string) error    { return &httpErr{http.StatusBadRequest, m} }
+func errNotFound(m string) error  { return &httpErr{http.StatusNotFound, m + " not found"} }
+func errConflict(m string) error  { return &httpErr{http.StatusConflict, m} }
 func errForbidden(m string) error { return &httpErr{http.StatusForbidden, m} }
 
 func writeErr(w http.ResponseWriter, err error) {

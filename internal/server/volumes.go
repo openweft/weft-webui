@@ -4,11 +4,11 @@
 // (name / size / format / attachment / project / created). This file
 // adds the operator-editable layer :
 //
-//   * VolumeMetadata — free-form `description`, suggested guest-side
+//   - VolumeMetadata — free-form `description`, suggested guest-side
 //     `mount_point`, and `filesystem` hint (the FS the host will
 //     mkfs the disk to when the guest claims it). Same shape across
 //     every volume.
-//   * VolumeProperty — k/v annotations the orchestration layer reads
+//   - VolumeProperty — k/v annotations the orchestration layer reads
 //     to make placement / lifecycle decisions (e.g. workload=database,
 //     backup-policy=nightly). Mirrors the per-VM property pattern.
 //

@@ -1,7 +1,7 @@
 // api_federation.go — federation-lite peer listing for the dashboard.
 //
-//   GET /api/federation/peers   — surfaces the same rows the operator
-//                                 sees from `weft federation list`.
+//	GET /api/federation/peers   — surfaces the same rows the operator
+//	                              sees from `weft federation list`.
 //
 // Federation transport in weft is HTTP-pull (see weft/federation :
 // each peer's /cluster-info endpoint is polled on a 30 s cadence and

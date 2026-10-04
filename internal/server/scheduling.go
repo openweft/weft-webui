@@ -25,16 +25,16 @@ type SchedulingRule struct {
 	// (Update/Delete take a UUID). Carried alongside Name so the
 	// SPA can keep addressing rules by name while live-first paths
 	// resolve to UUID before dialling the wclient.
-	UUID      string
-	Name      string
-	Count     int    // desired replicas
-	Ready     int    // observed compliant replicas
-	Selector  string // label expression
-	AZ        string // "different" | "same" | <name> | ""
-	Rack      string
-	Host      string
-	Project   string
-	Status    string // compliant | drifting | unschedulable
+	UUID     string
+	Name     string
+	Count    int    // desired replicas
+	Ready    int    // observed compliant replicas
+	Selector string // label expression
+	AZ       string // "different" | "same" | <name> | ""
+	Rack     string
+	Host     string
+	Project  string
+	Status   string // compliant | drifting | unschedulable
 }
 
 type schedulingStore struct {
@@ -57,7 +57,7 @@ var schedulingDB = func() *schedulingStore {
 			AZ: "different", Host: "different",
 			Project: "platform", Status: "compliant"},
 		{Name: "web-tier", Count: 2, Ready: 2, Selector: "project=team-alpha, app=web",
-			Host: "different",
+			Host:    "different",
 			Project: "team-alpha", Status: "compliant"},
 		{Name: "research-batch", Count: 5, Ready: 4, Selector: "project=research, kind=batch",
 			AZ:      "DC-C",

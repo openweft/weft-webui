@@ -5,14 +5,14 @@
 // Two metric families live here :
 //
 //   - infra        : HTTP request rate / latency / status, gRPC call
-//                    rate / latency to weft-agent, plus the standard Go
-//                    process + runtime collectors.
+//     rate / latency to weft-agent, plus the standard Go
+//     process + runtime collectors.
 //   - user-flavour : login outcomes, active sessions gauge, per-user
-//                    action counters. Identifying labels are the
-//                    OIDC `sub` (stable, opaque) ; never email or
-//                    name, so a Prometheus scrape doesn't leak PII
-//                    into the TSDB beyond what the operator already
-//                    has from dex audit logs.
+//     action counters. Identifying labels are the
+//     OIDC `sub` (stable, opaque) ; never email or
+//     name, so a Prometheus scrape doesn't leak PII
+//     into the TSDB beyond what the operator already
+//     has from dex audit logs.
 //
 // The /metrics endpoint is mounted on the admin server only (see
 // server.AdminHandler). The user-facing port never exposes it ; that

@@ -87,13 +87,13 @@ type Options struct {
 // Limiter is the HTTP middleware. Safe for concurrent use ; one
 // instance is meant to wrap the API handler chain.
 type Limiter struct {
-	userRPS    float64
-	userBurst  int
-	anonRPS    float64
-	anonBurst  int
-	trustXFF   bool
-	now        func() time.Time
-	idleReap   time.Duration
+	userRPS   float64
+	userBurst int
+	anonRPS   float64
+	anonBurst int
+	trustXFF  bool
+	now       func() time.Time
+	idleReap  time.Duration
 
 	buckets sync.Map // key string → *bucket
 

@@ -5,19 +5,19 @@
 //
 // Two related-but-distinct stores share this file :
 //
-//   Properties (host-set application-level annotations) :
-//     - free-form key→value (operator-defined)
-//     - each carries a GuestReadable flag — when true, the in-guest
-//       weft-microvm-agent is allowed to read the value via its NATS API
-//       (subject /weft/vm/<uuid>/property/<key>). False = host-only
-//       metadata (billing tags, security labels, …) the guest never
-//       sees.
-//   UEFI variables (firmware NVRAM) :
-//     - keyed by (namespace GUID, name) — the OVMF/EDK2 wire shape
-//     - value carried as hex (operator-friendly representation of
-//       what's an arbitrary byte blob)
-//     - attributes are the standard UEFI flag set : NonVolatile,
-//       BootServiceAccess, RuntimeAccess, …
+//	Properties (host-set application-level annotations) :
+//	  - free-form key→value (operator-defined)
+//	  - each carries a GuestReadable flag — when true, the in-guest
+//	    weft-microvm-agent is allowed to read the value via its NATS API
+//	    (subject /weft/vm/<uuid>/property/<key>). False = host-only
+//	    metadata (billing tags, security labels, …) the guest never
+//	    sees.
+//	UEFI variables (firmware NVRAM) :
+//	  - keyed by (namespace GUID, name) — the OVMF/EDK2 wire shape
+//	  - value carried as hex (operator-friendly representation of
+//	    what's an arbitrary byte blob)
+//	  - attributes are the standard UEFI flag set : NonVolatile,
+//	    BootServiceAccess, RuntimeAccess, …
 //
 // Both stores are in-memory mocks today. Once weft-agent grows the
 // matching RPCs and the in-guest weft-microvm-agent learns the property
@@ -86,7 +86,7 @@ func seedUEFIVars() map[string][]UEFIVar {
 			// Boot0000 : a load option entry — opaque blob to operators
 			// in practice, but real OVMF will parse it.
 			{Namespace: efiGlobalNS, Name: "Boot0000",
-				ValueHex: "010000005800570065006600740000000400110000000000",
+				ValueHex:   "010000005800570065006600740000000400110000000000",
 				Attributes: nvRtBs, UpdatedAt: now},
 			// SecureBoot is a 1-byte enable/disable flag (0x01 = enabled).
 			{Namespace: efiGlobalNS, Name: "SecureBoot", ValueHex: "01",

@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openweft/weft-webui/internal/auth"
-	"github.com/openweft/weft-webui/internal/telemetry"
 	weftclient "github.com/openweft/weft-client"
 	weftv1 "github.com/openweft/weft-proto"
+	"github.com/openweft/weft-webui/internal/auth"
+	"github.com/openweft/weft-webui/internal/telemetry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

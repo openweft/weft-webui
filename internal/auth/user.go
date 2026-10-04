@@ -16,22 +16,22 @@ import "context"
 // suitable for forwarding to weft-agent over gRPC. IDToken is kept so that
 // the frontend can introspect groups / claims via /api/me if needed.
 type User struct {
-	Subject     string   `json:"sub"`
-	Email       string   `json:"email,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Groups      []string `json:"groups,omitempty"`
+	Subject string   `json:"sub"`
+	Email   string   `json:"email,omitempty"`
+	Name    string   `json:"name,omitempty"`
+	Groups  []string `json:"groups,omitempty"`
 	// Tenant + Project together form the user's current "scope" — the
 	// session-stored navigation choice (cascading topbar selector).
 	// Empty means "no tenant scope" / "no project scope" : the
 	// resource handlers interpret an empty tenant as a tenant-aggregate
 	// view, and an empty project as showing all projects of the tenant.
-	Tenant      string   `json:"tenant,omitempty"`
-	Project     string   `json:"project,omitempty"`
-	AccessToken string   `json:"-"` // never serialised to JSON responses
-	IDToken     string   `json:"-"`
-	Refresh     string   `json:"-"`
-	ExpiresAt   int64    `json:"-"` // unix seconds
-	DevMode     bool     `json:"-"` // synthesised in dev mode
+	Tenant      string `json:"tenant,omitempty"`
+	Project     string `json:"project,omitempty"`
+	AccessToken string `json:"-"` // never serialised to JSON responses
+	IDToken     string `json:"-"`
+	Refresh     string `json:"-"`
+	ExpiresAt   int64  `json:"-"` // unix seconds
+	DevMode     bool   `json:"-"` // synthesised in dev mode
 }
 
 // Initials returns a 1–2 char avatar label derived from Name (or

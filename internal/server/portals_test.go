@@ -90,13 +90,13 @@ func TestAssetsForPortal_PicksSubtree(t *testing.T) {
 	// per-portal index.html in dist/<portal>/ + a shared dist/assets/
 	// pool with the entry chunks every index.html references.
 	root := fstest.MapFS{
-		"user/index.html":        {Data: []byte("user")},
-		"tenant/index.html":      {Data: []byte("tenant")},
-		"infra/index.html":       {Data: []byte("infra")},
-		"assets/user-abc.js":     {Data: []byte("user-js")},
-		"assets/tenant-abc.js":   {Data: []byte("tenant-js")},
-		"assets/infra-abc.js":    {Data: []byte("infra-js")},
-		"assets/common-abc.css":  {Data: []byte(".a{}")},
+		"user/index.html":       {Data: []byte("user")},
+		"tenant/index.html":     {Data: []byte("tenant")},
+		"infra/index.html":      {Data: []byte("infra")},
+		"assets/user-abc.js":    {Data: []byte("user-js")},
+		"assets/tenant-abc.js":  {Data: []byte("tenant-js")},
+		"assets/infra-abc.js":   {Data: []byte("infra-js")},
+		"assets/common-abc.css": {Data: []byte(".a{}")},
 	}
 
 	for _, tc := range []struct {

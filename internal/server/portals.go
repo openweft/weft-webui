@@ -145,10 +145,10 @@ func newPortalRouter(d Deps, p Portal) http.Handler {
 // assetsForPortal returns a two-FS view of the embedded tree :
 //
 //   - portalFS  : rooted at the portal's bundle (e.g. dist/user/).
-//                 Owns the per-portal index.html.
+//     Owns the per-portal index.html.
 //   - sharedFS  : the parent root (dist/). Owns the shared
-//                 /assets/* pool that every portal's index.html
-//                 references via an absolute path.
+//     /assets/* pool that every portal's index.html
+//     references via an absolute path.
 //
 // When dist/<portal>/index.html doesn't exist (legacy flat build),
 // both returned values are the same root + the error is non-nil so

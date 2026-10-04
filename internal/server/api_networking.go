@@ -1432,12 +1432,12 @@ type CreateDNSRecordResp struct {
 	Type string `json:"type"`
 }
 
-type createNameUUIDOutput        struct{ Body CreateNameUUID }
-type createNetworkOutput         struct{ Body CreateNetworkResp }
-type createSGOutput              struct{ Body CreateSecurityGroupResp }
-type allocateFloatingIPOutput    struct{ Body AllocateFloatingIPResp }
-type createDNSRecordOutput       struct{ Body CreateDNSRecordResp }
-type sgRulesOutput               struct{ Body []wclient.SecurityRule }
+type createNameUUIDOutput struct{ Body CreateNameUUID }
+type createNetworkOutput struct{ Body CreateNetworkResp }
+type createSGOutput struct{ Body CreateSecurityGroupResp }
+type allocateFloatingIPOutput struct{ Body AllocateFloatingIPResp }
+type createDNSRecordOutput struct{ Body CreateDNSRecordResp }
+type sgRulesOutput struct{ Body []wclient.SecurityRule }
 
 // Tiny ack-style shapes for set/map endpoints.
 

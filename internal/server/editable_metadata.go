@@ -75,7 +75,7 @@ func renameResourceRow(resID, lookupKey, newName string) bool {
 // first edit. The seed remains in resources.go's row map (description
 // column when present, otherwise blank).
 var (
-	routerMetadata        = newMetadataStore()
-	floatingIPMetadata    = newMetadataStore()
+	routerMetadata         = newMetadataStore()
+	floatingIPMetadata     = newMetadataStore()
 	schedulingRuleMetadata = newMetadataStore()
 )

@@ -204,11 +204,11 @@ var registry = []Resource{
 		// so the topology view still finds the network attachment.
 		ID: "microvms", Label: "microVMs", Section: "Compute",
 		Columns: cols("name", "Name", "image", "Image", "status", "Status", "cpu", "CPU", "mem_mb", "Memory (MB)", "disk_gb", "Disk (GB)", "ip", "IP", "project", "Project"),
-			},
+	},
 	{
 		ID: "instances", Label: "Instances (VM)", Section: "Compute",
 		Columns: cols("name", "Name", "image", "Image", "flavor", "Flavor", "host", "Host", "network", "Network", "project", "Project", "status", "Status"),
-			},
+	},
 
 	// ---------- Storage ----------
 	{
@@ -216,7 +216,7 @@ var registry = []Resource{
 		// attached_to, project_uuid → project, created).
 		ID: "volumes", Label: "Volumes", Section: "Storage",
 		Columns: cols("name", "Name", "size_gib", "Size (GiB)", "format", "Format", "backend", "Backend", "attached_to", "Attached to", "project", "Project", "created", "Created"),
-			},
+	},
 	{
 		// Shares are served from sharesDB (shares.go) so a tenant admin's
 		// "Create share" round-trips. Rows stay nil here ; the switch in
@@ -277,7 +277,7 @@ var registry = []Resource{
 			"shards", "Shards", "replicas", "Replicas",
 			"size_gb", "Size (GB)", "project", "Project",
 			"status", "Status", "created", "Created"),
-			},
+	},
 
 	// ---------- Network ----------
 	{
@@ -298,7 +298,7 @@ var registry = []Resource{
 		// view reads it from the registry to label hubs.
 		ID: "networks", Label: "Networks", Section: "Network",
 		Columns: cols("name", "Name", "cidr", "CIDR", "type", "Type", "gateway", "Gateway", "created", "Created"),
-			},
+	},
 	{
 		// DNS zones served by the per-DC CoreDNS microVMs. The platform
 		// owns the root (`weft.internal`) ; each tenant carves a
@@ -328,7 +328,7 @@ var registry = []Resource{
 			"backend", "Backend", "push_target", "Push target",
 			"push_state", "Push state",
 			"project", "Project", "status", "Status"),
-			},
+	},
 	{
 		// DNS records inside the zones above. `name` is the leaf (or `@`
 		// for the apex) ; `zone` is the parent. Records flagged `auto`
@@ -338,7 +338,7 @@ var registry = []Resource{
 		ID: "dns-records", Label: "DNS Records", Section: "Network", Hidden: true,
 		Columns: cols("name", "Name", "zone", "Zone", "type", "Type",
 			"value", "Value", "ttl", "TTL", "source", "Source"),
-			},
+	},
 	{
 		// Unified DNS sidebar entry. The page renders zones on the
 		// left + records of the selected zone on the right (custom
@@ -362,7 +362,7 @@ var registry = []Resource{
 			"networks", "Networks", "external", "External",
 			"peer_state", "Peer state",
 			"project", "Project", "status", "Status"),
-			},
+	},
 	{
 		// Load balancers : programmable L4/L7 in front of microVMs and
 		// instances. The data plane is Caddy embedded in weft-agent
@@ -378,7 +378,7 @@ var registry = []Resource{
 			"port", "Port", "backends", "Backends", "az", "AZ",
 			"controller", "Controller",
 			"project", "Project", "status", "Status"),
-			},
+	},
 	{
 		// FloatingIPs are now wired to weft-agent's allocate / release /
 		// map / unmap RPCs (live-first with mock fallback on
@@ -387,7 +387,7 @@ var registry = []Resource{
 		ID: "floating-ips", Label: "Floating IPs", Section: "Network",
 		Columns: cols("address", "Address", "network", "Network",
 			"mapped_to", "Mapped to", "status", "Status"),
-			},
+	},
 	{
 		// Mirrors SecurityGroupInfo (uuid, name, description, rules count,
 		// project, created). `uuid` is on the row so the row-action
@@ -399,14 +399,14 @@ var registry = []Resource{
 		Columns: cols("name", "Name", "description", "Description",
 			"rules", "Rules", "enabled", "Enabled",
 			"project", "Project", "created", "Created"),
-			},
+	},
 	{
 		// Hidden : flat rules view is redundant with the per-group rules
 		// editor in SecurityGroupDrawer. Kept in the catalogue so the
 		// rows are still fetchable by anyone who wants the firehose.
 		ID: "security-rules", Label: "Security Rules", Section: "Network", Hidden: true,
 		Columns: cols("group", "Group", "direction", "Direction", "protocol", "Protocol", "port_range", "Ports", "remote", "Remote"),
-			},
+	},
 
 	// ---------- Admin > Inventory ----------
 	//
@@ -427,7 +427,7 @@ var registry = []Resource{
 		// mounts InventoryTreePage rather than the generic table.
 		ID: "inventory-tree", Label: "Inventory", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("placeholder", "—"),
-			},
+	},
 	{
 		// Availability Zones — datacenters / fault domains the cluster
 		// spans. Hidden from the sidebar (Hidden=true) so it doesn't
@@ -436,7 +436,7 @@ var registry = []Resource{
 		ID: "azs", Label: "Availability Zones", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("code", "Code", "name", "Name", "region", "Region",
 			"racks", "Racks", "hosts", "Hosts", "status", "Status"),
-			},
+	},
 	{
 		// Racks live inside an AZ. Position = physical row/column ;
 		// the isometric map uses it to lay racks out on the AZ
@@ -445,7 +445,7 @@ var registry = []Resource{
 		ID: "racks", Label: "Racks", Section: "Admin", Scope: ScopeAdmin, Hidden: true,
 		Columns: cols("code", "Code", "az", "AZ", "position", "Position",
 			"height_u", "Height (U)", "hosts", "Hosts", "status", "Status"),
-			},
+	},
 	{
 		// Mirrors HostInfo (hostname → name, az, rack, architecture → arch,
 		// hypervisor, state → status, last_seen). cpu/ram aren't on the
@@ -462,21 +462,21 @@ var registry = []Resource{
 			"arch", "Arch", "hypervisor", "Hypervisor", "gpu", "GPU",
 			"position_u", "U", "height_u", "Size (U)",
 			"status", "Status", "last_seen", "Last seen"),
-			},
+	},
 	{
 		// Inventory map — the isometric placement view. Lives in the
 		// Admin section alongside Inventory + Plugins ; dashboard
 		// mounts a dedicated panel rather than the generic table.
 		ID: "inventory-map", Label: "Map", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("placeholder", "—"),
-			},
+	},
 	{
 		// Audit log — read-only browser over /api/audit-log. No rows
 		// here ; the dashboard mounts AuditLogPage which tails the
 		// configured JSONL file directly.
 		ID: "audit-log", Label: "Audit log", Section: "Admin", Scope: ScopeAdmin,
 		Columns: cols("placeholder", "—"),
-			},
+	},
 	{
 		// Plugin registry — *-as-a-service modules the cluster can
 		// host (Database / Streaming / Cache / Object lake …). Rows

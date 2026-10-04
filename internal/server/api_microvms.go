@@ -408,15 +408,15 @@ type vmLogsInput struct {
 type createVMInput struct {
 	Project string `query:"project" doc:"Override the session project"`
 	Body    struct {
-		Name              string `json:"name" doc:"VM name (must be unique within the project)" minLength:"1" maxLength:"128"`
-		Image             string `json:"image" doc:"OCI reference or registered image name"`
-		Flavor            string `json:"flavor" doc:"Catalogue flavor name (resolves to cpu/ram/disk server-side)"`
-		SchedulingRule    string `json:"scheduling_rule,omitempty" doc:"Nominal binding to a SchedulingRule (k8s PVC volumeName pattern)"`
-		Network           string `json:"network,omitempty" doc:"Network to attach (label ; weft-network reconcile loop performs AttachVM)"`
-		IngressKind       string `json:"ingress_kind,omitempty" doc:"Best-effort ingress setup" enum:"none,floating_ip,loadbalancer"`
-		IngressFloatingIP string `json:"ingress_floating_ip,omitempty"`
+		Name                string `json:"name" doc:"VM name (must be unique within the project)" minLength:"1" maxLength:"128"`
+		Image               string `json:"image" doc:"OCI reference or registered image name"`
+		Flavor              string `json:"flavor" doc:"Catalogue flavor name (resolves to cpu/ram/disk server-side)"`
+		SchedulingRule      string `json:"scheduling_rule,omitempty" doc:"Nominal binding to a SchedulingRule (k8s PVC volumeName pattern)"`
+		Network             string `json:"network,omitempty" doc:"Network to attach (label ; weft-network reconcile loop performs AttachVM)"`
+		IngressKind         string `json:"ingress_kind,omitempty" doc:"Best-effort ingress setup" enum:"none,floating_ip,loadbalancer"`
+		IngressFloatingIP   string `json:"ingress_floating_ip,omitempty"`
 		IngressLoadBalancer string `json:"ingress_load_balancer,omitempty"`
-		Provisioning      *struct {
+		Provisioning        *struct {
 			SourceKind string `json:"source_kind" doc:"First-boot payload source" enum:"none,git,oci"`
 			SourceURL  string `json:"source_url"`
 			SourceRef  string `json:"source_ref,omitempty"`
@@ -443,9 +443,9 @@ type createVMOutput struct {
 // vmStatusOutput / vmTimingsOutput / vmLogsOutput surface the wclient
 // types directly so the OpenAPI schema gains real VMInfo /
 // VMTimingEvent / VMLogsResult shapes instead of `any`.
-type vmStatusOutput  struct{ Body wclient.VMInfo }
+type vmStatusOutput struct{ Body wclient.VMInfo }
 type vmTimingsOutput struct{ Body []wclient.VMTimingEvent }
-type vmLogsOutput    struct{ Body wclient.VMLogsResult }
+type vmLogsOutput struct{ Body wclient.VMLogsResult }
 
 // VMNetworkDiagBody mirrors the CLI `weft network diag` output : every
 // network in scope, the floating IPs filtered to mapped_to==vm, plus

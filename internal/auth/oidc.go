@@ -1,9 +1,13 @@
 // oidc.go — OIDC Authorization Code flow handlers.
 //
 // /api/auth/login    — generate state + PKCE verifier, stash in a
-//                      short-lived cookie, redirect to the IdP.
+//
+//	short-lived cookie, redirect to the IdP.
+//
 // /api/auth/callback — exchange code for tokens, verify ID token,
-//                      mint a session cookie, redirect to return_to.
+//
+//	mint a session cookie, redirect to return_to.
+//
 // /api/auth/logout   — clear the session, redirect home.
 // /api/me            — JSON view of the current user (or 401).
 //

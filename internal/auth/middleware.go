@@ -66,9 +66,9 @@ type Middleware struct {
 	// carry it). Process-global on purpose — one dev session per
 	// running binary. Mutex protects the assignments since SetScope
 	// runs on a request goroutine while Wrap reads on another.
-	devScopeMu      sync.RWMutex
-	devTenant       string
-	devProject      string
+	devScopeMu sync.RWMutex
+	devTenant  string
+	devProject string
 }
 
 // publicPath returns true when an /api/ path is allowed without auth.
