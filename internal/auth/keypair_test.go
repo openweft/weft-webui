@@ -147,12 +147,21 @@ func TestVerifyAssertionBadSignature(t *testing.T) {
 		Iss: "weft-app-osx", Sub: pkB64, Aud: aud,
 		Iat: time.Now().Unix(), Exp: time.Now().Add(time.Minute).Unix(), Nonce: "n",
 	})
+	// Flip one bit of the signature itself. Overwriting the last base64
+	// characters is not a tamper one time in sixteen: they encode the top byte
+	// of Ed25519's S, which is below 2^252, so that byte is usually 0x00-0x0F
+	// and writing "AA" over it often changes nothing (measured 6.2%).
 	parts := strings.Split(jws, ".")
-	parts[2] = parts[2][:len(parts[2])-2] + "AA"
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig[0] ^= 1
+	parts[2] = base64.RawURLEncoding.EncodeToString(sig)
 	bad := strings.Join(parts, ".")
-	_, _, err := VerifyAssertion(bad, aud, list)
-	if !errors.Is(err, ErrKPBadSignature) && err == nil {
-		t.Fatalf("want signature error, got %v", err)
+	_, _, err = VerifyAssertion(bad, aud, list)
+	if !errors.Is(err, ErrKPBadSignature) {
+		t.Fatalf("want ErrKPBadSignature, got %v", err)
 	}
 }
 
