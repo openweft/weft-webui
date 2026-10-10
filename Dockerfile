@@ -20,7 +20,7 @@
 #     -t ghcr.io/openweft/weft-webui:dev .
 
 ARG NODE_VERSION=20
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.2
 
 # ---- stage 1 : SPA build ------------------------------------------
 # --platform=$BUILDPLATFORM : node alpine doesn't ship riscv64/loong64,
