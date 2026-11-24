@@ -260,11 +260,13 @@ variables are flagged below ; defaults fire when omitted.
 | `WEBUI_AUTH_MODE` | `oidc` (prod) / `none` (dev) | flag `--auth-mode` |
 | `WEBUI_OIDC_ISSUER` | empty | e.g. `https://dex.example/dex` ; required in prod |
 | `WEBUI_OIDC_CLIENT_ID` | empty | required in prod |
-| `WEBUI_OIDC_CLIENT_SECRET` | empty | confidential clients |
+| `WEBUI_OIDC_CLIENT_SECRET_FROM` | empty | confidential clients ; a [secretsource](https://github.com/go-authn/secretsource) reference (`systemd-creds:NAME`, `keychain:…`, `file:/path` mode 0600). Preferred |
+| `WEBUI_OIDC_CLIENT_SECRET` | empty | **deprecated** plaintext twin (warns on stderr, unset after read) ; error if both are set |
 | `WEBUI_OIDC_REDIRECT_URL` | empty | falls back to `WEBUI_PUBLIC_URL` + `/api/auth/callback` |
 | `WEBUI_OIDC_SCOPES` | `openid,email,profile,groups` | comma-separated |
 | `WEBUI_PUBLIC_URL` | empty | external base URL ; flag `--public-url` |
-| `WEBUI_SESSION_KEY` | empty | ≥ 32 bytes, hex or base64 ; required in prod |
+| `WEBUI_SESSION_KEY_FROM` | empty | secretsource reference to the session key (≥ 32 bytes, hex or base64 ; required in prod). Preferred |
+| `WEBUI_SESSION_KEY` | empty | **deprecated** plaintext twin (warns on stderr, unset after read) ; error if both are set |
 | `WEBUI_COOKIE_DOMAIN` / `_NAME` / `_SECURE` | host-only / `weft_webui_session` / true-in-prod | session cookie tuning |
 | `WEBUI_SESSION_MAX_AGE` | `43200` | seconds |
 | `WEBUI_ALLOWED_ORIGINS` | empty | extra `scheme://host[:port]` for cross-origin mutations |
@@ -290,9 +292,9 @@ Minimal prod invocation (user UI only) :
 WEBUI_WEFT_SOCKET=/var/run/weft.sock \
 WEBUI_OIDC_ISSUER=https://dex.example/dex \
 WEBUI_OIDC_CLIENT_ID=weft-webui \
-WEBUI_OIDC_CLIENT_SECRET=… \
+WEBUI_OIDC_CLIENT_SECRET_FROM=systemd-creds:oidc-client-secret \
 WEBUI_PUBLIC_URL=https://weft.example \
-WEBUI_SESSION_KEY=$(head -c 32 /dev/urandom | xxd -p -c 64) \
+WEBUI_SESSION_KEY_FROM=systemd-creds:session-key \
 WEBUI_AUDIT_LOG_PATH=/var/log/weft-webui/audit.jsonl \
 WEBUI_INVENTORY_PATH=/var/lib/weft-webui/inventory.json \
 WEBUI_STATE_HISTORY_KEEP=20 \
@@ -398,9 +400,10 @@ docker run --rm \
   -e WEBUI_AUTH_MODE=oidc \
   -e WEBUI_OIDC_ISSUER=https://dex.example.com \
   -e WEBUI_OIDC_CLIENT_ID=weft-webui \
-  -e WEBUI_OIDC_CLIENT_SECRET=… \
+  -v /run/secrets:/run/secrets:ro \
+  -e WEBUI_OIDC_CLIENT_SECRET_FROM=file:/run/secrets/oidc-client-secret \
   -e WEBUI_PUBLIC_URL=https://weft.example.com \
-  -e WEBUI_SESSION_KEY=$(head -c 32 /dev/urandom | xxd -p -c 64) \
+  -e WEBUI_SESSION_KEY_FROM=file:/run/secrets/session-key \
   ghcr.io/openweft/weft-webui:v0.2.0
 ```
 

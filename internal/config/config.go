@@ -18,6 +18,7 @@
 package config
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
@@ -268,7 +269,6 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		WeftNetworkSocket:    os.Getenv("WEBUI_WEFT_NETWORK_SOCKET"),
 		OIDCIssuer:           os.Getenv("WEBUI_OIDC_ISSUER"),
 		OIDCClientID:         os.Getenv("WEBUI_OIDC_CLIENT_ID"),
-		OIDCClientSecret:     os.Getenv("WEBUI_OIDC_CLIENT_SECRET"),
 		OIDCRedirectURL:      os.Getenv("WEBUI_OIDC_REDIRECT_URL"),
 		CookieDomain:         os.Getenv("WEBUI_COOKIE_DOMAIN"),
 		CookieName:           envOr("WEBUI_COOKIE_NAME", defaultCookieName),
@@ -286,6 +286,11 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 		// later from WEBUI_AUDIT_ROTATE_BYTES if set.
 		AuditRotateBytes: 100 << 20,
 	}
+	secret, err := secretEnv(context.Background(), "WEBUI_OIDC_CLIENT_SECRET", "WEBUI_OIDC_CLIENT_SECRET_FROM")
+	if err != nil {
+		return nil, err
+	}
+	cfg.OIDCClientSecret = secret
 	if v := os.Getenv("WEBUI_AUDIT_RETENTION_DAYS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -381,7 +386,11 @@ func Load(flagSet *flag.FlagSet) (*Config, error) {
 	}
 
 	// Session key : hex or base64-encoded. ≥ 32 raw bytes required in prod.
-	if v := os.Getenv("WEBUI_SESSION_KEY"); v != "" {
+	sessionKey, err := secretEnv(context.Background(), "WEBUI_SESSION_KEY", "WEBUI_SESSION_KEY_FROM")
+	if err != nil {
+		return nil, err
+	}
+	if v := sessionKey; v != "" {
 		key, err := decodeKey(v)
 		if err != nil {
 			return nil, fmt.Errorf("WEBUI_SESSION_KEY: %w", err)

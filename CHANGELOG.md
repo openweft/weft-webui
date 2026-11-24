@@ -9,6 +9,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- **`WEBUI_OIDC_CLIENT_SECRET_FROM` and `WEBUI_SESSION_KEY_FROM`** :
+  take a [secretsource](https://github.com/go-authn/secretsource)
+  reference (`systemd-creds:NAME`, `keychain:…`, `file:PATH` with its
+  0600 check, …) instead of a plaintext value in the environment
+  (readable from `/proc/<pid>/environ`, `systemctl show`, crash dumps).
+
+### Deprecated
+
+- `WEBUI_OIDC_CLIENT_SECRET` and `WEBUI_SESSION_KEY` (plaintext) still
+  work but print a deprecation warning on stderr and are removed from
+  the process environment once read. Setting a plaintext variable and
+  its `_FROM` twin together is an error.
+
 - **MapFloatingIPModal rate-limit slider** : 0..100k pps cap on
   inbound traffic to a floating IP, wired through the new
   weft-proto `rate_limit_pps` field down to the host-side NAT

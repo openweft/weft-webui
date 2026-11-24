@@ -44,9 +44,10 @@ docker run --rm -p 5556:5556 -v $PWD/examples/config-dev.yaml:/etc/dex/cfg/confi
     ghcr.io/dexidp/dex:latest dex serve /etc/dex/cfg/config.yaml
 
 # Terminal 2 : weft-webui (NOT run:dual — that's dev-mode no-auth)
+# ./devsecret.txt holds the client secret, mode 0600 (chmod 600 devsecret.txt)
 WEBUI_OIDC_ISSUER=http://localhost:5556/dex \
 WEBUI_OIDC_CLIENT_ID=weft-webui-dev \
-WEBUI_OIDC_CLIENT_SECRET=devsecret \
+WEBUI_OIDC_CLIENT_SECRET_FROM=file:./devsecret.txt \
 WEBUI_OIDC_REDIRECT_URL=http://localhost:8080/api/auth/callback \
   task build && ./weft-webui
 

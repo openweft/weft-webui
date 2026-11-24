@@ -118,7 +118,16 @@ func TestKeypairHandlerRejectsBadSignature(t *testing.T) {
 	}, aud)
 	jws := signTestAssertionForHandler(t, priv, pkB64, aud, time.Now().Unix(), time.Now().Add(time.Minute).Unix())
 	parts := strings.Split(jws, ".")
-	parts[2] = parts[2][:len(parts[2])-2] + "AA"
+	// Flip a character in the middle: the last characters of a base64url
+	// signature carry padding bits, so rewriting them is sometimes a no-op
+	// (the test failed about 1 run in 15).
+	sig := []byte(parts[2])
+	if sig[10] == 'A' {
+		sig[10] = 'B'
+	} else {
+		sig[10] = 'A'
+	}
+	parts[2] = string(sig)
 	bad := strings.Join(parts, ".")
 
 	rr := httptest.NewRecorder()
