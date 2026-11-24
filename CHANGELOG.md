@@ -7,6 +7,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Changed (may refuse an existing deployment)
+
+- **`WEBUI_TLS_KEY` permissions are now verified at startup.** The server
+  refuses to start when the key file is readable by group or others, is
+  not a regular file, or is a symlink. The error names the path and the
+  mode, never the content. Fix: `chmod 600 /path/to/key.pem` (and point
+  the variable at the real file, not a symlink). Not enforced on Windows
+  (POSIX modes only).
+
 ### Added
 
 - **`WEBUI_OIDC_CLIENT_SECRET_FROM` and `WEBUI_SESSION_KEY_FROM`** :

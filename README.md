@@ -255,7 +255,7 @@ variables are flagged below ; defaults fire when omitted.
 | `WEBUI_ADMIN_ADDR` | empty | **DEPRECATED** alias for `WEBUI_TENANT_ADDR` ; flag `--admin-addr` ; fires a deprecation warning |
 | `WEBUI_WEFT_SOCKET` | empty | unix path or `ssh://…` ; flag `--weft-socket` ; required in prod |
 | `WEBUI_WEFT_NETWORK_SOCKET` | empty | weft-network controller ; flag `--weft-network-socket` |
-| `WEBUI_TLS_CERT` / `_KEY` | empty | set both or neither ; TLS 1.2 minimum (`WEBUI_TLS_MIN_VERSION=1.3` to harden) |
+| `WEBUI_TLS_CERT` / `_KEY` | empty | set both or neither ; the key file must be a regular file (no symlink) with mode 0600-style permissions (no group/other bits), else startup is refused ; TLS 1.2 minimum (`WEBUI_TLS_MIN_VERSION=1.3` to harden) |
 | `WEBUI_DEV_MODE` | `false` | dev mode (no auth, mock fallback) ; flag `--dev` |
 | `WEBUI_AUTH_MODE` | `oidc` (prod) / `none` (dev) | flag `--auth-mode` |
 | `WEBUI_OIDC_ISSUER` | empty | e.g. `https://dex.example/dex` ; required in prod |
