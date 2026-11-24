@@ -489,6 +489,11 @@ func (c *Config) Validate() error {
 	if c.TLSCert != "" && c.TLSKey == "" || c.TLSKey != "" && c.TLSCert == "" {
 		return errors.New("WEBUI_TLS_CERT and WEBUI_TLS_KEY must be set together")
 	}
+	if c.TLSKey != "" {
+		if err := checkTLSKeyFile(c.TLSKey); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
