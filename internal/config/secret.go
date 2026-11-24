@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,8 +36,6 @@ func secretEnv(ctx context.Context, plainKey, fromKey string) (string, error) {
 		return "", fmt.Errorf("%s: %w", fromKey, err)
 	}
 	defer s.Close()
-	if len(s.Bytes()) == 0 {
-		return "", fmt.Errorf("%s: %w", fromKey, errors.New("the secret is empty"))
-	}
+	// secretsource.Open never returns an empty secret (ErrEmpty).
 	return string(s.Bytes()), nil
 }

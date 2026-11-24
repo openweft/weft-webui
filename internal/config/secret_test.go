@@ -2,12 +2,15 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/go-authn/secretsource"
 )
 
 const testSecret = "s3cr3t-value-do-not-echo"
@@ -83,8 +86,13 @@ func TestOIDCClientSecretUnresolvableRef(t *testing.T) {
 	t.Setenv("WEBUI_OIDC_CLIENT_SECRET", "")
 	t.Setenv("WEBUI_OIDC_CLIENT_SECRET_FROM", "file:"+filepath.Join(t.TempDir(), "missing"))
 	_, _, err := loadWith(t)
-	if err == nil || !strings.Contains(err.Error(), "WEBUI_OIDC_CLIENT_SECRET_FROM") {
+	if err == nil || !strings.Contains(err.Error(), "WEBUI_OIDC_CLIENT_SECRET_FROM") || !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("err = %v", err)
+	}
+	t.Setenv("WEBUI_OIDC_CLIENT_SECRET_FROM", "file:"+secretFile(t, ""))
+	_, _, err = loadWith(t)
+	if !errors.Is(err, secretsource.ErrEmpty) {
+		t.Fatalf("empty secret: err = %v", err)
 	}
 	t.Setenv("WEBUI_OIDC_CLIENT_SECRET_FROM", "bogus-scheme:"+testSecret)
 	_, _, err = loadWith(t)
