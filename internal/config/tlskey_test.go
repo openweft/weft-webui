@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -53,8 +54,9 @@ func TestTLSKeyFileChecks(t *testing.T) {
 	if err := checkTLSKeyFile(link); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("symlink: err = %v", err)
 	}
-	if err := checkTLSKeyFile(filepath.Join(dir, "missing")); err == nil {
-		t.Fatal("missing file accepted")
+	missing := filepath.Join(dir, "missing")
+	if err := checkTLSKeyFile(missing); !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), missing) {
+		t.Fatalf("missing file: err = %v", err)
 	}
 }
 
