@@ -121,7 +121,7 @@ tasks:
       a running weft-webui + Dex (operator drill — NOT a CI gate).
       Prereqs : weft-webui running on $WEBUI_BASE (default http://localhost:8080),
       Dex reachable at $DEX_ISSUER (default http://localhost:5556/dex) with
-      its mock connector enabled. Override creds via $OIDC_USER / $OIDC_PASS
+      its mock connector enabled. Override creds via $OIDC_USER / --pass-from REF
       (defaults admin@example.com / password). Exits non-zero on any step
       failure ; see docs/operations/oidc-smoke-test.md for troubleshooting.
     cmds:

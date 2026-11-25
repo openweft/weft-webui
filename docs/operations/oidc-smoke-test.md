@@ -31,7 +31,7 @@ than the `.github/workflows/` matrix.
 | --- | --- |
 | `weft-webui` | Running on `$WEBUI_BASE` (default `http://localhost:8080`). NOT in dev mode — `WEBUI_DEV_MODE` must be unset or false, otherwise auth is short-circuited and the test is meaningless. |
 | Dex | Reachable at `$DEX_ISSUER` (default `http://localhost:5556/dex`). The mock connector must be enabled (it ships enabled in the default `examples/config-dev.yaml`). |
-| Mock creds | `admin@example.com` / `password` are Dex's documented mock-connector defaults. Override with `$OIDC_USER` / `$OIDC_PASS`. |
+| Mock creds | `admin@example.com` / `password` are Dex's documented mock-connector defaults. Override the user with `$OIDC_USER` and the password with `--pass-from REF` (a secretsource reference such as `systemd-creds:NAME`, or the path of a 0600 file). There is no `--pass` flag and no `$OIDC_PASS`: a password on the command line or in the environment is readable by other users. |
 | Network | The host running the smoke test must reach BOTH the webui listener AND the Dex issuer. Inside the 3-DC cluster that means running from a control-plane VM ; from a laptop, use an SSH port-forward. |
 
 ## How to run
@@ -62,8 +62,8 @@ task oidc-smoke
 export WEBUI_BASE=https://weft.lan
 export DEX_ISSUER=https://dex.weft.lan
 export OIDC_USER=svc-smoke@weft.lan
-export OIDC_PASS='<paste from vault>'
-task oidc-smoke
+# ./smoke-pass.txt holds the password, mode 0600
+task oidc-smoke -- --pass-from ./smoke-pass.txt
 ```
 
 ## Expected output

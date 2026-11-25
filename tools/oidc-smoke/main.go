@@ -21,8 +21,12 @@
 //	WEBUI_BASE      default http://localhost:8080   — user-facing listener
 //	DEX_ISSUER      default http://localhost:5556/dex
 //	OIDC_USER       default admin@example.com       — mock-connector username
-//	OIDC_PASS       default password                — mock-connector password
 //	HTTP_TIMEOUT    default 15s                     — per-request timeout
+//
+// The mock-connector password is NOT taken from the command line or the
+// environment (both are readable by other users); pass --pass-from REF,
+// a secretsource reference or the path of a 0600 file. Without it the
+// Dex mock connector's well-known default is used.
 //
 // Exit status : 0 = the whole flow succeeded ; non-zero = the step name
 // printed last is the one that failed (stderr carries the cause).
@@ -48,15 +52,20 @@ func main() {
 		webui    = envOr("WEBUI_BASE", "http://localhost:8080")
 		dex      = envOr("DEX_ISSUER", "http://localhost:5556/dex")
 		user     = envOr("OIDC_USER", "admin@example.com")
-		pass     = envOr("OIDC_PASS", "password")
+		passFrom string
 		timeoutS = envOr("HTTP_TIMEOUT", "15s")
 	)
 	flag.StringVar(&webui, "webui", webui, "weft-webui base URL (user listener)")
 	flag.StringVar(&dex, "dex", dex, "Dex issuer URL")
 	flag.StringVar(&user, "user", user, "mock-connector username")
-	flag.StringVar(&pass, "pass", pass, "mock-connector password")
+	flag.StringVar(&passFrom, "pass-from", "", "mock-connector password by reference: a secretsource ref (systemd-creds:NAME, file:/path, ...) or the path of a 0600 file; default is the Dex mock connector's well-known \""+defaultMockPass+"\"")
 	flag.StringVar(&timeoutS, "timeout", timeoutS, "per-request HTTP timeout (Go duration)")
 	flag.Parse()
+
+	pass, err := resolvePass(context.Background(), passFrom)
+	if err != nil {
+		fatal("config", err)
+	}
 
 	timeout, err := time.ParseDuration(timeoutS)
 	if err != nil {
