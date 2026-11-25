@@ -7,6 +7,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Changed (breaking for the `oidc-smoke` operator tool only)
+
+- **`tools/oidc-smoke`: `--pass` and `$OIDC_PASS` are removed**, replaced by
+  `--pass-from REF` (a secretsource reference, or the path of a file mode
+  0600). A password on the command line or in the environment is readable by
+  other users. Without the flag the Dex mock connector's well-known default
+  is used. A file readable by group or others, an empty file or an unknown
+  reference is refused.
+
 ### Changed (may refuse an existing deployment)
 
 - **`WEBUI_TLS_KEY` permissions are now verified at startup.** The server
