@@ -7,6 +7,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Changed
+
+- **The S3 bucket secret is write-only end to end.** `wclient.bucketRow` no
+  longer copies `BucketInfo.secret_access_key` into the rows returned by
+  `GetBucket` and `ListBuckets` (the field is deprecated in weft-proto
+  v0.26.0 and weft never fills it). The secret is only sent at `CreateBucket`.
+  Correction: an earlier entry says the secret is "encrypted server-side";
+  weft stores it in clear in its bucket registry, so do not rely on that claim.
+
 ### Changed (breaking for the `oidc-smoke` operator tool only)
 
 - **`tools/oidc-smoke`: `--pass` and `$OIDC_PASS` are removed**, replaced by
