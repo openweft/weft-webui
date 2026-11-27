@@ -2986,9 +2986,10 @@ func (c *Client) ListBuckets(ctx context.Context, projectUUID string) (rows []ma
 	return out, nil
 }
 
-// GetBucket fetches a single bucket by UUID. The response includes
-// the secret_access_key + policy fields that the list response omits
-// (admin-only by server contract — the wrapper does no extra gating).
+// GetBucket fetches a single bucket by UUID. The response includes the
+// policy that the list response omits. The S3 secret_access_key is
+// write-only: it is supplied at CreateBucket and never read back, so no
+// row carries it (bucketRow).
 func (c *Client) GetBucket(ctx context.Context, uuid string) (row map[string]any, retErr error) {
 	defer c.measured("GetBucket", &retErr)()
 	rpc, err := c.dial()
@@ -3099,15 +3100,14 @@ func bucketRow(b *weftv1.BucketInfo) map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"uuid":              b.GetUuid(),
-		"project_uuid":      b.GetProjectUuid(),
-		"name":              b.GetName(),
-		"endpoint":          b.GetEndpoint(),
-		"region":            b.GetRegion(),
-		"access_key_id":     b.GetAccessKeyId(),
-		"secret_access_key": b.GetSecretAccessKey(),
-		"policy":            b.GetPolicy(),
-		"created":           tsDate(b.GetCreatedAtUnixNs()),
+		"uuid":          b.GetUuid(),
+		"project_uuid":  b.GetProjectUuid(),
+		"name":          b.GetName(),
+		"endpoint":      b.GetEndpoint(),
+		"region":        b.GetRegion(),
+		"access_key_id": b.GetAccessKeyId(),
+		"policy":        b.GetPolicy(),
+		"created":       tsDate(b.GetCreatedAtUnixNs()),
 	}
 }
 
