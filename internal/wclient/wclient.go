@@ -3011,7 +3011,7 @@ func (c *Client) GetBucket(ctx context.Context, uuid string) (row map[string]any
 // wrapper chains a SetBucketPolicy call after a successful create so
 // the create-with-policy affordance round-trips in a single API call
 // on the webui's surface.
-func (c *Client) CreateBucket(ctx context.Context, projectUUID, name, endpoint, region, accessKeyID, secretAccessKey, policy string) (uuid string, created bool, retErr error) {
+func (c *Client) CreateBucket(ctx context.Context, projectUUID, name, endpoint, region, accessKeyID, policy string) (uuid string, created bool, retErr error) {
 	defer c.measured("CreateBucket", &retErr)()
 	rpc, err := c.dial()
 	if err != nil {
@@ -3020,12 +3020,11 @@ func (c *Client) CreateBucket(ctx context.Context, projectUUID, name, endpoint, 
 	cctx, cancel := rpcCtx(withBearer(ctx))
 	defer cancel()
 	resp, err := rpc.CreateBucket(cctx, &weftv1.CreateBucketRequest{
-		Project:         projectUUID,
-		Name:            name,
-		Endpoint:        endpoint,
-		Region:          region,
-		AccessKeyId:     accessKeyID,
-		SecretAccessKey: secretAccessKey,
+		Project:     projectUUID,
+		Name:        name,
+		Endpoint:    endpoint,
+		Region:      region,
+		AccessKeyId: accessKeyID,
 	})
 	if err != nil {
 		return "", false, err
