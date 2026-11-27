@@ -15,7 +15,7 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
   collects it; a `secret_access_key` in the body is ignored. Live creation now
   needs only `endpoint`, `region` and `access_key_id`.
   `wclient.Client.CreateBucket` lost its `secretAccessKey` parameter.
-  The earlier "encrypted server-side" claim (v0.9.0 entry) was false.
+  The earlier "encrypted server-side" claim was false.
 
 ### Changed
 
