@@ -266,7 +266,7 @@ export interface paths {
         put?: never;
         /**
          * Create an object-storage bucket
-         * @description Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access keys) the daemon needs to register the bucket against the backend ; the secret_access_key stays server-side and is never echoed back. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.
+         * @description Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access key id) the daemon needs to register the bucket against the backend ; no secret key is accepted or stored. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.
          */
         post: operations["create-bucket"];
         delete?: never;
@@ -3370,8 +3370,6 @@ export interface components {
             policy?: string;
             /** @description S3 region — required for live-first creation */
             region?: string;
-            /** @description S3 secret access key — stored server-side, never returned by the API */
-            secret_access_key?: string;
         };
         CreateDNSRecordInputBody: {
             /**

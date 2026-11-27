@@ -584,7 +584,6 @@ export type CreateBucketBody = {
   endpoint?: string;
   region?: string;
   access_key_id?: string;
-  secret_access_key?: string;
   policy?: string;
 };
 

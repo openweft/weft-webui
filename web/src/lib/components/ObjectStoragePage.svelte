@@ -36,7 +36,6 @@
   let newEndpoint = $state('');
   let newRegion = $state('');
   let newAccessKeyId = $state('');
-  let newSecretAccessKey = $state('');
   let newPolicy = $state('');
   let creating = $state(false);
   let bucketError = $state('');
@@ -57,11 +56,10 @@
     const ep = newEndpoint.trim();
     const rg = newRegion.trim();
     const ak = newAccessKeyId.trim();
-    const sk = newSecretAccessKey;
-    const anyFilled = ep || rg || ak || sk;
+    const anyFilled = ep || rg || ak;
     if (!anyFilled) return '';
-    if (!ep || !rg || !ak || !sk) {
-      return 'endpoint, region, access key id and secret access key are all required when any S3 wiring is set';
+    if (!ep || !rg || !ak) {
+      return 'endpoint, region and access key id are all required when any S3 wiring is set';
     }
     try {
       const u = new URL(ep);
@@ -83,7 +81,6 @@
       if (newEndpoint.trim()) body.endpoint = newEndpoint.trim();
       if (newRegion.trim()) body.region = newRegion.trim();
       if (newAccessKeyId.trim()) body.access_key_id = newAccessKeyId.trim();
-      if (newSecretAccessKey) body.secret_access_key = newSecretAccessKey;
       if (newPolicy.trim()) body.policy = newPolicy.trim();
       await createBucket(body);
       const created = newName.trim();
@@ -91,7 +88,6 @@
       newEndpoint = '';
       newRegion = '';
       newAccessKeyId = '';
-      newSecretAccessKey = '';
       newPolicy = '';
       createOpen = false;
       await loadBuckets(created);
@@ -253,12 +249,6 @@
           <input class="input input-sm input-bordered" placeholder="AKIA…" bind:value={newAccessKeyId} />
         </label>
       </div>
-
-      <label class="form-control">
-        <span class="label-text mb-1 text-xs">Secret access key</span>
-        <input class="input input-sm input-bordered" type="password" autocomplete="new-password" placeholder="••••••••" bind:value={newSecretAccessKey} />
-        <span class="mt-1 text-xs text-base-content/50">S3 credentials are encrypted server-side and never returned via the API</span>
-      </label>
 
       <label class="form-control">
         <span class="label-text mb-1 text-xs">Initial policy (optional)</span>

@@ -355,7 +355,7 @@ func mountBucketsAPI(api huma.API) {
 		Method:        "POST",
 		Path:          "/api/buckets",
 		Summary:       "Create an object-storage bucket",
-		Description:   "Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access keys) the daemon needs to register the bucket against the backend ; the secret_access_key stays server-side and is never echoed back. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.",
+		Description:   "Live-first via weft-agent's CreateBucket (proto v0.9.0). The request carries the S3 wiring (endpoint, region, access key id) the daemon needs to register the bucket against the backend ; no secret key is accepted or stored. On codes.Unimplemented (or when no daemon is wired) the handler falls back to the in-memory mock so the dashboard stays useful through staged rollouts ; the mock path accepts a bare `{name}` for backward compat with pre-v0.9 clients.",
 		Tags:          []string{"buckets"},
 		DefaultStatus: 201,
 	}, func(ctx context.Context, in *createBucketInput) (*bucketNameOutput, error) {
@@ -366,7 +366,6 @@ func mountBucketsAPI(api huma.API) {
 		endpoint := strings.TrimSpace(in.Body.Endpoint)
 		region := strings.TrimSpace(in.Body.Region)
 		accessKeyID := strings.TrimSpace(in.Body.AccessKeyID)
-		secretAccessKey := in.Body.SecretAccessKey // do NOT TrimSpace — secrets may legitimately have edge whitespace
 		policy := in.Body.Policy
 
 		// Bucket-name uniqueness is enforced against the mock store
@@ -389,11 +388,11 @@ func mountBucketsAPI(api huma.API) {
 			}
 		}
 
-		if live != nil && endpoint != "" && region != "" && accessKeyID != "" && secretAccessKey != "" {
+		if live != nil && endpoint != "" && region != "" && accessKeyID != "" {
 			if project == "" {
 				return nil, huma.Error400BadRequest("project is required for live-first bucket creation (set scope via the topbar or pass ?project=...)")
 			}
-			uuid, _, cerr := live.CreateBucket(ctx, project, name, endpoint, region, accessKeyID, secretAccessKey, policy)
+			uuid, _, cerr := live.CreateBucket(ctx, project, name, endpoint, region, accessKeyID, policy)
 			Audit(ctx, auditLogger, "bucket.create", "bucket", name, "", cerr, map[string]string{
 				"project":  project,
 				"endpoint": endpoint,
@@ -780,11 +779,11 @@ type createBucketInput struct {
 		// The fields are optional on the wire so legacy mock-mode
 		// callers (just `{name}`) keep working ; the live-first path
 		// 400s when they're missing.
-		Endpoint        string `json:"endpoint,omitempty" doc:"S3 endpoint URL (https://...) — required for live-first creation"`
-		Region          string `json:"region,omitempty" doc:"S3 region — required for live-first creation"`
-		AccessKeyID     string `json:"access_key_id,omitempty" doc:"S3 access key id — required for live-first creation"`
-		SecretAccessKey string `json:"secret_access_key,omitempty" doc:"S3 secret access key — stored server-side, never returned by the API"`
-		Policy          string `json:"policy,omitempty" doc:"Optional initial IAM policy (JSON ; attached via SetBucketPolicy after create)"`
+		// No secret key: the platform does not store one.
+		Endpoint    string `json:"endpoint,omitempty" doc:"S3 endpoint URL (https://...) — required for live-first creation"`
+		Region      string `json:"region,omitempty" doc:"S3 region — required for live-first creation"`
+		AccessKeyID string `json:"access_key_id,omitempty" doc:"S3 access key id — required for live-first creation"`
+		Policy      string `json:"policy,omitempty" doc:"Optional initial IAM policy (JSON ; attached via SetBucketPolicy after create)"`
 	}
 }
 

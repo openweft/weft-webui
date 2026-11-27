@@ -7,9 +7,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Removed (breaking)
+
+- **The create-bucket form and `POST /api/buckets` no longer accept
+  `secret_access_key`.** The platform does not protect a stored secret
+  (weft keeps it in clear in its bucket registry), so the webui no longer
+  collects it; a `secret_access_key` in the body is ignored. Live creation now
+  needs only `endpoint`, `region` and `access_key_id`.
+  `wclient.Client.CreateBucket` lost its `secretAccessKey` parameter.
+  The earlier "encrypted server-side" claim (v0.9.0 entry) was false.
+
 ### Changed
 
-- **The S3 bucket secret is write-only end to end.** `wclient.bucketRow` no
+- **The S3 bucket secret is no longer handled.** `wclient.bucketRow` no
   longer copies `BucketInfo.secret_access_key` into the rows returned by
   `GetBucket` and `ListBuckets` (the field is deprecated in weft-proto
   v0.26.0 and weft never fills it). The secret is only sent at `CreateBucket`.

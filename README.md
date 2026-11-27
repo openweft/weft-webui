@@ -191,7 +191,7 @@ Wired live RPC families (selected) :
 | Inventory | `ListAZs`, `ListRacks`, `ListHosts`, CRUD on each |
 | Networking | `ListNetworks`, `ListSubnets`, `ListLoadBalancers`, `ListRouters`, `ListDNSZones`, `ListDNSRecords` |
 | Storage | `ListVolumes`, `CreateVolume`, `ListShares`, `ListBuckets`, volume snapshots + backups, bucket policies |
-| Bucket S3 wiring | `CreateBucket` carries `endpoint` + `region` + `access_key_id` + `secret_access_key` (proto v0.9.0) |
+| Bucket S3 wiring | `CreateBucket` carries `endpoint` + `region` + `access_key_id` (no secret key is accepted or stored) |
 | SSH keys | cluster-wide catalogue + `ImportSSHKeyCatalogue` |
 | Scheduling | `List/Create/Update/DeleteSchedulingRule` (nominal binding) |
 | Registries | `ListRegistryRemotes`, `SetRegistryRemote`, `SearchRegistryRemote` |
